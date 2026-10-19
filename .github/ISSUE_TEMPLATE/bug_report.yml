@@ -1,0 +1,62 @@
+name: "🕷️ Bug report"
+description: Report errors or unexpected behavior
+labels:
+  - bug
+body:
+  - type: checkboxes
+    attributes:
+      label: Self Checks
+      description: "Please review the following before submitting. We recommend completing as many items as possible."
+      options:
+        - label: I have read the [Contributing Guide](https://github.com/yikart/AiToEarn/blob/main/CONTRIBUTING.md).
+          required: false
+        - label: I have searched for existing issues [search for existing issues](https://github.com/yikart/AiToEarn/issues), including closed ones.
+          required: false
+        - label: I can provide the report in English if needed to help more contributors participate in the discussion.
+          required: false
+        - label: "Please do not modify this template :) and fill in all the required fields."
+          required: true
+
+  - type: input
+    attributes:
+      label: Aitoearn version
+      description: 
+    validations:
+      required: true
+
+  - type: dropdown
+    attributes:
+      label: Please select your platform
+      description: 
+      multiple: true
+      options:
+        - Android
+        - Windows
+        - Mac
+        - Web
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Steps to reproduce
+      description: We highly suggest including screenshots and a bug report log. Please use the right markdown syntax for code blocks.
+      placeholder: Having detailed steps helps us reproduce the bug. If you have logs, please use fenced code blocks (triple backticks ```) to format them.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: ✔️ Expected Behavior
+      description: Describe what you expected to happen.
+      placeholder: What were you expecting? Please do not copy and paste the steps to reproduce here.
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: ❌ Actual Behavior
+      description: Describe what actually happened.
+      placeholder: What happened instead? Please do not copy and paste the steps to reproduce here.
+    validations:
+      required: false

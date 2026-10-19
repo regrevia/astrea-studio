@@ -1,0 +1,158 @@
+/*
+ * @Author: nevin
+ * @Date: 2024-06-17 19:19:20
+ * @LastEditTime: 2024-12-23 12:45:22
+ * @LastEditors: nevin
+ * @Description: 媒体资源
+ */
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common'
+import { ApiTags } from '@nestjs/swagger'
+import { GetToken, TokenInfo } from '@yikart/aitoearn-auth'
+import { ApiDoc, AppException, ParseObjectIdPipe, ResponseCode, TableDto } from '@yikart/common'
+import { MediaListVo, MediaVo } from './content.vo'
+import { MaterialGroupService } from './material-group.service'
+import { MediaGroupService } from './media-group.service'
+import {
+  AddUseCountOfListDto,
+  CreateMediaDto,
+  MediaFilterDto,
+  MediaFilterSchema,
+  MediaIdsDto,
+  TransferMediaDto,
+} from './media.dto'
+import { MediaService } from './media.service'
+
+@ApiTags('Me/Media')
+@Controller('media')
+export class MediaController {
+  constructor(
+    private readonly mediaService: MediaService,
+    private readonly mediaGroupService: MediaGroupService,
+    private readonly materialGroupService: MaterialGroupService,
+  ) { }
+
+  @ApiDoc({
+    summary: '创建媒体资源',
+    description: '创建媒体资源，包含元数据和文件URL。',
+    body: CreateMediaDto.schema,
+  })
+  @Post()
+  async create(
+    @GetToken() token: TokenInfo,
+    @Body() body: CreateMediaDto,
+  ) {
+    const res = await this.mediaService.create(token.id, body)
+    return MediaVo.create(res)
+  }
+
+  @ApiDoc({
+    summary: '媒体资源转移到其他分组',
+    description: '将媒体资源移动或复制到目标媒体分组。move 模式直接移动，copy 模式复制并重置使用次数。',
+    body: TransferMediaDto.schema,
+  })
+  @Post('/transfer')
+  async transferToGroup(
+    @GetToken() token: TokenInfo,
+    @Body() body: TransferMediaDto,
+  ) {
+    const targetGroup = await this.materialGroupService.getGroupInfo(body.targetGroupId)
+    if (!targetGroup || targetGroup.userId !== token.id) {
+      throw new AppException(ResponseCode.MediaGroupNotFound)
+    }
+
+    const count = await this.mediaService.transferToGroup(
+      token.id,
+      body.ids,
+      body.targetGroupId,
+      body.mode,
+    )
+    return { count }
+  }
+
+  @ApiDoc({
+    summary: '批量删除媒体资源',
+    description: '根据ID列表批量删除媒体资源。',
+    body: MediaIdsDto.schema,
+  })
+  @Delete('ids')
+  async delByIds(@GetToken() token: TokenInfo, @Body() body: MediaIdsDto) {
+    const res = await this.mediaService.delByIds(token.id, body.ids)
+    return res
+  }
+
+  @ApiDoc({
+    summary: '按条件删除媒体资源',
+    description: '删除符合筛选条件的媒体资源。',
+    body: MediaFilterDto.schema,
+  })
+  @Delete('filter')
+  async delByFilter(@GetToken() token: TokenInfo, @Body() body: MediaFilterDto) {
+    const res = await this.mediaService.delByFilter(token.id, body)
+    return res
+  }
+
+  @ApiDoc({
+    summary: '删除媒体资源',
+    description: '根据ID删除媒体资源。',
+  })
+  @Delete(':id')
+  async del(@GetToken() token: TokenInfo, @Param('id', ParseObjectIdPipe) id: string) {
+    const media = await this.mediaService.getInfo(id)
+    if (!media || media.userId !== token.id) {
+      throw new AppException(ResponseCode.MediaNotFound, 'Media Group not found')
+    }
+    const res = await this.mediaService.del(id)
+    return res
+  }
+
+  @ApiDoc({
+    summary: '获取媒体资源详情',
+    description: '根据ID获取媒体资源详情。',
+  })
+  @Get('info/:id')
+  async getInfo(@Param('id', ParseObjectIdPipe) id: string) {
+    const res = await this.mediaService.getInfo(id)
+    return res ? MediaVo.create(res) : res
+  }
+
+  @Get('list/:pageNo/:pageSize')
+  @ApiDoc({
+    summary: '获取媒体资源列表',
+    description: '分页获取媒体资源列表。',
+    query: MediaFilterSchema,
+  })
+  async getList(
+    @GetToken() token: TokenInfo,
+    @Param() param: TableDto,
+    @Query() query: MediaFilterDto,
+  ) {
+    const res = await this.mediaService.getList(param, {
+      userId: token.id,
+      ...query,
+    })
+    return MediaListVo.create(res)
+  }
+
+  @ApiDoc({
+    summary: '增加媒体使用次数',
+    description: '批量增加媒体资源的使用次数。',
+    body: AddUseCountOfListDto.schema,
+  })
+  @Put('addUseCountOfList')
+  async addUseCountOfList(
+    @GetToken() token: TokenInfo,
+    @Body() body: AddUseCountOfListDto,
+  ) {
+    const res = await this.mediaService.addUseCountOfList(token.id, body.ids)
+    return res
+  }
+}

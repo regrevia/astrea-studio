@@ -1,0 +1,1 @@
+export const S3_SIGNING_CLIENT = Symbol('S3_SIGNING_CLIENT')

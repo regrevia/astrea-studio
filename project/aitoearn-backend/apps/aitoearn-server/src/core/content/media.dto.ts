@@ -1,0 +1,57 @@
+/*
+ * @Author: nevin
+ * @Date: 2024-08-19 15:58:47
+ * @LastEditTime: 2025-03-17 12:41:12
+ * @LastEditors: nevin
+ * @Description: Media media
+ */
+import { createZodDto, FileUtil, TableDtoSchema } from '@yikart/common'
+import { MediaType } from '@yikart/mongodb'
+import { z } from 'zod'
+
+export const MediaIdSchema = z.object({
+  id: z.string().describe('ID'),
+})
+export class MediaIdDto extends createZodDto(MediaIdSchema) {}
+
+export const CreateMediaSchema = z.object({
+  groupId: z.string().describe('组ID'),
+  materialId: z.string().optional().describe('素材ID'),
+  type: z.enum(MediaType).describe('类型'),
+  url: FileUtil.zodTrimHost().describe('文件链接'),
+  thumbUrl: FileUtil.zodTrimHost().optional().describe('缩略图'),
+  title: z.string().optional().describe('标题'),
+  desc: z.string().optional().describe('描述'),
+})
+export class CreateMediaDto extends createZodDto(CreateMediaSchema) {}
+
+export const MediaFilterSchema = z.object({
+  groupId: z.string().optional().describe('组ID'),
+  materialGroupId: z.string().optional().describe('草稿箱组ID'),
+  type: z.enum(MediaType).optional().describe('类型'),
+  useCount: z.coerce.number().optional().describe('use conut (min)'),
+})
+export class MediaFilterDto extends createZodDto(MediaFilterSchema, 'MediaFilterDto') {}
+
+export const MediaListSchema = z.object({
+  page: TableDtoSchema,
+  filter: MediaFilterSchema,
+})
+export class MediaListDto extends createZodDto(MediaListSchema) {}
+
+const addUseCountOfListSchema = z.object({
+  ids: z.array(z.string()).min(1).describe('ID列表'),
+})
+export class AddUseCountOfListDto extends createZodDto(addUseCountOfListSchema) {}
+
+const MediaIdsSchema = z.object({
+  ids: z.array(z.string()).min(1).describe('ID列表'),
+})
+export class MediaIdsDto extends createZodDto(MediaIdsSchema) {}
+
+const TransferMediaSchema = z.object({
+  ids: z.array(z.string()).min(1).describe('媒体资源ID列表'),
+  targetGroupId: z.string().describe('目标媒体分组ID'),
+  mode: z.enum(['move', 'copy']).describe('转移模式：move 移动，copy 复制'),
+})
+export class TransferMediaDto extends createZodDto(TransferMediaSchema, 'TransferMediaDto') {}

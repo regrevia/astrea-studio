@@ -1,0 +1,306 @@
+/**
+ * CalendarTimingItem 组件
+ *
+ * 功能描述: 日历单元格组件 - 显示日期和发布记录
+ */
+
+import type { DayCellContentArg } from '@fullcalendar/core'
+import type { ForwardedRef } from 'react'
+import type { PublishRecordItem } from '@/api/platforms/publish.types'
+import dayjs from 'dayjs'
+import { ChevronDown, ChevronUp, Plus } from 'lucide-react'
+import { forwardRef, memo, useEffect, useMemo, useRef, useState } from 'react'
+import { useDrop } from 'react-dnd'
+import { useShallow } from 'zustand/react/shallow'
+import { useCalendarTiming } from '@/app/[lng]/accounts/components/CalendarTiming/useCalendarTiming'
+import { useTransClient } from '@/app/i18n/client'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
+import { useIsMobile } from '@/hooks/useIsMobile'
+import { useGetClientLng } from '@/hooks/useSystem'
+import { useSystemStore } from '@/store/system'
+import { cn } from '@/utils/className'
+import {
+  filterCalendarFestivalEvents,
+  getChinaCalendarEvents,
+  getChinaCalendarLunarInfo,
+} from '../CalendarTiming/calendarFestival.utils'
+import CalendarFestivalSummary from '../CalendarTiming/CalendarFestivalSummary'
+import CalendarLunarText from '../CalendarTiming/CalendarLunarText'
+import CalendarRecord from './components/CalendarRecord'
+import { CustomDragLayer } from './components/CustomDragLayer'
+
+export interface ICalendarTimingItemRef {}
+
+export interface ICalendarTimingItemProps {
+  arg: DayCellContentArg
+  onClickPub: (date: string) => void
+  loading: boolean
+}
+
+const EMPTY_RECORDS: PublishRecordItem[] = []
+
+const CalendarTimingItem = memo(
+  forwardRef(
+    (
+      { arg, onClickPub, loading }: ICalendarTimingItemProps,
+      ref: ForwardedRef<ICalendarTimingItemRef>,
+    ) => {
+      const { t } = useTransClient('account')
+      const isMobile = useIsMobile()
+      const lng = useGetClientLng()
+
+      // arg.date 是当前格子的日期，Date 类型
+      const today = new Date()
+
+      // 去掉时分秒，只比较年月日
+      const argDate = new Date(arg.date.getFullYear(), arg.date.getMonth(), arg.date.getDate())
+      const nowDate = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+
+      // [[小时，分钟]] [[4, 12]]
+      const [reservationsTimes, setReservationsTimes] = useState([])
+      const [{ canDrop, isOver }, drop] = useDrop(
+        () => ({
+          // 移动端禁用拖拽
+          accept: isMobile ? 'none' : 'box',
+          drop: () => ({
+            time: {
+              date: arg.date,
+              keepOriginalTime: true,
+            },
+          }),
+          collect: monitor => ({
+            isOver: monitor.isOver(),
+            canDrop: monitor.canDrop(),
+          }),
+        }),
+        [arg.date, isMobile],
+      )
+      const [isMore, setIsMore] = useState(false)
+      const cellRef = useRef<HTMLDivElement | null>(null)
+      const dateStr = useMemo(() => dayjs(arg.date).format('YYYY-MM-DD'), [arg.date])
+      const records = useCalendarTiming(state => state.recordMap.get(dateStr) ?? EMPTY_RECORDS)
+      const { showSolarFestivals, showSolarTerms } = useSystemStore(
+        useShallow(state => ({
+          showSolarFestivals: state.calendarShowSolarFestivals,
+          showSolarTerms: state.calendarShowSolarTerms,
+        })),
+      )
+
+      const reservationsTimesLast = useMemo(() => {
+        return argDate >= nowDate ? reservationsTimes : []
+      }, [reservationsTimes])
+
+      // 移动端默认显示更少的记录
+      const maxRecords = isMobile ? 2 : 3
+
+      const recordsLast = useMemo(() => {
+        if (isMore) {
+          return records
+        }
+        else {
+          return records?.slice(0, maxRecords - reservationsTimesLast.length)
+        }
+      }, [isMore, records, reservationsTimesLast, maxRecords])
+
+      const festivals = useMemo(() => {
+        return filterCalendarFestivalEvents(getChinaCalendarEvents(arg.date, lng), {
+          showSolarFestivals,
+          showSolarTerms,
+        })
+      }, [arg.date, lng, showSolarFestivals, showSolarTerms])
+      const lunar = useMemo(() => getChinaCalendarLunarInfo(arg.date, lng), [arg.date, lng])
+      const legalFestival = festivals.find(item => item.type === 'holiday' || item.type === 'workday')
+      const hasFestival = festivals.length > 0
+      const isToday = argDate.getTime() === nowDate.getTime()
+
+      // 进入视图时将"今天"尽量居中显示（仅在日历容器内滚动）
+      useEffect(() => {
+        if (argDate.getTime() === nowDate.getTime()) {
+          // 推迟到布局完成后再滚动
+          setTimeout(() => {
+            const calendarContainer = document.getElementById('calendarTiming-calendar')
+            if (calendarContainer && cellRef.current) {
+              // 计算目标位置，使"今天"居中显示
+              const containerRect = calendarContainer.getBoundingClientRect()
+              const cellRect = cellRef.current.getBoundingClientRect()
+              const scrollTop
+                = calendarContainer.scrollTop
+                  + (cellRect.top - containerRect.top)
+                  - containerRect.height / 2
+                  + cellRect.height / 2
+              calendarContainer.scrollTo({ top: Math.max(0, scrollTop), behavior: 'smooth' })
+            }
+          }, 100)
+        }
+      }, [])
+
+      return (
+        <div
+          ref={(node) => {
+            // 移动端不启用 drop
+            if (!isMobile && argDate >= nowDate) {
+              drop(node)
+            }
+            cellRef.current = node
+          }}
+          className={cn(
+            'calendarTimingItem--js',
+            'relative box-border p-1.5 md:p-2.5 flex flex-col font-semibold overflow-hidden',
+            'min-h-[120px] md:min-h-[200px] h-full group',
+            'transition-colors',
+            isToday && 'ring-1 ring-inset ring-primary/15',
+            isToday && !hasFestival && 'bg-gradient-to-br from-primary/5 via-background to-brand-cyan/5',
+            argDate < nowDate && !hasFestival && 'bg-muted/30',
+            // 只在桌面端显示拖拽高亮
+            !isMobile && isOver && 'bg-accent/50',
+          )}
+        >
+          {/* 顶部：日期和添加按钮 */}
+          <div className="relative z-10 mb-2.5 flex items-start justify-between gap-1 group/top">
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <CalendarFestivalSummary
+                festivals={festivals}
+                date={arg.date}
+                lunar={lunar}
+                headerClassName="w-fit max-w-full flex-wrap px-1 py-0.5"
+                headerContent={(
+                  <>
+                    <span
+                      className={cn(
+                        'inline-flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full px-1.5 text-xs md:text-sm font-bold tabular-nums transition-colors',
+                        isToday
+                          ? 'bg-background text-primary ring-2 ring-primary/30 shadow-sm shadow-primary/15'
+                          : 'text-foreground',
+                      )}
+                    >
+                      {arg.date.getDate()}
+                    </span>
+                    <CalendarLunarText lunar={lunar} className="max-w-[4.5rem]" />
+                    {legalFestival && (
+                      <span
+                        className={cn(
+                          'inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none shadow-sm',
+                          legalFestival.isWorkday
+                            ? 'border border-border bg-background text-muted-foreground'
+                            : 'bg-gradient-back text-gradient-foreground shadow-primary/15',
+                        )}
+                        title={t(legalFestival.statusTitleKey)}
+                        aria-label={t(legalFestival.statusTitleKey)}
+                      >
+                        {t(legalFestival.statusKey)}
+                      </span>
+                    )}
+                  </>
+                )}
+                className="max-w-full overflow-visible"
+              />
+            </div>
+
+            {/* 添加按钮：移动端始终可见，桌面端 hover 显示 */}
+            {argDate >= nowDate && (
+              <Button
+                data-testid="calendar-cell-add-btn"
+                size="sm"
+                variant="ghost"
+                className={cn(
+                  'h-5 w-5 md:h-6 md:w-6 p-0 cursor-pointer',
+                  'md:opacity-0 md:group-hover:opacity-100 transition-opacity',
+                )}
+                onClick={() => {
+                  const days = dayjs(arg.date)
+                  const today = dayjs()
+
+                  if (today.date() === days.date()) {
+                    onClickPub(today.add(10, 'minute').format())
+                  }
+                  else {
+                    onClickPub(days.format())
+                  }
+                }}
+              >
+                <Plus className="h-3 w-3 md:h-3.5 md:w-3.5" />
+              </Button>
+            )}
+          </div>
+
+          {/* 内容区域 */}
+          {loading ? (
+            <div className="flex flex-col gap-1.5 md:gap-2">
+              <Skeleton className="h-[28px] md:h-[34px] w-full rounded-md" />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5 md:gap-2">
+              {/* 预约时间按钮 */}
+              {argDate >= nowDate
+                && reservationsTimesLast.map((v, i) => {
+                  return (
+                    <Button
+                      key={i}
+                      size="sm"
+                      variant="outline"
+                      className="w-full h-[28px] md:h-[34px] text-xs group/btn relative overflow-hidden cursor-pointer"
+                      onClick={() => {
+                        const days = dayjs(arg.date).set('hour', v[0]).set('minute', v[1])
+                        onClickPub(days.format())
+                      }}
+                    >
+                      <span className="group-hover/btn:opacity-0 transition-opacity">
+                        {v[0]}
+                        :
+                        {v[1]}
+                        {' '}
+                        PM
+                      </span>
+                      <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/btn:opacity-100 transition-opacity">
+                        {t('addPost')}
+                      </span>
+                    </Button>
+                  )
+                })}
+
+              {/* 发布记录 */}
+              {recordsLast.map((v) => {
+                return (
+                  <div data-testid="calendar-cell-record" key={v.id + v.title + v.uid + v.updatedAt}>
+                    {/* 移动端不显示拖拽层 */}
+                    {!isMobile && <CustomDragLayer publishRecord={v} snapToGrid={false} />}
+                    <CalendarRecord publishRecord={v} />
+                  </div>
+                )
+              })}
+
+              {/* 显示更多/收起按钮 */}
+              {records.length > maxRecords - reservationsTimesLast.length && (
+                <Button
+                  data-testid="calendar-cell-show-more"
+                  variant="ghost"
+                  className="w-full h-auto py-1.5 md:py-2 px-2 md:px-3 text-xs md:text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors justify-start cursor-pointer"
+                  onClick={() => {
+                    setIsMore(!isMore)
+                  }}
+                >
+                  {isMore ? (
+                    <>
+                      <ChevronUp className="mr-1.5 md:mr-2 h-3.5 w-3.5 md:h-4 md:w-4" />
+                      {t('calendar.hideMore')}
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="mr-1.5 md:mr-2 h-3.5 w-3.5 md:h-4 md:w-4" />
+                      {records.length - recordsLast?.length}
+                      {' '}
+                      {t('calendar.showMore')}
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      )
+    },
+  ),
+)
+
+export default CalendarTimingItem

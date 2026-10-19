@@ -1,0 +1,17 @@
+export enum AccountType {
+  Douyin = 'douyin',
+  RedNote = 'xhs',
+  WeChatChannels = 'wxSph',
+  Kwai = 'KWAI',
+  YouTube = 'youtube',
+  WeChatOfficial = 'wxGzh',
+  Bilibili = 'bilibili',
+  Twitter = 'twitter',
+  TikTok = 'tiktok',
+  Facebook = 'facebook',
+  Instagram = 'instagram',
+  Threads = 'threads',
+  Pinterest = 'pinterest',
+  LinkedIn = 'linkedin',
+  GoogleBusiness = 'google_business',
+}

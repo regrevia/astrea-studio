@@ -1,0 +1,298 @@
+name: Build Docker Images
+
+on:
+  workflow_call:
+    inputs:
+      base_ref:
+        description: "Base branch for affected detection"
+        required: false
+        type: string
+        default: ""
+      manual_apps:
+        description: "Comma-separated list of apps to build"
+        required: false
+        type: string
+        default: ""
+    outputs:
+      apps_json:
+        description: "JSON array of built apps with image and port info"
+        value: ${{ jobs.generate-matrix.outputs.apps_json }}
+      has_changes:
+        description: "Whether any apps were affected"
+        value: ${{ jobs.generate-matrix.outputs.has_changes }}
+  workflow_dispatch:
+    inputs:
+      build_aitoearn_server:
+        description: "aitoearn-server"
+        required: false
+        type: boolean
+        default: false
+      build_aitoearn_ai:
+        description: "aitoearn-ai"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: write
+
+env:
+  NX_NO_CLOUD: true
+  NODE_OPTIONS: "--max-old-space-size=4096"
+
+jobs:
+  generate-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      apps_json: ${{ steps.set-matrix.outputs.apps_json }}
+      has_changes: ${{ steps.set-matrix.outputs.has_changes }}
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Parse manual app selection
+        id: parse-manual
+        run: |
+          MANUAL_APPS=""
+
+          if [ -n "${{ inputs.manual_apps }}" ]; then
+            MANUAL_APPS="${{ inputs.manual_apps }}"
+            echo "Using workflow_call apps: $MANUAL_APPS"
+          else
+            if [ "${{ inputs.build_aitoearn_server }}" = "true" ]; then
+              MANUAL_APPS="aitoearn-server"
+            fi
+
+            if [ "${{ inputs.build_aitoearn_ai }}" = "true" ]; then
+              if [ -n "$MANUAL_APPS" ]; then
+                MANUAL_APPS="$MANUAL_APPS,aitoearn-ai"
+              else
+                MANUAL_APPS="aitoearn-ai"
+              fi
+            fi
+
+            if [ -n "$MANUAL_APPS" ]; then
+              echo "Manual apps: $MANUAL_APPS"
+            else
+              echo "No manual apps selected"
+            fi
+          fi
+
+          echo "manual_apps=$MANUAL_APPS" >> $GITHUB_OUTPUT
+
+      - name: Install pnpm
+        if: steps.parse-manual.outputs.manual_apps == ''
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        if: steps.parse-manual.outputs.manual_apps == ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Cache node_modules
+        if: steps.parse-manual.outputs.manual_apps == ''
+        id: cache-node-modules-matrix
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            libs/*/node_modules
+          key: node-modules-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install dependencies
+        if: steps.parse-manual.outputs.manual_apps == '' && steps.cache-node-modules-matrix.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Detect affected apps
+        id: detect-changes
+        run: |
+          if [ -n "${{ steps.parse-manual.outputs.manual_apps }}" ]; then
+            AFFECTED_APPS="${{ steps.parse-manual.outputs.manual_apps }}"
+            echo "Manual build mode: $AFFECTED_APPS"
+            echo "affected_apps=$AFFECTED_APPS" >> $GITHUB_OUTPUT
+          else
+            if [ -n "${{ inputs.base_ref }}" ]; then
+              BASE_REF="origin/${{ inputs.base_ref }}"
+              echo "Detecting affected apps from $BASE_REF to HEAD"
+            else
+              BASE_REF="HEAD~1"
+              echo "Detecting affected apps from HEAD~1 to HEAD"
+            fi
+
+            echo "Base: $BASE_REF"
+            echo "Head: HEAD"
+            echo "Changed files:"
+            git diff --name-only $BASE_REF HEAD 2>/dev/null || true
+
+            NX_OUTPUT=$(pnpm nx show projects --affected --type=app --sep "," --base=$BASE_REF --head=HEAD 2>&1)
+            NX_EXIT_CODE=$?
+
+            echo "Nx exit code: $NX_EXIT_CODE"
+            echo "Nx output: $NX_OUTPUT"
+
+            if [ $NX_EXIT_CODE -ne 0 ]; then
+              echo "Nx affected detection failed; falling back to all open-source apps"
+              AFFECTED_APPS="aitoearn-ai,aitoearn-server"
+            else
+              AFFECTED_APPS="$NX_OUTPUT"
+            fi
+
+            if [ -z "$AFFECTED_APPS" ]; then
+              echo "No affected apps"
+              echo "affected_apps=" >> $GITHUB_OUTPUT
+            else
+              echo "Affected apps: $AFFECTED_APPS"
+              echo "affected_apps=$AFFECTED_APPS" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Generate version
+        id: version
+        run: |
+          VERSION="$(date +%Y%m%d)-$(git rev-parse --short HEAD)"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Generate matrix and apps JSON
+        id: set-matrix
+        run: |
+          AFFECTED_APPS="${{ steps.detect-changes.outputs.affected_apps }}"
+          VERSION="${{ steps.version.outputs.version }}"
+
+          if [ -z "$AFFECTED_APPS" ]; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
+            echo "apps_json={}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+
+          MATRIX_JSON="{\"include\":["
+          APPS_JSON="{"
+          FIRST=true
+          IFS=',' read -ra APPS <<< "$AFFECTED_APPS"
+
+          for APP in "${APPS[@]}"; do
+            CONFIG_FILE="apps/$APP/config/config.js"
+
+            if [ ! -f "$CONFIG_FILE" ]; then
+              echo "Error: app config not found: $CONFIG_FILE"
+              exit 1
+            fi
+
+            PORT=$(grep -oP 'port:\s*\K\d+' "$CONFIG_FILE" 2>/dev/null | head -1 | tr -d '[:space:]')
+
+            if ! [[ "$PORT" =~ ^[0-9]+$ ]]; then
+              echo "Error: unable to read valid port from $CONFIG_FILE"
+              exit 1
+            fi
+
+            IMAGE_TAG="$APP:$VERSION"
+
+            if [ "$FIRST" = true ]; then
+              FIRST=false
+            else
+              MATRIX_JSON="$MATRIX_JSON,"
+              APPS_JSON="$APPS_JSON,"
+            fi
+
+            MATRIX_JSON="$MATRIX_JSON{\"app\":\"$APP\",\"image\":\"$IMAGE_TAG\"}"
+            APPS_JSON="$APPS_JSON\"$APP\":{\"image\":\"$IMAGE_TAG\",\"port\":\"$PORT\",\"config_path\":\"$CONFIG_FILE\"}"
+          done
+
+          MATRIX_JSON="$MATRIX_JSON]}"
+          APPS_JSON="$APPS_JSON}"
+
+          echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
+          echo "apps_json=$APPS_JSON" >> $GITHUB_OUTPUT
+          echo "$MATRIX_JSON" | jq .
+          echo "$APPS_JSON" | jq .
+
+  build:
+    needs: generate-matrix
+    if: needs.generate-matrix.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+      fail-fast: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            libs/*/node_modules
+          key: node-modules-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Nx build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            .nx/cache
+            .nx/workspace-data
+          key: nx-${{ matrix.app }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ matrix.app }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            nx-${{ matrix.app }}-
+
+      - name: Generate GraphQL types
+        run: pnpm --filter aitoearn-task graphql-codegen
+
+      - name: Build application
+        run: pnpm nx run ${{ matrix.app }}:build
+
+      - name: Prepare Docker context
+        run: pnpm nx run ${{ matrix.app }}:docker-context
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./tmp/docker-context
+          file: ./tmp/docker-context/Dockerfile
+          platforms: linux/amd64
+          build-args: |
+            APP_NAME=${{ matrix.app }}
+          tags: ${{ matrix.image }}
+          load: true
+          push: false
+          cache-from: |
+            type=gha,scope=${{ matrix.app }}
+          cache-to: |
+            type=gha,mode=max,scope=${{ matrix.app }}
+
+      - name: Build summary
+        run: |
+          echo "### Build succeeded: ${{ matrix.app }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Image: \`${{ matrix.image }}\`" >> $GITHUB_STEP_SUMMARY

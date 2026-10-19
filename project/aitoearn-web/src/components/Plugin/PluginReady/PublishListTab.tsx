@@ -1,0 +1,115 @@
+/**
+ * PublishListTab - 发布列表 Tab 组件
+ * 显示插件发布任务列表
+ */
+
+'use client'
+
+import type { PluginPlatformType, PublishTask } from '@/store/plugin/types/baseTypes'
+import dayjs from 'dayjs'
+import { FileText } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { Badge } from '@/components/ui/badge'
+
+import { getPlatformInfoSync } from '@/store/platformMetadata'
+import { usePluginStore } from '@/store/plugin'
+import { PlatformTaskStatus } from '@/store/plugin/types/baseTypes'
+import { cn } from '@/utils/className'
+
+interface PublishListTabProps {
+  /** 点击任务回调 */
+  onViewDetail?: (task: PublishTask) => void
+}
+
+/**
+ * 获取平台显示名称
+ */
+function getPlatformName(platform: PluginPlatformType): string {
+  const platInfo = getPlatformInfoSync(platform)
+  return platInfo?.name || platform
+}
+
+/**
+ * 获取状态 Badge 自定义类名
+ */
+function getStatusClassName(status: PlatformTaskStatus): string {
+  switch (status) {
+    case PlatformTaskStatus.COMPLETED:
+      return 'bg-green-100 text-green-700 hover:bg-green-100'
+    case PlatformTaskStatus.PUBLISHING:
+      return 'bg-blue-100 text-blue-700 hover:bg-blue-100'
+    case PlatformTaskStatus.ERROR:
+      return 'bg-red-100 text-red-700 hover:bg-red-100'
+    case PlatformTaskStatus.CANCELED:
+      return 'bg-muted text-muted-foreground hover:bg-muted'
+    default:
+      return 'bg-muted text-foreground hover:bg-muted'
+  }
+}
+
+/**
+ * 发布列表 Tab 组件
+ */
+export function PublishListTab({ onViewDetail }: PublishListTabProps) {
+  const { t } = useTranslation('plugin')
+  const publishTasks = usePluginStore(state => state.publishTasks) || []
+
+  // 空状态
+  if (publishTasks.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center py-16">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+          <FileText className="h-8 w-8 text-muted-foreground" />
+        </div>
+        <p className="text-sm text-muted-foreground">{t('publishList.empty')}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {publishTasks.map(task => (
+        <div
+          key={task.id}
+          className="flex cursor-pointer items-center justify-between rounded-lg border border-border bg-background p-4 transition-all hover:border-border hover:shadow-sm"
+          onClick={() => onViewDetail?.(task)}
+        >
+          {/* 左侧：任务信息 */}
+          <div className="flex flex-1 flex-col gap-1.5 overflow-hidden">
+            <span className="truncate font-medium text-foreground">
+              {task.title || t('publishList.untitled' as any)}
+            </span>
+            <div className="flex items-center gap-2">
+              {/* 平台标签 */}
+              <div className="flex gap-1">
+                {task.platformTasks.slice(0, 3).map(pt => (
+                  <Badge key={pt.platform} variant="outline" className="text-xs">
+                    {getPlatformName(pt.platform as PluginPlatformType)}
+                  </Badge>
+                ))}
+                {task.platformTasks.length > 3 && (
+                  <Badge variant="outline" className="text-xs">
+                    +
+                    {task.platformTasks.length - 3}
+                  </Badge>
+                )}
+              </div>
+              {/* 时间 */}
+              <span className="text-xs text-muted-foreground">
+                {dayjs(task.createdAt).format('MM-DD HH:mm')}
+              </span>
+            </div>
+          </div>
+
+          {/* 右侧：状态 */}
+          <Badge
+            variant="secondary"
+            className={cn('ml-3 shrink-0', getStatusClassName(task.overallStatus))}
+          >
+            {t(`common.${task.overallStatus}`)}
+          </Badge>
+        </div>
+      ))}
+    </div>
+  )
+}

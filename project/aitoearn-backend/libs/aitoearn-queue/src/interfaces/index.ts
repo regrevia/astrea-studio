@@ -1,0 +1,7 @@
+export * from './agent-task-analysis.interface'
+export * from './ai-image-data.interface'
+export * from './draft-generation-data.interface'
+export * from './engagement-data.interface'
+export * from './material-generate-data.interface'
+export * from './post-media-task-data.interface'
+export * from './post-publish-data.interface'

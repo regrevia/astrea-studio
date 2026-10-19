@@ -1,0 +1,134 @@
+import type { MutableRefObject } from 'react'
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
+import {
+  $createParagraphNode,
+  $createTextNode,
+  $getRoot,
+  $getSelection,
+  $isRangeSelection,
+  COMMAND_PRIORITY_LOW,
+  PASTE_COMMAND,
+} from 'lexical'
+import { BeautifulMentionNode } from 'lexical-beautiful-mentions'
+import { useEffect } from 'react'
+import { hasInvalidDescTopicFormat } from '@/components/PublishDialog/PublishDialog.util'
+
+/**
+ * 插件：根据外部 value 同步更新编辑器内容
+ * @param props - 插件参数
+ * @param props.value - 外部传入的文本值
+ * @param props.lastOutputValueRef - 编辑器最近一次通过 onChange 输出的值，用于判断 value 是否为内部回传
+ */
+export function InitialValuePlugin({
+  value,
+  lastOutputValueRef,
+}: {
+  value: string
+  lastOutputValueRef?: MutableRefObject<string>
+}) {
+  const [editor] = useLexicalComposerContext()
+
+  useEffect(() => {
+    // 如果 value 是编辑器自身 onChange 回传的，跳过（无竞态，ref 同步设置）
+    if (lastOutputValueRef && value === lastOutputValueRef.current) {
+      return
+    }
+
+    // 在 editor.update() 外部读取当前文本，避免空更新触发 OnChangePlugin
+    const currentText = editor.getEditorState().read(() => $getRoot().getTextContent())
+    if (value === currentText) {
+      return
+    }
+
+    // 只在真正需要时才更新编辑器
+    editor.update(() => {
+      const root = $getRoot()
+      root.clear()
+      const paragraph = $createParagraphNode()
+      root.append(paragraph)
+
+      if (!value) {
+        return
+      }
+
+      // 按原顺序拆分：话题片段形如 "#xxx"
+      const shouldRecognizeTopics = !hasInvalidDescTopicFormat(value)
+      const parts = value.split(/(#\S+)/g).filter(Boolean)
+
+      parts.forEach((part) => {
+        if (shouldRecognizeTopics && part.startsWith('#')) {
+          const topic = part.slice(1)
+          if (topic) {
+            // @ts-ignore 构造函数依库版本
+            const mentionNode = new BeautifulMentionNode('#', topic)
+            paragraph.append(mentionNode)
+          }
+        }
+        else {
+          if (part) {
+            paragraph.append($createTextNode(part))
+          }
+        }
+      })
+    })
+  }, [editor, value, lastOutputValueRef])
+
+  return null
+}
+
+export function PasteTopicsPlugin() {
+  const [editor] = useLexicalComposerContext()
+
+  useEffect(() => {
+    return editor.registerCommand(
+      PASTE_COMMAND,
+      (event: ClipboardEvent) => {
+        const clipboardText = event.clipboardData?.getData('text/plain')
+        if (!clipboardText)
+          return false
+
+        event.preventDefault()
+
+        editor.update(() => {
+          const selection = $getSelection()
+          // 仅处理普通范围选区
+          if (!$isRangeSelection(selection))
+            return
+
+          // 删除当前选区内容
+          selection.removeText()
+
+          const shouldRecognizeTopics = !hasInvalidDescTopicFormat(clipboardText)
+          const lines = clipboardText.split(/\r?\n/)
+          lines.forEach((line, idx) => {
+            const parts = line.split(/(#\S+)/g).filter(Boolean)
+            parts.forEach((part) => {
+              if (shouldRecognizeTopics && part.startsWith('#')) {
+                const topic = part.slice(1)
+                if (topic) {
+                  // @ts-ignore
+                  const mentionNode = new BeautifulMentionNode('#', topic)
+                  selection.insertNodes([mentionNode])
+                }
+              }
+              else {
+                selection.insertText(part)
+              }
+            })
+            // 换行 -> 新段落
+            if (idx < lines.length - 1) {
+              const p = $createParagraphNode()
+              selection.insertNodes([p])
+              p.select()
+            }
+          })
+        })
+
+        return true
+      },
+      COMMAND_PRIORITY_LOW,
+    )
+  }, [editor])
+
+  return null
+}

@@ -1,0 +1,43 @@
+import type { SettingsTab } from '@/store/settingsModal'
+
+/** 抽屉关闭回调 */
+export interface MobileCloseProps {
+  onClose: () => void
+}
+
+/** 顶部栏 Props */
+export interface MobileTopBarProps {
+  onOpen: () => void
+}
+
+/** 底部导航栏 Props */
+export interface MobileBottomBarProps {
+  currentRoute: string
+  hidden?: boolean
+}
+
+/** 导航项 Props */
+export interface MobileNavItemProps extends MobileCloseProps {
+  path: string
+  href?: string
+  translationKey: string
+  icon?: React.ReactNode
+  isActive: boolean
+  className?: string
+}
+
+/** 我的频道按钮 Props */
+export interface MobileMyChannelsButtonProps extends MobileCloseProps {
+  onOpenMyChannels: () => void
+}
+
+/** 导航列表 Props */
+export interface MobileNavListProps extends MobileCloseProps {
+  currentRoute: string
+  onOpenMyChannels: () => void
+}
+
+/** 用户信息区域 Props */
+export interface MobileUserSectionProps extends MobileCloseProps {
+  onOpenSettings: (tab?: SettingsTab) => void
+}

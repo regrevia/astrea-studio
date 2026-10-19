@@ -1,0 +1,64 @@
+/**
+ * 发布弹框本地状态管理
+ * 管理弹框内各种临时状态，如 loading、弹窗显示状态等
+ */
+
+import { useCallback, useState } from 'react'
+
+export interface PublishModalState {
+  // 创建发布loading
+  createLoading: boolean
+  setCreateLoading: (loading: boolean) => void
+  // 抖音扫码发布弹窗
+  douyinQRCodeVisible: boolean
+  setDouyinQRCodeVisible: (visible: boolean) => void
+  douyinPermalink: string
+  setDouyinPermalink: (permalink: string) => void
+  // 发布详情弹框
+  publishDetailVisible: boolean
+  setPublishDetailVisible: (visible: boolean) => void
+  currentPublishTaskId: string | undefined
+  setCurrentPublishTaskId: (taskId: string | undefined) => void
+}
+
+/**
+ * 管理发布弹框内各种弹窗的显示状态
+ */
+export function usePublishModalState(): PublishModalState {
+  // 创建发布loading
+  const [createLoading, setCreateLoading] = useState(false)
+  // 抖音扫码发布弹窗状态
+  const [douyinQRCodeVisible, setDouyinQRCodeVisible] = useState(false)
+  const [douyinPermalink, setDouyinPermalink] = useState('')
+  // 发布详情弹框状态
+  const [publishDetailVisible, setPublishDetailVisible] = useState(false)
+  const [currentPublishTaskId, setCurrentPublishTaskId] = useState<string | undefined>(undefined)
+
+  return {
+    createLoading,
+    setCreateLoading,
+    douyinQRCodeVisible,
+    setDouyinQRCodeVisible,
+    douyinPermalink,
+    setDouyinPermalink,
+    publishDetailVisible,
+    setPublishDetailVisible,
+    currentPublishTaskId,
+    setCurrentPublishTaskId,
+  }
+}
+
+/**
+ * 关闭发布详情弹框
+ */
+export function usePublishDetailModalActions(
+  setPublishDetailVisible: (visible: boolean) => void,
+  setCurrentPublishTaskId: (taskId: string | undefined) => void,
+) {
+  const closePublishDetailModal = useCallback(() => {
+    setPublishDetailVisible(false)
+    setCurrentPublishTaskId(undefined)
+  }, [setPublishDetailVisible, setCurrentPublishTaskId])
+
+  return { closePublishDetailModal }
+}

@@ -1,0 +1,116 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const publicAssetsVersion = '20260517'
+const publicAssetsCacheControl = 'public, max-age=0, must-revalidate'
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  images: {
+    unoptimized: true,
+  },
+  webpack(config) {
+    config.module.rules.push({
+      test: /\.svg$/,
+      use: ['@svgr/webpack'],
+      exclude: path.resolve(__dirname, 'src/assets/svgs/plat'),
+    })
+
+    config.module.rules.push({
+      test: /\.svg$/,
+      include: path.resolve(__dirname, 'src/assets/svgs/plat'),
+      type: 'asset/resource',
+    })
+
+    return config
+  },
+  reactStrictMode: false,
+  experimental: {
+    forceSwcTransforms: true,
+    outputFileTracingRoot: undefined,
+  },
+  output: 'standalone', // Temporarily disabled to avoid symlink issues on Windows
+  productionBrowserSourceMaps: process.env.NEXT_PUBLIC_EVN === 'dev',
+  rewrites: async () => {
+    const rewrites = []
+
+    if (process.env.NEXT_PUBLIC_OSS_URL_PROXY && process.env.NEXT_PUBLIC_OSS_URL) {
+      rewrites.push({
+        source: `${process.env.NEXT_PUBLIC_OSS_URL_PROXY}:path*`,
+        destination: `${process.env.NEXT_PUBLIC_OSS_URL}/:path*`,
+      })
+    }
+
+    // 存在 NEXT_PUBLIC_PROXY_URL 则代理，本地直连 用
+    // 如：NEXT_PUBLIC_PROXY_URL = http://localhost:8080
+    if (process.env.NEXT_PUBLIC_PROXY_URL) {
+      rewrites.push({
+        source: `/api/:path*`,
+        destination: `${process.env.NEXT_PUBLIC_PROXY_URL}/api/:path*`,
+      })
+      rewrites.push({
+        source: `/health`,
+        destination: `${process.env.NEXT_PUBLIC_PROXY_URL}/health`,
+      })
+    }
+    return rewrites
+  },
+  redirects: async () => {
+    return [
+      {
+        source: '/assets/:path*',
+        missing: [{ type: 'query', key: 'v' }],
+        destination: `/assets/:path*?v=${publicAssetsVersion}`,
+        permanent: false,
+      },
+    ]
+  },
+}
+
+const CorsHeaders = [
+  { key: 'Access-Control-Allow-Credentials', value: 'true' },
+  { key: 'Access-Control-Allow-Origin', value: '*' },
+  {
+    key: 'Access-Control-Allow-Methods',
+    value: '*',
+  },
+  {
+    key: 'Access-Control-Allow-Headers',
+    value: '*',
+  },
+  {
+    key: 'Access-Control-Max-Age',
+    value: '86400',
+  },
+]
+
+nextConfig.headers = async () => {
+  return [
+    {
+      source: '/api/:path*',
+      headers: CorsHeaders,
+    },
+    {
+      source: '/assets/:path*',
+      headers: [
+        {
+          key: 'Cache-Control',
+          value: publicAssetsCacheControl,
+        },
+      ],
+    },
+    {
+      // 为所有页面添加 SEO 相关的 headers
+      source: '/:path*',
+      headers: [
+        {
+          key: 'Content-Signal',
+          value: 'search=yes, ai-train=yes', // 注意：逗号后面有空格，这是正确的语法
+        },
+      ],
+    },
+  ]
+}
+
+export default nextConfig

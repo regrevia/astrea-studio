@@ -1,0 +1,102 @@
+/**
+ * MobileNav - 移动端顶部栏 + 底部导航 + 抽屉式侧边栏
+ * 布局：顶部 Logo/头像常驻，底部 BottomBar 导航，抽屉承载完整导航和常用功能
+ */
+'use client'
+
+import { Settings } from 'lucide-react'
+import { useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
+import { useTransClient } from '@/app/i18n/client'
+import { useNavigationLogic } from '@/app/layout/shared'
+import { useChannelManagerStore } from '@/components/ChannelManager'
+import { useSettingsModalStore } from '@/store/settingsModal'
+import { cn } from '@/utils/className'
+import { MobileBottomBar, MobileNavList, MobileTopBar } from './components'
+import { MobileUserSection } from './components/MobileUserSection'
+
+function MobileNav() {
+  const [isOpen, setIsOpen] = useState(false)
+  const { currRouter, isAuthPage, isBottomNavHidden } = useNavigationLogic()
+  const { openSettings } = useSettingsModalStore()
+  const { t } = useTransClient('common')
+
+  // 频道管理器
+  const { openModal } = useChannelManagerStore(
+    useShallow(state => ({
+      openModal: state.openModal,
+    })),
+  )
+
+  // auth 页面不显示
+  if (isAuthPage) {
+    return null
+  }
+
+  const handleClose = () => setIsOpen(false)
+
+  const actionItemClassName
+    = 'flex w-full items-center gap-3 px-4 py-3 rounded-lg text-base font-medium text-muted-foreground transition-all hover:bg-brand-cyan/10 hover:text-brand-cyan cursor-pointer'
+
+  return (
+    <>
+      {/* 移动端顶部栏 */}
+      <MobileTopBar onOpen={() => setIsOpen(true)} />
+
+      {/* 移动端底部导航 */}
+      <MobileBottomBar currentRoute={currRouter} hidden={isBottomNavHidden} />
+
+      {/* 抽屉遮罩 */}
+      {isOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-50 bg-muted-foreground/45 transition-opacity"
+          data-testid="mobile-drawer-overlay"
+          onClick={handleClose}
+        />
+      )}
+
+      {/* 抽屉导航 */}
+      <div
+        data-testid="mobile-drawer"
+        className={cn(
+          'md:hidden fixed top-0 right-0 z-500 w-75 h-full bg-background shadow-xl transition-transform duration-300 ease-in-out flex flex-col',
+          isOpen ? 'translate-x-0' : 'translate-x-full',
+        )}
+      >
+        {/* 用户信息区域 */}
+        <div className="shrink-0 border-b border-border">
+          <MobileUserSection onClose={handleClose} onOpenSettings={openSettings} />
+        </div>
+
+        {/* 可滚动导航区域 */}
+        <div className="flex-1 overflow-y-auto">
+          <MobileNavList
+            currentRoute={currRouter}
+            onClose={handleClose}
+            onOpenMyChannels={openModal}
+          />
+
+          {/* 常用功能区域 */}
+          <div className="border-t border-border px-4 pb-4 pt-3 flex flex-col gap-1">
+            {/* 设置 */}
+            <button
+              onClick={() => {
+                handleClose()
+                openSettings()
+              }}
+              className={actionItemClassName}
+              data-testid="mobile-settings-btn"
+            >
+              <span className="relative flex items-center justify-center">
+                <Settings size={20} />
+              </span>
+              <span>{t('settings')}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+export default MobileNav
