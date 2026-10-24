@@ -95,6 +95,31 @@ def wait_run(run_id: str, timeout: int = 900) -> dict:
     raise SystemExit(f"run {run_id} 超时未结束")
 
 
+# ---------------------------------------------------------------- 口播稿
+def apply_narration(points: list[str], lines: list[str],
+                    narration: dict | None = None):
+    """把「一行一屏」的口播稿贴到要点第三段；行数必须正好对上，绝不猜。
+
+    接受两种情况：只有要点（N 行），或含开场收尾（N+2 行）。
+    """
+    keeps = [ln.strip() for ln in lines if ln.strip()]
+    if not keeps:
+        return points, narration or None
+    n = len(points)
+    if len(keeps) == n + 2:
+        narration = {**(narration or {}), "intro": keeps[0], "cta": keeps[-1]}
+        body = keeps[1:-1]
+    elif len(keeps) == n:
+        body = keeps
+    else:
+        raise SystemExit(f"口播稿行数不对：{len(keeps)} 行，需要 {n} 行或 {n + 2} 行")
+    merged = []
+    for raw, say in zip(points, body):
+        head = str(raw).split("::")[:2]
+        merged.append("::".join([*head, say]))
+    return merged, narration
+
+
 # ---------------------------------------------------------------- 单条
 def one(spec_in: dict, args) -> dict:
     slug = factcard.re.sub(r"[^0-9a-zA-Z\u4e00-\u9fa5]+", "",
@@ -137,6 +162,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--project", default=DEFAULT_PROJECT)
     ap.add_argument("--out", default="")
     ap.add_argument("--batch", default="", help="JSON 数组文件，逐条提交")
+    ap.add_argument("--narration", default="",
+                    help="口播稿文本，一行一屏；N 行替换要点，N+2 行含开场与收尾")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args(argv)
 
@@ -160,6 +187,11 @@ def main(argv: list[str]) -> int:
         ap.error("需要 --topic 或 --batch")
     spec_in = {"topic": args.topic, "kicker": args.kicker, "hook": args.hook,
                "points": args.point, "cta": args.cta, "voice": args.voice}
+    if args.narration:
+        lines = Path(args.narration).read_text(encoding="utf-8").splitlines()
+        spec_in["points"], narration = apply_narration(args.point, lines)
+        if narration:
+            spec_in["narration"] = narration
     one(spec_in, args)
     return 0
 

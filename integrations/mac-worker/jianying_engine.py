@@ -588,30 +588,48 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
             track = str(char_cfg.get("track") or "character")
             scene = item.get("scene") or {}
             pose = str(char_cfg.get("pose") or _scene_pose(char_cfg, idx, len(plan), scene))
-            try:
-                png = _character_frame(char_cfg, idx, len(plan), job_dir, width, height,
-                                       bool(item["audio"]), scene, pose)
-            except Exception as exc:  # noqa: BLE001 - 角色贴不上不该毁掉整条片
-                png = None
-                stats["skipped"].append(f"character: {exc}")
-            if png:
+            speaking = bool(item["audio"])
+            # 说话就按拍点切成几段不同口型，一屏一个定格看着像贴图
+            beats: list[tuple[str, float, float]] = []
+            if speaking and char_cfg.get("lip_flap", True):
+                period = float(char_cfg.get("lip_period") or 0.42)
+                count = max(2, min(8, int(round(dur / period)) or 2))
+                seg = dur / count
+                for k in range(count):
+                    end = total + dur if k == count - 1 else total + seg * (k + 1)
+                    beats.append((("open", "half", "round", "half")[k % 4],
+                                  total + seg * k, end))
+            if not beats:
+                beats = [("", total, total + dur)]
+
+            clips = 0
+            for k, (mouth, cstart, cend) in enumerate(beats):
+                try:
+                    png = _character_frame(char_cfg, idx, len(plan), job_dir, width, height,
+                                           speaking, scene, pose, mouth)
+                except Exception as exc:  # noqa: BLE001 - 角色贴不上不该毁掉整条片
+                    stats["skipped"].append(f"character: {exc}")
+                    continue
+                if not png:
+                    continue
                 cclip: dict[str, Any] = {
                     "draft_id": draft_id,
                     "image_url": str(png),
                     "width": width,
                     "height": height,
-                    "start": total,
-                    "end": total + dur,
+                    "start": round(cstart, 3),
+                    "end": round(cend, 3),
                     "track_name": track,
                     "relative_index": 1,
                 }
-                anim_in = _pick(char_cfg.get("anim_in") or "渐显",
-                                "video_intro_animations")
-                if anim_in:
-                    cclip["intro_animation"] = anim_in
-                    cclip["intro_animation_duration"] = float(
-                        char_cfg.get("anim_in_duration") or 0.5)
-                if idx == len(plan) - 1:
+                if k == 0:
+                    anim_in = _pick(char_cfg.get("anim_in") or "渐显",
+                                    "video_intro_animations")
+                    if anim_in:
+                        cclip["intro_animation"] = anim_in
+                        cclip["intro_animation_duration"] = float(
+                            char_cfg.get("anim_in_duration") or 0.5)
+                if k == len(beats) - 1 and idx == len(plan) - 1:
                     anim_out = _pick(char_cfg.get("anim_out") or "渐隐",
                                      "video_outro_animations")
                     if anim_out:
@@ -620,10 +638,11 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                             char_cfg.get("anim_out_duration") or 0.6)
                 try:
                     _post("/add_image", cclip)
-                    stats["characters"] += 1
+                    clips += 1
                 except Exception as exc:  # noqa: BLE001
                     stats["skipped"].append(f"character_clip: {exc}")
-
+            stats["characters"] += clips
+            if clips:
                 # 呼吸 + 轻微起伏：position_y 单位是半个画布高，0.008≈8px；
                 # 属性名必须用 pyJianYingDraft 的枚举名（transform_y 会被服务端拒绝）。
                 bob_k, sway_k = _MOTION.get(pose, (1.0, 1.0))
@@ -801,14 +820,15 @@ def _character_mouth(idx: int, speaking: bool, scene: dict[str, Any]) -> str:
 def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
                      width: int, height: int, speaking: bool,
                      scene: dict[str, Any] = None,
-                     pose: str = "") -> Path | None:
+                     pose: str = "",
+                     mouth: str = "") -> Path | None:
     """把立绘贴到一张透明画布上，交回剪映当独立图层（可单独做动效）。"""
     from PIL import Image
 
     import character
 
     pose = pose or str(cfg.get("pose") or _scene_pose(cfg, idx, total, scene or {}))
-    mouth = _character_mouth(idx, speaking, scene or {})
+    mouth = mouth or _character_mouth(idx, speaking, scene or {})
     # 高兴时眯眼，是这套立绘里唯一能读出情绪的五官开关
     eyes = "closed" if pose == "happy" else "open"
     key = (pose, mouth, eyes)
@@ -827,7 +847,8 @@ def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
     y = max(0, min(y, height - chh))
     canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     canvas.alpha_composite(fig, (x - bb[0], y - bb[1]))
-    out = job_dir / f"char_{idx:02d}.png"
+    # 文件名必须带口型/姿态：同一屏要贴好几段不同口型，同名会把前一张覆盖掉
+    out = job_dir / f"char_{idx:02d}_{pose}_{mouth}.png"
     canvas.save(out)
     return out
 
