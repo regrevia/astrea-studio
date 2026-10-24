@@ -20,7 +20,7 @@ import { NumberInput } from '@/components/ui/number-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { CANVAS_OPTIONS, DEFAULT_PLATFORMS, PLATFORM_LABELS, PLATFORM_OPTIONS } from '../../studioConstants'
-import { buildTimelineSpec, DEFAULT_ASSET_BASE, DEFAULT_BGM_VOLUME, validateRunForm } from './utils'
+import { buildTimelineSpec, DEFAULT_BGM_VOLUME, validateRunForm } from './utils'
 
 interface NewRunFormProps {
   /** projectId → 项目名。面板加载完成后才有值。 */
@@ -38,7 +38,7 @@ export default function NewRunForm({ projects, onCreated }: NewRunFormProps) {
   const [title, setTitle] = useState('')
   const [scriptText, setScriptText] = useState('')
   const [materialsText, setMaterialsText] = useState('')
-  const [assetBase, setAssetBase] = useState(DEFAULT_ASSET_BASE)
+  const [assetBase, setAssetBase] = useState('')
   const [canvas, setCanvas] = useState<TimelineCanvas>('portrait')
   const [platforms, setPlatforms] = useState<string[]>(DEFAULT_PLATFORMS)
   const [bgmSrc, setBgmSrc] = useState('')
@@ -134,12 +134,9 @@ export default function NewRunForm({ projects, onCreated }: NewRunFormProps) {
         <Input
           id="new-run-asset-base"
           value={assetBase}
-          placeholder={DEFAULT_ASSET_BASE}
+          placeholder="例如：/Users/me/materials"
           onChange={event => setAssetBase(event.target.value)}
         />
-        <span className={hintClass}>
-          本机可读的目录，下面填的文件名都相对它。
-        </span>
       </div>
 
       <div className="flex flex-col gap-1.5 sm:col-span-2">

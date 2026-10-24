@@ -8,8 +8,8 @@
 
 import type { TimelineCanvas, TimelineSpecInput } from '@/api/production/production.types'
 
-/** 本机可读的素材根目录默认值。macOS 上 /tmp 即 /private/tmp，两种写法等价。 */
-export const DEFAULT_ASSET_BASE = '/private/tmp/demo_c/asset'
+/** 每台机器的素材目录不同，没有通用默认值。 */
+export const DEFAULT_ASSET_BASE = ''
 
 /** 每句文案的默认时长（秒）。表单不暴露，需要更细的控制直接调后端 API。 */
 export const DEFAULT_CLIP_SECONDS = 3
