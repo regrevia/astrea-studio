@@ -290,10 +290,47 @@ def _unwrap(text: str, limit: int = 17) -> str:
     return "\n".join(text[i:i + limit] for i in range(0, len(text), limit))
 
 
+def _first_sentence(text: str, limit: int = 30) -> str:
+    """字幕只留第一句，硬切到 limit 字；句读处断开，别把词砍成两半。"""
+    text = re.sub(r"\s+", "", text or "")
+    if not text:
+        return ""
+    cut = min(len(text), limit)
+    for idx in range(cut, max(8, cut - 8), -1):
+        if text[idx - 1] in "。！？，；":
+            return text[:idx]
+    return text[:cut]
+
+
+def _parse_point(raw: object) -> tuple[str, str, str]:
+    """要点支持「标题::说明」和「标题::说明::口播稿」两种写法。
+
+    屏幕文案和嘴里说的话是两件事：卡面上要短，口播要顺口。
+    不给口播稿时退回「标题。说明」，至少能出片。
+    """
+    if isinstance(raw, dict):
+        title = str(raw.get("title") or "").strip()
+        body = str(raw.get("detail") or raw.get("body") or "").strip()
+        say = str(raw.get("say") or raw.get("narration") or "").strip()
+        if not body and not say:
+            raise ValueError(f"要点缺说明：{raw}")
+        return title, body, say or f"{title}。{body}".strip("。")
+    parts = [p.strip() for p in str(raw).split("::")]
+    title = parts[0] if parts else ""
+    body = parts[1] if len(parts) > 1 else ""
+    say = parts[2] if len(parts) > 2 else ""
+    if not body and not say:
+        raise ValueError(f"要点格式应为「标题::说明[::口播稿]」：{raw}")
+    return title, body, say or f"{title}。{body}".strip("。")
+
+
 def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
-               voice: str, kicker: str, out_dir: Path) -> dict:
+               voice: str, kicker: str, out_dir: Path,
+               narration: dict | None = None) -> dict:
     """选题/要点 → 完整 scenes spec（含 5 张卡面 PNG）。"""
-    points = [str(p).strip() for p in (points_raw or []) if str(p).strip()]
+    scripts = [p for p in (points_raw or []) if str(p).strip()]
+    points = [_parse_point(p) for p in scripts]
+    narration = narration or {}
     if len(points) < 1:
         raise ValueError("factcard 至少需要一个要点（标题::说明）")
     total = 2 + len(points)  # 开场 + 要点 + 收尾
@@ -306,9 +343,9 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
                            body=hook, body_top=880)
     scenes.append({
         "image": str(hook_img),
-        "say": f"{topic}。{hook}",
+        "say": str(narration.get("intro") or f"{topic}。{hook}").strip(),
         "text": _unwrap(topic, 10),
-        "caption": f"{topic}？{hook}"[:18],
+        "caption": _first_sentence(f"{topic.rstrip('？?!！')}？{hook}", 18),
         "voice": voice,
         "native": {
             "font": TITLE_FONT, "font_size": _title_size(topic),
@@ -321,17 +358,15 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
     })
 
     # 2) 要点逐屏
-    for i, raw in enumerate(points, start=1):
-        title, _, body = raw.partition("::")
-        title, body = title.strip(), body.strip()
+    for i, (title, body, say) in enumerate(points, start=1):
         img = render_card(out_dir / f"s{i:02d}.png", kicker=kicker, index=f"0{i}",
                           palette_idx=i, progress=i, total=total, slug=slug,
                           body=body, body_top=760)
         scenes.append({
             "image": str(img),
-            "say": f"{title}。{body}",
+            "say": say,
             "text": _unwrap(title, 11),
-            "caption": (body or title)[:30],
+            "caption": _first_sentence(body or title),
             "voice": voice,
             "native": {
                 "font": TITLE_FONT, "font_size": _title_size(title),
@@ -352,9 +387,9 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
                           total=total, slug=slug)
     scenes.append({
         "image": str(cta_img),
-        "say": cta,
+        "say": str(narration.get("cta") or cta).strip(),
         "text": _unwrap(cta, 11),
-        "caption": cta[:30],
+        "caption": _first_sentence(cta),
         "voice": voice,
         "native": {
             "font": TITLE_FONT, "font_size": _title_size(cta),
@@ -386,6 +421,7 @@ def expand(spec: dict[str, Any], job_dir: Path) -> dict[str, Any]:
         voice=str(spec.get("voice") or DEFAULT_VOICE),
         kicker=str(spec.get("kicker") or DEFAULT_KICKER),
         out_dir=Path(job_dir),
+        narration=spec.get("narration") if isinstance(spec.get("narration"), dict) else None,
     )
     full["engine"] = str(spec.get("engine") or "jianying")
     full["template"] = "factcard"
