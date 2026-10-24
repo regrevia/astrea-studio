@@ -181,7 +181,14 @@ class Worker:
                 result = self.do_timeline(job_id, payload, progress)
                 # 母版已经能直接发平台；draft 只是把它登记进素材库。
                 # 登记失败不能把渲染判死，否则「片已经渲好了」这个事实会丢。
-                if payload.get("attachDraft", True):
+                # 平台侧 attachDraft 写在 spec 里，本地试跑可以写在 payload 上
+                _spec = payload.get("spec")
+                _want_draft = payload.get("attachDraft")
+                if _want_draft is None and isinstance(_spec, dict):
+                    _want_draft = _spec.get("attachDraft")
+                if _want_draft is None:
+                    _want_draft = True
+                if _want_draft:
                     try:
                         draft = self.do_attach_draft(job_id, payload, result, progress)
                         result["materialId"] = draft.get("materialId")
@@ -363,6 +370,8 @@ class Worker:
         run_id = payload.get("runId") or ""
         revision = int(payload.get("revision") or 1)
         spec_obj = payload.get("spec")
+        # 外层 spec（可能带引擎外壳）与内层 timeline 本体都可能是 assetBase 的来源
+        src_spec: dict[str, Any] = spec_obj if isinstance(spec_obj, dict) else {}
         spec_path_hint = payload.get("specPath")
         workdir = STUDIO_HOME / "timeline" / job_id
         workdir.mkdir(parents=True, exist_ok=True)
@@ -371,10 +380,11 @@ class Worker:
         if isinstance(spec_obj, dict) and not spec_obj.get("canvas") \
                 and isinstance(spec_obj.get("timeline"), dict):
             inner = dict(spec_obj["timeline"])
-            for k in ("platforms", "fit"):
+            for k in ("platforms", "fit", "assetBase", "attachDraft"):
                 if k in spec_obj and k not in inner:
                     inner[k] = spec_obj[k]
             spec_obj = inner
+            src_spec = inner
 
         if isinstance(spec_obj, dict) and spec_obj.get("canvas"):
             spec_path = workdir / "spec.json"
@@ -386,7 +396,9 @@ class Worker:
             raise TimelineError("timeline job 需要 payload.spec（含 canvas）或存在的 specPath")
 
         # 相对 src 的基准：显式 assetBase 优先，其次 spec 所在目录
-        base = Path(payload["assetBase"]) if payload.get("assetBase") else spec_path.parent
+        # 平台侧 job payload 只有 {runId, revision, spec}，所以 assetBase 也可能写在 spec 里
+        asset_base = payload.get("assetBase") or src_spec.get("assetBase")
+        base = Path(asset_base).expanduser() if asset_base else spec_path.parent
         if not base.exists():
             raise TimelineError(f"assetBase 不存在: {base}")
 
