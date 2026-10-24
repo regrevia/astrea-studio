@@ -35,6 +35,7 @@ done
 docker run -d \
   --name "$NAME" \
   --network "$NET" \
+  --network-alias aitoearn-server \
   --restart unless-stopped \
   "${ENVARGS[@]}" \
   $MOUNTS \
