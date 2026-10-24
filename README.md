@@ -1,4 +1,36 @@
-# [Aitoearn：OPC（一人公司）的AI内容营销智能体](https://aitoearn.ai)
+# Astrea Studio
+
+本地优先的 AI 内容工作台：用一个面板统一管理多平台账号，从信息收集、素材采集与生成，到剪映专业版剪辑、AI 配音、多平台发布，全程在本机完成。
+
+简体中文 | [English](README_EN.md) | [日本語](README_JA.md)
+
+## 上游开源项目声明
+
+Astrea Studio 是基于 [yikart/AiToEarn](https://github.com/yikart/AiToEarn) 的衍生版本，按 MIT 许可证发布。
+
+- 上游仓库：<https://github.com/yikart/AiToEarn>
+- 上游版权：Copyright (c) 2025 AiToEarn（MIT）
+- 本仓库许可证全文：[LICENSE](LICENSE)；第三方组件与致谢：[NOTICE](NOTICE)
+- 与上游同步：
+
+  ```bash
+  git remote add upstream https://github.com/yikart/AiToEarn.git
+  git fetch upstream && git merge upstream/main
+  ```
+
+上游负责账号接入、平台发布与 Web/后端主体；本仓库在其之上增加了本机渲染与导出流水线、macOS worker、剪映专业版集成、统一面板与发布矩阵。
+
+## 当前能力
+
+- **统一面板管理多平台**：一屏看到 15 个平台的登录状态与账号，成片按 17 个平台的画幅、码率、封装参数分别交付。
+- **一键采集**：给一个链接就抓正文与页面截图进素材库，不再手工复制粘贴。
+- **对话式生产**：用自然语言说需求，AI 收集信息、写脚本、建渲染任务；"字幕再大一点""换沉稳一点的配音"这类修改按补丁改完重新渲染。
+- **AI 配音**：剪映原生音色 14 个、Edge TTS 9 个，在本机合成。
+- **剪映专业版**：把时间线直接落成剪映草稿（转场、滤镜、文字动画用原生资源），或驱动剪映的导出面板按平台参数导出成片；macOS 需授予辅助功能权限，Windows 不支持该自动化。
+- **发布**：发布到已登录的平台账号，提交前在面板里人工确认。
+- **数据留在本机**：渲染、导出、发布都在本机执行，工程与成片存在本机磁盘。
+
+以下为上游项目 AiToEarn 的原始说明，保留以便对照。
 
 <a href="https://trendshift.io/repositories/20785" target="_blank"><img src="https://trendshift.io/api/badge/repositories/20785" alt="yikart%2FAiToEarn | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 

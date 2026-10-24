@@ -1,4 +1,36 @@
-# [Aitoearn：個人ビジネス向けAIコンテンツマーケティングエージェント](https://aitoearn.ai)
+# Astrea Studio
+
+ローカル優先の AI コンテンツワークベンチ。ひとつのダッシュボードで複数プラットフォームのアカウントを管理し、情報収集・素材の取得と生成・JianYing Pro（剪映专业版）での編集とナレーション・マルチプラットフォーム配信まで、すべて手元のマシンで実行します。
+
+日本語 | [简体中文](README.md) | [English](README_EN.md)
+
+## 上流オープンソースプロジェクトの表示
+
+Astrea Studio は [yikart/AiToEarn](https://github.com/yikart/AiToEarn) の派生版であり、MIT ライセンスで公開されています。
+
+- 上流リポジトリ: <https://github.com/yikart/AiToEarn>
+- 上流の著作権: Copyright (c) 2025 AiToEarn（MIT）
+- ライセンス全文: [LICENSE](LICENSE)。サードパーティ製コンポーネントと謝辞: [NOTICE](NOTICE)
+- 上流との同期:
+
+  ```bash
+  git remote add upstream https://github.com/yikart/AiToEarn.git
+  git fetch upstream && git merge upstream/main
+  ```
+
+アカウント連携・プラットフォーム配信・Web/バックエンド本体は上流が提供します。本リポジトリはそこに、ローカルのレンダリング／書き出しパイプライン、macOS worker、JianYing Pro 連携、統合ダッシュボードと配信マトリクスを追加しています。
+
+## 現在の機能
+
+- **統合マルチプラットフォーム管理**: 15 プラットフォームのログイン状態とアカウントを一画面で確認。動画は 17 プラットフォームの解像度・ビットレート・コンテナのマトリクスで書き出します。
+- **ワンクリック収集**: URL を渡すと本文とページ画像を素材ライブラリに取り込みます。
+- **対話による制作**: 自然言語で依頼すると、AI が情報収集・台本作成・レンダリング投入まで行います。「字幕を大きく」「落ち着いた声にして」といった修正はパッチとして適用し再レンダリングします。
+- **AI ナレーション**: JianYing 純正の 14 音色と Edge TTS 9 音色をローカルで合成します。
+- **JianYing Pro**: タイムラインを JianYing のドラフトとして書き出すか（純正のトランジション・フィルター・テキストアニメーションを利用）、JianYing の書き出しパネルを操作してプラットフォーム別に書き出します。macOS ではアクセシビリティ権限が必要で、Windows ではこの自動化は動作しません。
+- **配信**: ログイン済みのアカウントへ投稿します。送信前にダッシュボードで人が確認します。
+- **データはローカルに**: レンダリング・書き出し・配信はすべて手元で実行し、プロジェクトと動画はローカルディスクに保存されます。
+
+以下は上流 AiToEarn の説明です（参照用に原文のまま）。
 
 <a href="https://trendshift.io/repositories/20785" target="_blank"><img src="https://trendshift.io/api/badge/repositories/20785" alt="yikart%2FAiToEarn | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 

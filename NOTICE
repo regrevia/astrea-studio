@@ -1,0 +1,83 @@
+Astrea Studio
+Copyright (c) 2026 Astrea Studio contributors
+
+本文件声明 Astrea Studio 所使用的上游开源项目与第三方组件。
+This file declares the upstream open-source projects and third-party components used by Astrea Studio.
+
+=====================================================================
+一、上游开源项目 / Upstream open-source project
+=====================================================================
+
+AiToEarn
+  Repository : https://github.com/yikart/AiToEarn
+  License    : MIT
+  Copyright  : Copyright (c) 2025 AiToEarn
+  Scope      : 账号与平台接入、Web 与后端主体、发布链路、AI 服务。
+               Astrea Studio 在此基础上新增本机渲染与导出流水线、macOS worker、
+               剪映专业版集成、统一面板与发布矩阵。
+  Basis      : 本仓库为 AiToEarn 的衍生版本，按 MIT 许可证分发；原始版权声明见 LICENSE。
+               This repository is a derivative work of AiToEarn, distributed under the
+               MIT License. The original copyright notice is retained in LICENSE.
+
+=====================================================================
+二、随仓库分发的组件 / Components distributed with this repository
+=====================================================================
+
+MoneyPrinterTurbo
+  Repository : https://github.com/harry0703/MoneyPrinterTurbo
+  License    : MIT
+  Copyright  : Copyright (c) 2024 Harry
+  Location   : integrations/vendor/MoneyPrinterTurbo
+  Scope      : 文案成片、配音（剪映原生音色 sami / Edge TTS）与素材拼装。
+
+social-auto-upload
+  Repository : https://github.com/dreammis/social-auto-upload
+  License    : MIT
+  Copyright  : Copyright (c) 2023 dreammis
+  Location   : integrations/vendor/social-auto-upload
+  Scope      : 平台账号登录（Cookie）、视频与图文上传。
+
+=====================================================================
+三、运行时依赖的外部服务与程序 / External services and programs used at runtime
+=====================================================================
+
+VectCutAPI
+  Repository : https://github.com/sun-guannan/VectCutAPI
+  License    : Apache License 2.0
+  Scope      : 在本地生成剪映专业版草稿（转场、滤镜、文字动画等原生资源引用）。
+               Generates 剪映 (JianYing Pro) drafts locally.
+
+jianying-editor-skill
+  Repository : https://github.com/isYangs/jianying-editor-skill
+  License    : MIT
+  Copyright  : Copyright (c) 2026 luoluoluo22
+  Scope      : 剪映草稿编辑相关的参考资料与素材映射。
+
+剪映专业版 / JianYing Pro (CapCut CN desktop app)
+  Vendor     : 深圳市脸萌科技有限公司 / ByteDance
+  Scope      : 本仓库不包含该程序；仅在用户已安装的前提下，通过其导出面板完成成片导出。
+               Not bundled. Used only when the user has installed the app.
+
+FFmpeg
+  Repository : https://ffmpeg.org
+  License    : LGPL-2.1-or-later 或 GPL（取决于用户的构建）
+  Scope      : 本机转码、合成、响度归一与成片校验。
+
+shot-scraper
+  Repository : https://github.com/simonw/shot-scraper
+  License    : Apache License 2.0
+  Scope      : 网页截图采集。
+
+Pillow
+  Repository : https://python-pillow.org
+  License    : HPND
+  Scope      : 字幕与图文贴片渲染。
+
+=====================================================================
+四、说明 / Notes
+=====================================================================
+
+- 本仓库不包含任何上游项目的商标授权。AiToEarn 的名称与标识归其权利人所有。
+  No trademark rights are granted. The AiToEarn name and marks belong to their owners.
+- 若你分发本项目的修改版本，请保留本文件与 LICENSE 中的版权声明。
+  If you redistribute a modified version, keep this file and the notices in LICENSE.

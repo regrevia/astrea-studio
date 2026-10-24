@@ -1,4 +1,36 @@
-# [Aitoearn: The Best Open-Source AI Agent for Content Marketing](https://aitoearn.ai)
+# Astrea Studio
+
+A local-first AI content workbench: one dashboard to manage multi-platform accounts end to end — research, material capture and generation, editing and voiceover with JianYing Pro (剪映专业版), and publishing — all running on your own machine.
+
+English | [简体中文](README.md) | [日本語](README_JA.md)
+
+## Upstream open-source project
+
+Astrea Studio is a derivative of [yikart/AiToEarn](https://github.com/yikart/AiToEarn), released under the MIT License.
+
+- Upstream repository: <https://github.com/yikart/AiToEarn>
+- Upstream copyright: Copyright (c) 2025 AiToEarn (MIT)
+- Full license text: [LICENSE](LICENSE); third-party components and credits: [NOTICE](NOTICE)
+- Sync with upstream:
+
+  ```bash
+  git remote add upstream https://github.com/yikart/AiToEarn.git
+  git fetch upstream && git merge upstream/main
+  ```
+
+Upstream provides account connections, platform publishing, and the web/backend core. This repository adds a local render and export pipeline, a macOS worker, JianYing Pro integration, and the unified dashboard with its per-platform delivery matrix.
+
+## Current capabilities
+
+- **Unified multi-platform dashboard**: account status for 15 platforms on one screen; every video is delivered across a 17-platform matrix of dimensions, bitrate and container.
+- **One-click capture**: give it a URL and the article text and page screenshots land in the material library.
+- **Conversational production**: describe what you want in natural language; the assistant researches, writes the script and queues a render. Revisions such as "make the subtitles bigger" or "use a calmer voice" are applied as patches and re-rendered.
+- **AI voiceover**: 14 native JianYing voices and 9 Edge TTS voices, synthesized locally.
+- **JianYing Pro**: writes the timeline into a JianYing draft (native transitions, filters and text animations) or drives JianYing's export panel to export per-platform files. macOS requires Accessibility permission; this export automation does not work on Windows.
+- **Publishing**: posts to signed-in platform accounts; every submission is confirmed by a human in the dashboard first.
+- **Local data**: rendering, exporting and publishing run on your machine; projects and videos stay on local disk.
+
+The section below is the upstream AiToEarn documentation, kept verbatim for reference.
 
 <a href="https://trendshift.io/repositories/20785" target="_blank"><img src="https://trendshift.io/api/badge/repositories/20785" alt="yikart%2FAiToEarn | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
