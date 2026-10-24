@@ -43,8 +43,11 @@ echo "=== building $TARGET from $WEB"
 PROXY_ARGS=()
 if [ -n "${HTTP_PROXY:-}" ]; then
   # 容器里的 127.0.0.1 是容器自己，必须换成 host.docker.internal 才连得上宿主代理。
-  IN_PROXY="${HTTP_PROXY/\/\/127.0.0.1/\/\/host.docker.internal}"
-  IN_PROXY="${IN_PROXY/\/\/localhost/\/\/host.docker.internal}"
+  # 只换主机名，不要用 `\/\/` 做替换：模式替换的替换段里反斜杠是字面量，
+  # 旧写法会把 http://127.0.0.1:7897 变成 http:\/\/host.docker.internal:7897，
+  # 容器内的 pnpm/corepack 因此拿到一个非法代理地址，报 "fetch failed"。
+  IN_PROXY="${HTTP_PROXY//127.0.0.1/host.docker.internal}"
+  IN_PROXY="${IN_PROXY//localhost/host.docker.internal}"
   PROXY_ARGS+=(--build-arg "HTTP_PROXY=$IN_PROXY" --build-arg "HTTPS_PROXY=$IN_PROXY")
   PROXY_ARGS+=(--build-arg "http_proxy=$IN_PROXY" --build-arg "https_proxy=$IN_PROXY")
   PROXY_ARGS+=(--build-arg "NO_PROXY=${NO_PROXY:-localhost,127.0.0.1}")
