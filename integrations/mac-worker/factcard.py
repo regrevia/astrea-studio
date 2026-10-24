@@ -136,7 +136,7 @@ def _draw_block(page, text: str, size: int, top: int, left: int, max_w: float,
 
 def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
                 progress: int, total: int, slug: str, hook: bool = False,
-                body: str = "", body_top: int = 640) -> Path:
+                body: str = "", body_top: int = 640, plain: bool = False) -> Path:
     """卡面底图：渐变 + 网格点 + 圆角描边卡 + 编号幽灵字 + 进度点。文字交给剪映。"""
     from PIL import Image, ImageDraw, ImageFilter
 
@@ -164,7 +164,10 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
         for x in range(80, W - 80, 60):
             draw.ellipse((x - 1, y - 1, x + 1, y + 1), fill=(255, 255, 255, 18))
 
-    if not hook:
+    if plain:
+        # 收尾卡不要空卡框：没有正文的圆角矩形只会显得空
+        draw.polygon([(0, 1180), (W, 1010), (W, 1340), (0, 1510)], fill=(*accent, 30))
+    if not hook and not plain:
         # 卡片高度跟着正文走，避免大片空白（"PPT 味"最主要的来源）
         measure = ImageDraw.Draw(overlay)
         body_lines = _wrap_text(measure, body, _font(BODY_SIZE), W - 248) if body else []
@@ -377,7 +380,7 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
     # 3) 收尾
     cta_img = render_card(out_dir / f"s{total - 1:02d}.png", kicker=kicker,
                           index="", palette_idx=len(PALETTES) - 1, progress=total - 1,
-                          total=total, slug=slug)
+                          total=total, slug=slug, plain=True)
     scenes.append({
         "image": str(cta_img),
         "say": str(narration.get("cta") or cta).strip(),
