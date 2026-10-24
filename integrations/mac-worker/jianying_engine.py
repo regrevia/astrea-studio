@@ -897,17 +897,19 @@ def _second_half_pose(cfg: dict[str, Any], idx: int, total: int,
     say = str((scene or {}).get("say") or "").strip()
     if len(say) < 12:      # 再短就只剩一个动作，切了像抖
         return None
-    cut = -1
-    for j, ch in enumerate(say):
-        if ch in "，,；;。.！!？?" and 6 <= j + 1 <= len(say) - 6:
-            cut = j + 1
+    cut = _clause_cut(say)
     if cut < 0:
         return None
     tail = say[cut:]
-    pose = _scene_pose(cfg, idx, total, {"say": tail, "text": ""})
-    head = _scene_pose(cfg, idx, total, {"say": say[:cut], "text": ""})
-    if pose != head:
-        return pose
+    head_say = say[:cut]
+    tail_want = _keyword_pose(tail)
+    head_want = _keyword_pose(head_say)
+    base_want = _keyword_pose(say)
+    # 只有两半句的语义真的不同才换：后半句在说另一件事，动作跟着变；
+    # 整句一个意思时换来换去只是抽搐。
+    if tail_want and tail_want != base_want:
+        return tail_want
+    return None
     # 两半都没关键词时，默认姿态前后一模一样；给后半句一个对比姿态，
     # 让"陈述→思考 / 思考→陈述"有落点，而不是整屏一个定格。
     if head in ("point", "think"):
@@ -916,6 +918,31 @@ def _second_half_pose(cfg: dict[str, Any], idx: int, total: int,
         # 开场挥手说完「它只读到标题」还在挥就假了：后半句按内容收住
         return _keyword_pose(tail) or "think"
     return None
+
+
+def _clause_cut(say: str) -> int:
+    """句子在哪断开。手势换势和「后半句动作」必须用同一个断点，否则动作和话错位。
+
+    取正文 25%–75% 之间最靠近中间的那个断句符（返回断点后的下标）。
+    """
+    text = str(say or "")
+    n = len(text)
+    if n < 8:
+        return -1
+    best, best_d = -1, 9.9
+    for i, ch in enumerate(text):
+        if ch not in "，,；;。.！!？?：:、":
+            continue
+        cut = i + 1
+        if cut < 3 or cut > n - 3:
+            continue
+        frac = cut / n
+        if not 0.25 <= frac <= 0.75:
+            continue
+        d = abs(frac - 0.5)
+        if d < best_d:
+            best, best_d = cut, d
+    return best
 
 
 # 讲述内容 → 姿态。角色得跟着这句话在做什么，而不是按屏号轮流摆姿势。

@@ -283,21 +283,8 @@ def _punctuation_anchor(say: str) -> float | None:
     取正文 25%–75% 之间最靠近中间的那个断句符，把它在字数里的比例当锚点。
     """
     text = " ".join(str(say or "").split())
-    n = len(text)
-    marks = "，。：；、,;:！？!?"
-    if n < 8:
-        return None
-    best, best_d = None, 9.9
-    for i, ch in enumerate(text):
-        if ch not in marks or i < 2 or i > n - 3:
-            continue
-        frac = (i + 1) / n
-        if not 0.25 <= frac <= 0.75:
-            continue
-        d = abs(frac - 0.5)
-        if d < best_d:
-            best, best_d = frac, d
-    return best
+    cut = JE._clause_cut(text)
+    return (cut / len(text)) if cut > 0 else None
 
 
 def _clause_switch(mp3: Path, dur: float, cfg: dict, say: str = "") -> float | None:

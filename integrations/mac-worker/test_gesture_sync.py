@@ -39,6 +39,13 @@ def test_stronger_cue_wins() -> None:
     assert JE._keyword_pose("居然真的搞定了") == "happy"
 
 
+def test_switch_needs_two_topics() -> None:
+    """一句话只讲一件事就不换势：为了动而动，观众看到的是抽搐。"""
+    assert JE._second_half_pose({}, 1, 5, {"say": "视频里的 PPT，它看不见。Envoy 抽帧，喂给它。"}) is None
+    assert vs._punctuation_anchor("链接丢给 AI，它只读到标题。跟没读差不多。") == \
+        JE._clause_cut("链接丢给 AI，它只读到标题。跟没读差不多。") / len("链接丢给 AI，它只读到标题。跟没读差不多。")
+
+
 def test_punctuation_anchor() -> None:
     """换势要落在逗号后面：锚点按字数比例给，太短或没标点就放弃。"""
     a = vs._punctuation_anchor("链接丢给 AI，它只读到标题。跟没读差不多。")
@@ -78,6 +85,7 @@ if __name__ == "__main__":
     test_semantics_beat_courtesy()
     test_stronger_cue_wins()
     test_punctuation_anchor()
+    test_switch_needs_two_topics()
     test_courtesy_still_default()
     test_baselines_have_no_clash()
     test_author_poses_are_intent()
