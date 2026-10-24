@@ -333,16 +333,39 @@ export class ProductionService {
         return null
       }
     }
-    const job = await this.jobRepo.claimNext(lane, workerId, LEASE_MS, capabilities)
-    if (job) {
+    for (let i = 0; i < 3; i++) {
+      const job = await this.jobRepo.claimNext(lane, workerId, LEASE_MS, capabilities)
+      if (!job) {
+        return null
+      }
+      // 一条 run 只该有一个活着的渲染：心跳超时补出来的新 job 可能在旧 job
+      // 完成之后才被领取，此时 run 已经 succeeded，再渲一遍纯属白烧机器。
+      const run = await this.runRepo.getById(job.runId)
+      if (run && (run.status === ProductionRunStatus.SUCCEEDED
+        || run.status === ProductionRunStatus.CANCELLED
+        || run.status === ProductionRunStatus.FAILED)) {
+        await this.jobRepo.updateById(job.id, {
+          status: ProductionJobStatus.CANCELLED,
+          finishedAt: new Date(),
+          message: `run already ${run.status}`,
+        } as never)
+        await this.appendEvent(job.runId, {
+          kind: 'job.cancelled',
+          jobId: job.id,
+          stage: job.stage,
+          message: `dropped: run already ${run.status}`,
+        })
+        continue
+      }
       await this.appendEvent(job.runId, {
         kind: 'job.claimed',
         jobId: job.id,
         stage: 'starting',
         message: `claimed by ${workerId} (attempt ${job.attempt})`,
       })
+      return job
     }
-    return job
+    return null
   }
 
   async heartbeatJob(
@@ -417,6 +440,25 @@ export class ProductionService {
       progress: 100,
       data: result,
     })
+    // 同一 run 可能因为租约过期补出第二个 job；这条已经出片，剩下的必须作废，
+    // 否则 worker 会紧接着把同一条视频再渲一遍。
+    const leftovers = (await this.jobRepo.listByRun(job.runId)).filter(
+      (item: ProductionJob) => item.id !== jobId
+        && (item.status === ProductionJobStatus.QUEUED || item.status === ProductionJobStatus.RUNNING),
+    )
+    for (const item of leftovers) {
+      await this.jobRepo.updateById(item.id, {
+        status: ProductionJobStatus.CANCELLED,
+        finishedAt: new Date(),
+        message: 'superseded by successful attempt',
+      } as never)
+      await this.appendEvent(job.runId, {
+        kind: 'job.cancelled',
+        jobId: item.id,
+        stage: item.stage,
+        message: 'superseded by successful attempt',
+      })
+    }
     return { ok: true }
   }
 

@@ -38,6 +38,11 @@ class StudioClient:
                 raw = resp.read()
         except urllib.error.HTTPError as exc:
             raise ApiError(exc.code, exc.read().decode(errors="replace"), path) from None
+        except (urllib.error.URLError, OSError) as exc:
+            # 后端重启/负载高时 urlopen 抛 socket.timeout，它不是 ApiError，
+            # 一路冒到 run_forever 就把 worker 弄死了：那条在途渲染没人续约，
+            # 平台只能判失败再重排。统一折成 ApiError(0)，按「服务不可达」退避。
+            raise ApiError(0, f"network: {exc}", path) from None
         if not raw:
             return None
         body = json.loads(raw)

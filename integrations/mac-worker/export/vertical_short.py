@@ -93,6 +93,15 @@ def _compose_card(scene: dict, out: Path, role: str) -> Path:
                 draw.text((factcard.W // 2, y), ln, font=factcard._font(size),
                           fill=(255, 255, 255, 240), anchor="ma")
                 y += int(size * 1.28)
+        elif role == "cta":
+            # 结尾只有一句话，跟着要点卡片左对齐会显得又小又空：
+            # 居中放大、压在画面中段，人物在右下托住它。
+            size, lines = _fit_title(text, factcard.W - 200, sizes=(96, 88, 80, 72, 64))
+            y = 700 - int(size * 1.3) * (len(lines) - 1) // 2
+            for ln in lines:
+                draw.text((factcard.W // 2, y), ln, font=factcard._font(size),
+                          fill=(255, 255, 255, 245), anchor="ma")
+                y += int(size * 1.3)
         else:
             size, lines = _fit_title(text, 1004 - 140 - 24)
             y = 512 if len(lines) > 1 else 542
@@ -102,6 +111,68 @@ def _compose_card(scene: dict, out: Path, role: str) -> Path:
                 y += int(size * 1.26)
     page.save(out, "PNG")
     return out
+
+
+
+# 口型循环：四拍一轮，读起来像在说话，又不会每帧都换脸
+_MOUTH_CYCLE = ("open", "half", "round", "half")
+# 姿态决定动幅：想事情就该比挥手安静，兴奋时起伏更大
+_POSE_MOTION = {
+    "happy": {"type": "bob", "amplitude": 9.0, "period": 1.9},
+    "wave": {"type": "bob", "amplitude": 8.0, "period": 2.1},
+    "point": {"type": "bob", "amplitude": 5.0, "period": 2.6},
+    "think": {"type": "sway", "amplitude": 2.0, "period": 3.4},
+    "shrug": {"type": "sway", "amplitude": 1.5, "period": 3.0},
+    "idle": {"type": "bob", "amplitude": 6.0, "period": 2.4},
+}
+
+
+def _pose_motion(pose: str) -> dict:
+    return dict(_POSE_MOTION.get(pose, _POSE_MOTION["idle"]))
+
+
+def _beats(say: str, dur: float, last: bool, cfg: dict) -> list[tuple[str, float]]:
+    """把一屏切成若干口型段；不说话的屏给一段闭口静止。"""
+    if not say:
+        return [("", max(0.6, dur))]
+    if not cfg.get("lip_flap", True):
+        return [("half", dur)]
+    period = float(cfg.get("lip_period") or 0.42)
+    count = max(2, min(8, int(round(dur / period)) or 2))
+    seg = dur / count
+    return [(_MOUTH_CYCLE[k % 4], seg) for k in range(count)]
+
+
+
+_CHAR_CROPS: dict = {}
+
+
+def _crop_frame(png: Path, workdir: Path, name: str) -> tuple[Path, int, int, int]:
+    """立绘整幅画布是 1080×1920 的透明 PNG，一段口型就 8MB。
+
+    按不透明内容裁到最小框再当叠加层：x/y 仍用画布坐标定位，
+    渲染输入小一个数量级，切片再多也不会把 ffmpeg 拖垮。
+    """
+    cached = _CHAR_CROPS.get(name)
+    if cached and cached[0].exists():
+        return cached
+    from PIL import Image
+
+    src = Image.open(png).convert("RGBA")
+    bb = src.getbbox() or (0, 0, src.width, src.height)
+    pad = 2
+    left = max(0, bb[0] - pad)
+    top = max(0, bb[1] - pad)
+    right = min(src.width, bb[2] + pad)
+    bottom = min(src.height, bb[3] + pad)
+    crop = src.crop((left, top, right, bottom))
+    if crop.width % 2:
+        crop = crop.crop((0, 0, crop.width - 1, crop.height))
+    out = workdir / name
+    crop.save(out)
+    val = (out, left, top, crop.width)
+    _CHAR_CROPS[name] = val
+    return val
 
 
 def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | None = None) -> dict:
@@ -165,20 +236,45 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             "fade_out": FADE if i == total - 1 else 0.0,
         })
         if char_cfg is not None:
-            frame = JE._character_frame(
-                char_cfg, i, total, workdir, spec["width"], spec["height"],
-                speaking=bool(say), scene=scene,
-            )
-            if frame is not None:
-                # 立绘一断场就是贴图：整条轨都在，只靠淡入淡出换气
-                fade = 0.0 if i in (0, total - 1) else FADE
-                overlay.append({
-                    "src": str(frame),
-                    "start": round(max(0.0, t - 0.12), 3) if i else 0.0,
-                    "end": round(t + dur + (0.12 if i < total - 1 else 0.0), 3),
-                    "x": 0.0, "y": 0.0, "opacity": 1.0, "fade": fade,
-                    "motion": {"type": "bob", "amplitude": 6.0, "period": 2.4},
-                })
+            # 一屏一张立绘就是贴图：按口型拍点切成几段，手势在中段换一次，
+            # 角色才是在"讲这句话"，而不是被贴上来定格。
+            pose = str(char_cfg.get("pose") or JE._scene_pose(char_cfg, i, total, scene))
+            alt_pose = (None if char_cfg.get("pose") else
+                        JE._second_half_pose(char_cfg, i, total, scene))
+            if not char_cfg.get("gesture_sync", True):
+                alt_pose = None
+            motion = _pose_motion(pose)
+            beats = _beats(say, dur, i == total - 1, char_cfg)
+            switch_at = 0.55
+            elapsed = 0.0
+            for mouth, seg in beats:
+                use_pose = pose
+                if alt_pose and dur > 0 and (elapsed / dur) >= switch_at:
+                    use_pose = alt_pose
+                frame = JE._character_frame(
+                    char_cfg, i, total, workdir, spec["width"], spec["height"],
+                    speaking=bool(say), scene=scene, pose=use_pose, mouth=mouth,
+                )
+                if frame is not None:
+                    frame, fx, fy, fw = _crop_frame(
+                        frame, workdir, f"c{i:02d}_{use_pose}_{mouth}.png")
+                    start = t + elapsed
+                    end = start + seg
+                    if i == 0 and elapsed == 0.0:
+                        start = max(0.0, start - FADE)
+                    fade_in = FADE if (i == 0 and elapsed == 0.0) else 0.0
+                    fade_out = FADE if (i == total - 1 and end >= t + dur - 1e-6) else 0.0
+                    overlay.append({
+                        "src": str(frame),
+                        "start": round(start, 3),
+                        "end": round(end, 3),
+                        "x": float(fx), "y": float(fy), "opacity": 1.0,
+                        "width": fw,
+                        "fade": max(fade_in, fade_out),
+                        # 相位对齐到绝对时间：口型分段不打断呼吸节奏
+                        "motion": {**motion, "phase": round(start, 3)},
+                    })
+                elapsed += seg
         t += dur
 
     return {

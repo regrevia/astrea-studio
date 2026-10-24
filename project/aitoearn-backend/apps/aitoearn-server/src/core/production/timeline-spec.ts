@@ -46,6 +46,11 @@ export function buildTimelineSpec(spec: Record<string, unknown>): Record<string,
   if (spec['engine'] !== 'timeline' || (existing !== undefined && existing !== null)) {
     return spec
   }
+  // 竖屏 factcard：素材是 worker 现场生成的卡面与配音，脚本本身就是渲染输入，
+  // 这里按「素材 + 文案 + 切片」那套友好输入去要求它必然缺料。
+  if (spec['mode'] === 'vertical_short') {
+    return spec
+  }
 
   const materials = stringList(spec['materials'])
   if (!materials.length) {

@@ -256,6 +256,9 @@ def load_spec(path, base: Path | None = None) -> dict:
                 "type": mtype,
                 "amplitude": float(motion.get("amplitude") or 8.0),
                 "period": float(motion.get("period") or 2.2),
+                # 同一角色被切成多段口型时，正弦相位要接着上一段走，
+                # 否则每 0.4 秒归零一次，人物像在抖。
+                "phase": float(motion.get("phase") or 0.0),
             },
         })
 
@@ -377,7 +380,9 @@ def _overlay_axis_expr(item: dict, axis: str, canvas: dict) -> str:
     period = motion.get("period") or 2.2
     if amp and mtype in ("bob", "sway") and (
             (mtype == "bob" and axis == "y") or (mtype == "sway" and axis == "x")):
-        expr = f"({expr})+{amp:.3f}*sin(2*PI*(t-{item['start']:.3f})/{period:.3f})"
+        phase = float(motion.get("phase") or 0.0)
+        expr = (f"({expr})+{amp:.3f}"
+                f"*sin(2*PI*(t-{item['start'] - phase:.3f})/{period:.3f})")
 
     return expr
 

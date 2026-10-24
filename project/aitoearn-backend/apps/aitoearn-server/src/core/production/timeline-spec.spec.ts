@@ -125,6 +125,18 @@ describe('buildTimelineSpec', () => {
     expect(buildTimelineSpec(advanced)).toBe(advanced)
   })
 
+  it('竖屏 factcard 脚本原样透传：素材由 worker 现场生成', () => {
+    const vertical = {
+      engine: 'timeline',
+      mode: 'vertical_short',
+      template: 'factcard',
+      topic: 'KV Cache',
+      points: ['是什么::留住算过的 Key 和 Value'],
+    }
+
+    expect(buildTimelineSpec(vertical)).toBe(vertical)
+  })
+
   it('非 timeline 引擎原样透传', () => {
     const slides = { engine: 'slides', theme: 'dark' }
 

@@ -17,6 +17,7 @@ import logging
 import os
 import signal
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -100,7 +101,10 @@ class Worker:
             return 2
 
         log.info("worker up: api=%s capabilities=%s", self.cfg.api_base, ",".join(self.cfg.capabilities))
-        self.sync_capabilities()
+        try:
+            self.sync_capabilities()
+        except Exception as exc:  # noqa: BLE001 - 启动时后端没起来不该让 worker 退出
+            log.warning("initial capability sync skipped: %s", exc)
         while self.running:
             if not self.client.alive():
                 log.warning("api unreachable; retrying in %.0fs", self.backoff)
@@ -122,7 +126,10 @@ class Worker:
                 # 空闲时定期重对齐：服务端换版本、或本机配置加了新能力，
                 # 都不该等到人工去改数据库才生效。
                 if time.time() - self._caps_synced_at > 600:
-                    self.sync_capabilities()
+                    try:
+                        self.sync_capabilities()
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("capability sync skipped: %s", exc)
                 time.sleep(self.cfg.poll_interval_sec)
         log.info("worker stopped")
         return 0
@@ -174,6 +181,20 @@ class Worker:
                 self.client.heartbeat(job_id, lease, progress=pct, stage=stage)
             except ApiError as exc:
                 log.debug("heartbeat rejected (lease may have moved): %s", exc)
+
+        # 租约只有 60s，一次竖屏渲染要两三分钟、中间可能一个 progress 都没有。
+        # 不单独续约，服务端会在渲染途中判租约过期、补一条重复 job 再渲一遍。
+        stop_renew = threading.Event()
+
+        def renew_lease() -> None:
+            interval = max(5.0, float(self.cfg.heartbeat_sec or 30) / 2.0)
+            while not stop_renew.wait(interval):
+                try:
+                    self.client.heartbeat(job_id, lease)
+                except ApiError as exc:
+                    log.debug("lease renew failed: %s", exc)
+
+        threading.Thread(target=renew_lease, daemon=True).start()
 
         try:
             if kind == "render_mpt":
@@ -272,6 +293,8 @@ class Worker:
                 self.client.fail(job_id, lease, f"worker exception: {exc}"[:1500], "failed")
             except ApiError:
                 pass
+        finally:
+            stop_renew.set()
 
     def do_render(self, job_id: str, payload: dict[str, Any],
                   progress: Any) -> dict[str, Any]:
