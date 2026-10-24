@@ -38,24 +38,34 @@ export const apiKeyConfigSchema = z.object({
  * Studio 指挥台的推理与宿主机能力来源。
  *
  * 推理走 OpenAI 兼容的 /chat/completions（容器内默认指向宿主机 Ollama），
- * 不依赖任何外部厂商 Key；inventoryUrl 指向 mac worker 的 capabilities server，
+ * 也可以切到 Anthropic 的 /messages 以拿到 thinking 预算；不依赖任何外部厂商 Key。
+ * inventoryUrl 指向 mac worker 的 capabilities server，
  * 用来回答「哪些平台账号、哪些音色可用」。整块配置可选：不写也能启动，用下面的默认值；
  * 需要换模型/端口时优先用环境变量覆盖，其次才改 config.yaml：
  *   STUDIO_ASSISTANT_BASE_URL / STUDIO_ASSISTANT_MODEL / STUDIO_ASSISTANT_API_KEY
- *   STUDIO_ASSISTANT_INVENTORY_URL
+ *   STUDIO_ASSISTANT_INVENTORY_URL / STUDIO_ASSISTANT_WIRE / STUDIO_ASSISTANT_THINKING_BUDGET
  */
+export enum StudioAssistantWire {
+  OpenAi = 'openai',
+  Anthropic = 'anthropic',
+}
+
 const studioAssistantDefaults = {
   baseUrl: process.env['STUDIO_ASSISTANT_BASE_URL'] || 'http://host.docker.internal:11434/v1',
   model: process.env['STUDIO_ASSISTANT_MODEL'] || 'qwen3.5:9b',
   apiKey: process.env['STUDIO_ASSISTANT_API_KEY'] || '',
   inventoryUrl: process.env['STUDIO_ASSISTANT_INVENTORY_URL'] || 'http://host.docker.internal:8899',
+  wire: (process.env['STUDIO_ASSISTANT_WIRE'] || StudioAssistantWire.OpenAi) as StudioAssistantWire,
+  thinkingBudget: Number(process.env['STUDIO_ASSISTANT_THINKING_BUDGET'] || 0),
 }
 
 export const studioAssistantConfigSchema = z.object({
-  baseUrl: httpUrlSchema.default(studioAssistantDefaults.baseUrl).describe('OpenAI 兼容推理服务地址'),
+  baseUrl: httpUrlSchema.default(studioAssistantDefaults.baseUrl).describe('推理服务地址，只写到版本段（例如 https://host/v1）'),
   model: z.string().min(1).default(studioAssistantDefaults.model).describe('模型名，需要支持原生 tools/tool_calls'),
   apiKey: z.string().default(studioAssistantDefaults.apiKey).describe('可选 API Key，留空则不带鉴权头'),
   inventoryUrl: httpUrlSchema.default(studioAssistantDefaults.inventoryUrl).describe('宿主机能力清单地址'),
+  wire: z.enum(StudioAssistantWire).default(studioAssistantDefaults.wire).describe('线协议：openai 走 /chat/completions，anthropic 走 /messages'),
+  thinkingBudget: z.number().int().min(0).default(studioAssistantDefaults.thinkingBudget).describe('anthropic 线协议的思考预算 token 数，0 表示关闭'),
 }).default(studioAssistantDefaults)
 
 export const channelConfigSchema = z.object({
