@@ -591,7 +591,9 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                     f"jianying:tts{idx + 1}/{len(scenes)}")
                 audio = job_dir / f"tts_{idx:02d}.mp3"
                 _tts(text_for_tts, audio, str(voice))
-                dur = max(dur, _dur(audio) + 0.25)
+                # 有配音时以配音为准：画面比声音长就变成「话讲完了画面还杵着」，
+                # 每屏多停 0.3~1.3 秒，整片就出 PPT 感。只留一点收尾气口。
+                dur = max(1.6, min(9.0, _dur(audio) + 0.18))
         plan.append({"scene": scene, "native": native, "duration": dur, "audio": audio})
 
     total = 0.0

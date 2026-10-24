@@ -117,6 +117,30 @@ def check(draft: pathlib.Path) -> dict:
         ok = chip_present(first) and chip_present(last)
         add("首尾卡带品牌标", ok, f"开场 {chip_present(first)} / 收尾 {chip_present(last)}")
 
+    trans_ids = {t["id"] for t in materials.get("transitions") or []}
+    seen = 0
+    for seg in track(d, "image_main"):
+        if trans_ids & set(seg.get("extra_material_refs") or []):
+            seen += 1
+    add("屏间有转场", seen >= max(1, len(cards) - 1), f"{seen} 处转场 / {max(0, len(cards) - 1)} 个衔接")
+
+    audio = [s for s in track(d, "audio_main") if s.get("material_id")]
+    audio_end = max((s["target_timerange"]["start"] + s["target_timerange"]["duration"]
+                     for s in audio), default=0) / 1e6
+    video_end = max((s["target_timerange"]["start"] + s["target_timerange"]["duration"]
+                     for s in track(d, "image_main")), default=0) / 1e6
+    add("音画齐平", audio and abs(audio_end - video_end) < 0.35,
+        f"音频 {audio_end:.2f}s / 画面 {video_end:.2f}s")
+
+    # 立绘一断场就是贴图感。口型帧本身很短，查的是「整条轨道不断、盖满全片」
+    spans = sorted((s["target_timerange"]["start"] / 1e6,
+                    (s["target_timerange"]["start"] + s["target_timerange"]["duration"]) / 1e6)
+                   for s in chars)
+    holes = [round(b[0] - a[1], 2) for a, b in zip(spans, spans[1:]) if b[0] - a[1] > 0.2]
+    char_end = spans[-1][1] if spans else 0.0
+    add("立绘全程在场", not holes and char_end >= video_end - 0.4,
+        f"断场 {holes}" if holes else f"盖到 {char_end:.2f}s / 画面 {video_end:.2f}s")
+
     job = find_job_dir(draft)
     if job:
         poses = sorted({p.stem.split("_")[2] for p in job.glob("char_*.png") if len(p.stem.split("_")) > 2})
