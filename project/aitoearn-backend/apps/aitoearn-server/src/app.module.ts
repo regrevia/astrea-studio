@@ -18,6 +18,8 @@ import { ChannelsMcpModule } from './core/channels/mcp/channels.mcp.module'
 import { RelayModule } from './core/channels/relay/relay.module'
 import { ContentMcpModule } from './core/content/content-mcp.module'
 import { ContentModule } from './core/content/content.module'
+import { ProductionModule } from './core/production/production.module'
+import { ProductionMcpModule } from './core/production/production-mcp.module'
 import { PublishModule } from './core/publish-record/publish-record.module'
 import { ShortLinkModule } from './core/short-link/short-link.module'
 import { UnifiedMcpModule } from './core/unified-mcp/unified-mcp.module'
@@ -70,12 +72,14 @@ import { UserModule } from './core/user/user.module'
     ContentModule,
     ChannelsModule,
     PublishModule,
+    ProductionModule,
     ShortLinkModule,
     ApiKeyModule,
     RelayModule,
     // MCP modules (after business modules to ensure @Global services are available)
     ChannelsMcpModule,
     ContentMcpModule,
+    ProductionMcpModule,
     UnifiedMcpModule,
   ],
   controllers: [],

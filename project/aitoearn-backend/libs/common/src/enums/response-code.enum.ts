@@ -69,6 +69,14 @@ export enum ResponseCode {
   MaterialGroupNotFound = 12801,
   MaterialGroupDefaultNotAllowed = 12803,
 
+  // 12850-12899: production（生产与发布编排）
+  ProductionProjectNotFound = 12850,
+  ProductionRunNotFound = 12851,
+  ProductionJobNotFound = 12852,
+  ProductionInvalidState = 12853,
+  PublicationAttemptNotFound = 12854,
+  ProductionWorkerUnauthorized = 12855,
+
   // 12900-12999: content（内容组合）
   MaterialGroupEmpty = 12900,
   MaterialGroupTypeError = 12901,

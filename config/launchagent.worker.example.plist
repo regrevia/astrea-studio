@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template. `make worker` substitutes __REPO__, __STUDIO_HOME__ and __PYTHON__
+  and installs this into ~/Library/LaunchAgents.
+
+  KeepAlive restarts a killed worker, so `make down` must bootout this agent
+  before stopping containers; otherwise launchd fights the teardown.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.creatorstudio.worker</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PYTHON__</string>
+    <string>__REPO__/integrations/mac-worker/worker.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__REPO__/integrations/mac-worker</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>STUDIO_HOME</key>
+    <string>__STUDIO_HOME__</string>
+    <key>MPT_HOME</key>
+    <string>__STUDIO_HOME__/data/mpt</string>
+    <key>TZ</key>
+    <string>Asia/Shanghai</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>15</integer>
+
+  <key>StandardOutPath</key>
+  <string>__STUDIO_HOME__/logs/worker.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__STUDIO_HOME__/logs/worker.err.log</string>
+</dict>
+</plist>

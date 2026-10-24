@@ -1,6 +1,19 @@
+# ⚠️ 这是「上游模板」，不是运行时配置。不要直接 docker compose up。
+#
+# 运行时配置由 deploy/render_config.py 从本文件生成到 ~/CreatorStudio/config/compose.yml
+# （去掉固定 container_name/网络名，改用 ${STUDIO_IMAGE_*} 变量，加 pull_policy: never）。
+#
+# 正确用法：
+#   1) 改本文件（镜像 / 环境 / 端口 / 依赖）
+#   2) python3 deploy/render_config.py
+#   3) cd ~/CreatorStudio/config && docker compose --env-file compose.env -f compose.yml --project-name creatorstudio up -d
+#
+# 直接在本目录 compose up 会：① 用固定容器名 aitoearn-*，与在跑的 creatorstudio-* 抢端口；
+# ② 绕过凭据渲染。本机 Docker Hub 不可达，但此处镜像名已全部指向本地，故不会触发拉取。
 services:
   mongodb:
-    image: mongo:latest
+    image: ${STUDIO_IMAGE_MONGO:-creator-studio/mongo:7.0}
+    pull_policy: missing
     container_name: aitoearn-mongodb
     restart: unless-stopped
     entrypoint: ["bash", "-c", "openssl rand -base64 756 > /data/mongodb-keyfile && chmod 400 /data/mongodb-keyfile && chown mongodb:mongodb /data/mongodb-keyfile && exec docker-entrypoint.sh mongod --replSet rs0 --keyFile /data/mongodb-keyfile"]
@@ -22,7 +35,8 @@ services:
       start_period: 40s
 
   mongodb-rs-init:
-    image: mongo:latest
+    image: ${STUDIO_IMAGE_MONGO:-creator-studio/mongo:7.0}
+    pull_policy: missing
     container_name: aitoearn-mongodb-rs-init
     depends_on:
       mongodb:
@@ -33,7 +47,8 @@ services:
       - aitoearn-network
 
   redis:
-    image: redis:latest
+    image: ${STUDIO_IMAGE_REDIS:-creator-studio/redis:7-alpine}
+    pull_policy: missing
     container_name: aitoearn-redis
     restart: unless-stopped
     command: redis-server --requirepass password
@@ -51,7 +66,8 @@ services:
       start_period: 30s
 
   rustfs:
-    image: rustfs/rustfs:latest
+    image: ${STUDIO_IMAGE_RUSTFS:-creator-studio/rustfs:latest}
+    pull_policy: missing
     container_name: aitoearn-rustfs
     hostname: rustfs.local
     restart: unless-stopped
@@ -74,7 +90,8 @@ services:
       start_period: 30s
 
   aitoearn-init:
-    image: node:lts-alpine
+    image: ${STUDIO_IMAGE_NODE:-creator-studio/node:22-alpine}
+    pull_policy: missing
     container_name: aitoearn-init
     restart: "no"
     depends_on:
@@ -95,7 +112,11 @@ services:
       - aitoearn-network
 
   rustfs-init:
-    image: minio/mc:latest
+    # 本机没有 minio/mc 镜像且 Docker Hub 不可达；bucket 早已建好，故默认不跑。
+    # 需要时：docker compose --profile init up rustfs-init
+    profiles: ["init"]
+    image: ${STUDIO_IMAGE_MC:-minio/mc:latest}
+    pull_policy: missing
     container_name: aitoearn-rustfs-init
     depends_on:
       rustfs:
@@ -111,8 +132,8 @@ services:
       "
 
   aitoearn-ai:
-    image: aitoearn/aitoearn-ai:latest
-    pull_policy: always
+    image: ${STUDIO_IMAGE_AI:-creator-studio/aitoearn-ai:local}
+    pull_policy: never
     container_name: aitoearn-ai
     restart: unless-stopped
     depends_on:
@@ -132,8 +153,8 @@ services:
       start_period: 60s
 
   aitoearn-server:
-    image: aitoearn/aitoearn-server:latest
-    pull_policy: always
+    image: ${STUDIO_IMAGE_SERVER:-creator-studio/aitoearn-server:local}
+    pull_policy: missing
     container_name: aitoearn-server
     restart: unless-stopped
     depends_on:
@@ -155,8 +176,8 @@ services:
       start_period: 60s
 
   aitoearn-web:
-    image: aitoearn/aitoearn-web:latest
-    pull_policy: always
+    image: ${STUDIO_IMAGE_WEB:-creator-studio/aitoearn-web:local}
+    pull_policy: missing
     container_name: aitoearn-web
     restart: unless-stopped
     depends_on:
@@ -180,7 +201,8 @@ services:
       start_period: 30s
 
   nginx:
-    image: nginx:alpine
+    image: ${STUDIO_IMAGE_NGINX:-creator-studio/nginx:alpine}
+    pull_policy: missing
     container_name: aitoearn-nginx
     restart: unless-stopped
     depends_on:

@@ -1,0 +1,214 @@
+import { Controller, Injectable } from '@nestjs/common'
+import { getUser, toTextResult, toYamlTextResult } from '@yikart/common'
+import { PublicationDispatcher } from '@yikart/mongodb'
+import { Tool } from '@yikart/nest-mcp'
+import { z } from 'zod'
+import { ProductionService } from './production.service'
+
+/**
+ * Studio tools for Codex.
+ *
+ * Two contract points drive this file:
+ *
+ * 1. Creating a run must NOT wait for the render. A tool that blocked until the
+ *    video existed would hold the agent's turn open for minutes, so
+ *    `createProductionRun` returns a queued runId and the caller polls
+ *    `getProductionRun`.
+ * 2. Publishing is irreversible. `planPublication` only records intent; there is
+ *    deliberately no MCP tool that submits, so an agent cannot publish by itself.
+ */
+
+const CreateProjectSchema = z.object({
+  name: z.string().min(1).describe('项目名称'),
+  sourceRepo: z.string().optional().describe('项目源码仓库或素材来源（仅记录）'),
+  materialGroupId: z.string().optional().describe('绑定的草稿箱 ID'),
+})
+
+const CreateRunSchema = z.object({
+  projectId: z.string().describe('项目 ID'),
+  title: z.string().min(1).describe('任务标题'),
+  brief: z.string().default('').describe('用户原始需求，用自然语言写'),
+  spec: z.record(z.string(), z.unknown()).optional().describe('结构化制作规格：时长、比例、字幕、模板等'),
+  facts: z.record(z.string(), z.unknown()).optional().describe('项目事实：产品名、卖点、禁止出现的说法'),
+})
+
+const RunIdSchema = z.object({
+  runId: z.string().describe('任务 ID'),
+})
+
+const ListRunsSchema = z.object({
+  pageNo: z.number().int().min(1).default(1).describe('页码'),
+  pageSize: z.number().int().min(1).max(100).default(20).describe('每页条数'),
+  status: z.string().optional().describe('按状态过滤：queued/running/succeeded/failed/canceled'),
+})
+
+const ReviseRunSchema = z.object({
+  runId: z.string().describe('要修改的任务 ID'),
+  brief: z.string().optional().describe('修改后的需求'),
+  spec: z.record(z.string(), z.unknown()).optional().describe('规格补丁，会与现有规格合并'),
+})
+
+const PlanPublicationSchema = z.object({
+  runId: z.string().describe('任务 ID（必须有已验证的成片）'),
+  platform: z.string().default('douyin').describe('目标平台'),
+  accountRef: z.string().describe('账号标识；抖音请用 SAU 中已登录的账号名'),
+  accountName: z.string().optional().describe('账号显示名'),
+  plannedAt: z.string().optional().describe('计划发布时间（ISO 8601）；不传表示手动触发'),
+  caption: z.string().optional().describe('发布正文'),
+  tags: z.array(z.string()).optional().describe('话题标签'),
+})
+
+@Controller()
+@Injectable()
+export class ProductionMcpController {
+  constructor(private readonly production: ProductionService) {}
+
+  /**
+   * Mongoose documents carry a raw `_id`, which YAML-serialises into a byte
+   * buffer ({"0":106,"1":217,...}) — unreadable for the agent and pure noise in
+   * its context. Every domain object already has a string `id`, so drop `_id`
+   * and return plain JSON-shaped data instead.
+   */
+  private normalize<T>(input: T): unknown {
+    return JSON.parse(
+      JSON.stringify(input, (key, value) => (key === '_id' ? undefined : value)),
+    )
+  }
+
+  @Tool({
+    name: 'createProductionProject',
+    description: 'Create a production project. A project groups tasks and binds a draft box; create one before creating runs.',
+    parameters: CreateProjectSchema,
+  })
+  async createProductionProject(params: z.infer<typeof CreateProjectSchema>) {
+    const user = getUser()
+    const project = await this.production.createProject(user.id, params)
+    return toYamlTextResult(this.normalize(project))
+  }
+
+  @Tool({
+    name: 'listProductionProjects',
+    description: 'List this user\'s production projects with their bound draft boxes.',
+    parameters: z.object({}),
+  })
+  async listProductionProjects() {
+    const user = getUser()
+    const projects = await this.production.listProjects(user.id)
+    return toYamlTextResult(this.normalize(projects))
+  }
+
+  @Tool({
+    name: 'createProductionRun',
+    description: 'Queue a video production task and return its runId immediately — this does NOT wait for the render. Poll getProductionRun to follow progress; the worker renders, uploads, and attaches the draft.',
+    parameters: CreateRunSchema,
+  })
+  async createProductionRun(params: z.infer<typeof CreateRunSchema>) {
+    const user = getUser()
+    const run = await this.production.createRun(user.id, {
+      projectId: params.projectId,
+      title: params.title,
+      brief: params.brief ?? '',
+      spec: params.spec,
+      facts: params.facts,
+    })
+    return toTextResult(
+      `Run queued: ${run.id} (status=${run.status}). `
+      + `Do not block waiting for the video; poll getProductionRun with runId=${run.id}. `
+      + 'The draft appears in the bound draft box once the worker finishes.',
+    )
+  }
+
+  @Tool({
+    name: 'getProductionRun',
+    description: 'Get one production run: status, stage, progress, and the attached draft ID. Use this to poll instead of waiting on createProductionRun.',
+    parameters: RunIdSchema,
+  })
+  async getProductionRun(params: z.infer<typeof RunIdSchema>) {
+    const user = getUser()
+    const run = await this.production.runDetail(user.id, params.runId)
+    return toYamlTextResult(this.normalize(run))
+  }
+
+  @Tool({
+    name: 'listProductionRuns',
+    description: 'List recent production runs, newest first, optionally filtered by status.',
+    parameters: ListRunsSchema,
+  })
+  async listProductionRuns(params: z.infer<typeof ListRunsSchema>) {
+    const user = getUser()
+    const page = await this.production.listRuns(
+      user.id,
+      params.pageNo,
+      params.pageSize,
+      params.status,
+    )
+    return toYamlTextResult(this.normalize(page))
+  }
+
+  @Tool({
+    name: 'reviseProductionRun',
+    description: 'Request a precise revision of a task (e.g. change one subtitle, swap one segment). Merges the patch into the existing spec and starts a new render.',
+    parameters: ReviseRunSchema,
+  })
+  async reviseProductionRun(params: z.infer<typeof ReviseRunSchema>) {
+    const user = getUser()
+    const run = await this.production.reviseRun(user.id, params.runId, {
+      brief: params.brief,
+      spec: params.spec,
+    })
+    if (!run) {
+      return toTextResult(`Run ${params.runId} could not be revised: it no longer exists.`)
+    }
+    return toTextResult(
+      `Revision queued as run ${run.id} (status=${run.status}). Poll getProductionRun to follow it.`,
+    )
+  }
+
+  @Tool({
+    name: 'listProductionEvents',
+    description: 'Read the stage/timing timeline of a run: what the worker did, when, and any error. Use this to explain a failure instead of guessing.',
+    parameters: RunIdSchema,
+  })
+  async listProductionEvents(params: z.infer<typeof RunIdSchema>) {
+    const user = getUser()
+    const events = await this.production.listEvents(user.id, params.runId)
+    return toYamlTextResult(this.normalize(events))
+  }
+
+  @Tool({
+    name: 'planPublication',
+    description: 'Record intent to publish a run. This creates a ledger row only — nothing is uploaded, and there is no tool here that submits. Publishing must be done by the user in the workbench or explicitly via the API.',
+    parameters: PlanPublicationSchema,
+  })
+  async planPublication(params: z.infer<typeof PlanPublicationSchema>) {
+    const user = getUser()
+    const { attempt, deduped } = await this.production.planPublication(user.id, {
+      runId: params.runId,
+      platform: params.platform ?? 'douyin',
+      // The local stack drives Douyin through the SAU browser worker; anything
+      // else would need a server-side dispatcher this build does not ship.
+      dispatcher: PublicationDispatcher.SAU,
+      accountRef: params.accountRef,
+      accountName: params.accountName,
+      plannedAt: params.plannedAt,
+      content: {
+        caption: params.caption,
+        tags: params.tags,
+      },
+    })
+    return toYamlTextResult({ attemptId: attempt.id, status: attempt.status, deduped })
+  }
+
+  @Tool({
+    name: 'listPublications',
+    description: 'List publication ledger rows. `submission_unknown` means the platform response was ambiguous: the work may or may not be live, and it is never resubmitted automatically — the user must reconcile it.',
+    parameters: z.object({
+      runId: z.string().optional().describe('只看某个任务的发布记录'),
+    }),
+  })
+  async listPublications(params: { runId?: string }) {
+    const user = getUser()
+    const rows = await this.production.listAttempts(user.id, params.runId)
+    return toYamlTextResult(this.normalize(rows))
+  }
+}

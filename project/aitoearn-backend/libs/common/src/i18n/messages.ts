@@ -195,6 +195,31 @@ export const messages: Record<ResponseCode, Record<Locale, MessageValue>> = {
     'en-US': 'Default material group cannot be deleted',
     'zh-CN': '默认素材组不能删除',
   },
+  // 12850 (production)
+  [ResponseCode.ProductionProjectNotFound]: {
+    'en-US': 'Production project not found',
+    'zh-CN': '生产项目未找到',
+  },
+  [ResponseCode.ProductionRunNotFound]: {
+    'en-US': 'Production run not found',
+    'zh-CN': '生产任务未找到',
+  },
+  [ResponseCode.ProductionJobNotFound]: {
+    'en-US': 'Production job not found',
+    'zh-CN': '生产作业未找到',
+  },
+  [ResponseCode.ProductionInvalidState]: {
+    'en-US': 'Operation not allowed in the current production state',
+    'zh-CN': '当前生产状态不允许该操作',
+  },
+  [ResponseCode.PublicationAttemptNotFound]: {
+    'en-US': 'Publication attempt not found',
+    'zh-CN': '发布尝试未找到',
+  },
+  [ResponseCode.ProductionWorkerUnauthorized]: {
+    'en-US': 'Worker token is invalid or disabled',
+    'zh-CN': 'Worker 令牌无效或已停用',
+  },
   // 12900 (content/material)
   [ResponseCode.MaterialGroupEmpty]: {
     'en-US': 'Material group cannot be empty',

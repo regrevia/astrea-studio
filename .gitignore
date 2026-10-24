@@ -45,3 +45,8 @@ public/bin/*
 
 sh/*
 project/web/.cursor/
+
+# 第三方克隆与产物（体积大，按需 bootstrap）
+integrations/vendor/
+__pycache__/
+*.pyc

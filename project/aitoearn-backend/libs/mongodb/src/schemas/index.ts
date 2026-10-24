@@ -16,6 +16,20 @@ import { PublishDayInfo, PublishDayInfoSchema } from './publish-day-info.schema'
 import { PublishInfo, PublishInfoSchema } from './publish-info.schema'
 import { PublishRecord, PublishRecordSchema } from './publish-record.schema'
 import {
+  ProductionEvent,
+  ProductionEventSchema,
+  ProductionJob,
+  ProductionJobSchema,
+  ProductionProject,
+  ProductionProjectSchema,
+  ProductionRun,
+  ProductionRunSchema,
+  ProductionWorker,
+  ProductionWorkerSchema,
+  PublicationAttempt,
+  PublicationAttemptSchema,
+} from './production.schema'
+import {
   User,
   UserSchema,
 } from './user.schema'
@@ -37,6 +51,7 @@ export * from './oauth2-credential.schema'
 export * from './publish-day-info.schema'
 export * from './publish-info.schema'
 export * from './publish-record.schema'
+export * from './production.schema'
 export * from './user.schema'
 
 export const schemas = [
@@ -58,4 +73,10 @@ export const schemas = [
   { name: ContentGenerationTask.name, schema: ContentGenerationTaskSchema },
   { name: DraftGenerationMemory.name, schema: DraftGenerationMemorySchema },
   { name: Asset.name, schema: AssetSchema },
+  { name: ProductionProject.name, schema: ProductionProjectSchema },
+  { name: ProductionRun.name, schema: ProductionRunSchema },
+  { name: ProductionJob.name, schema: ProductionJobSchema },
+  { name: PublicationAttempt.name, schema: PublicationAttemptSchema },
+  { name: ProductionWorker.name, schema: ProductionWorkerSchema },
+  { name: ProductionEvent.name, schema: ProductionEventSchema },
 ] as const

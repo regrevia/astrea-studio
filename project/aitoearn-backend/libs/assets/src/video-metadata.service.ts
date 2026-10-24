@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Inject, Injectable, Logger } from '@nestjs/common'
 import { UserType } from '@yikart/common'
 import { Asset, AssetRepository, AssetStatus, AssetType } from '@yikart/mongodb'
 import { execa } from 'execa'
+import { ASSETS_CONFIG, AssetsConfig } from './assets.config'
 import { StorageProvider } from './storage-provider'
 import { generateAssetPath, PathGeneratorOptions } from './utils/path-generator'
 
@@ -24,7 +25,24 @@ export class VideoMetadataService {
   constructor(
     private readonly storage: StorageProvider,
     private readonly assetRepository: AssetRepository,
+    @Inject(ASSETS_CONFIG) private readonly config?: AssetsConfig,
   ) {}
+
+  /**
+   * 服务端进程内取流用的 URL。
+   *
+   * 对外展示地址（cdnEndpoint，如 http://localhost:8080/oss）在容器里指向容器自身，
+   * ffmpeg/ffprobe 会连接失败。容器内应改走内网 nginx（internalCdnEndpoint）。
+   * 只影响服务端下载，不影响写回数据库/返回给浏览器的地址。
+   */
+  private toInternalUrl(url: string): string {
+    const external = this.config?.cdnEndpoint
+    const internal = this.config?.provider === 's3' ? this.config.internalCdnEndpoint : undefined
+    if (!external || !internal || !url.startsWith(external)) {
+      return url
+    }
+    return internal + url.slice(external.length)
+  }
 
   async probeVideoMetadata(videoUrl: string): Promise<VideoMetadata> {
     const { stdout } = await execa('ffprobe', [
@@ -34,7 +52,7 @@ export class VideoMetadataService {
       'json',
       '-show_format',
       '-show_streams',
-      videoUrl,
+      this.toInternalUrl(videoUrl),
     ], {
       timeout: 60000,
     })
@@ -66,7 +84,7 @@ export class VideoMetadataService {
       '-ss',
       String(timeInSeconds),
       '-i',
-      videoUrl,
+      this.toInternalUrl(videoUrl),
       '-vframes',
       '1',
       '-f',

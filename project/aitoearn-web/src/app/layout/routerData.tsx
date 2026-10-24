@@ -5,6 +5,7 @@
 
 import {
   Bot,
+  Clapperboard,
   History,
   Home,
   Sparkles,
@@ -25,6 +26,12 @@ export interface IRouterDataItem {
 }
 
 export const routerData: IRouterDataItem[] = [
+  {
+    name: 'Studio',
+    translationKey: 'studio',
+    path: '/studio',
+    icon: <Clapperboard size={20} />,
+  },
   {
     name: 'Content Management',
     translationKey: 'header.draftBox',

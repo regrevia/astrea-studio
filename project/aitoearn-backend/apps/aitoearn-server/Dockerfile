@@ -12,8 +12,12 @@ FROM node:24-alpine AS production
 
 ARG APP_NAME
 
-RUN apk add --no-cache curl
-RUN npm install -g pm2 ffmpeg
+# ffmpeg is a real runtime dependency: MaterialService extracts a draft cover
+# from the rendered video. Without it the attach call fails and no draft is ever
+# created — and `npm i -g ffmpeg` (the old line) only installs a download shim,
+# which does NOT put an ffmpeg binary on PATH.
+RUN apk add --no-cache curl ffmpeg
+RUN npm install -g pm2
 
 WORKDIR /app
 
