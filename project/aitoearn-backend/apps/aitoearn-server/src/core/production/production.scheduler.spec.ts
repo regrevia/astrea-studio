@@ -28,7 +28,11 @@ describe('production scheduler', () => {
   })
 
   it('回收失败不向调度器抛异常，等下一分钟重试', async () => {
-    const production = { reapExpiredLeases: vi.fn(async () => { throw new Error('mongo down') }) }
+    const production = {
+      reapExpiredLeases: vi.fn(async () => {
+        throw new Error('mongo down')
+      }),
+    }
     const scheduler = new ProductionScheduler(production as never)
 
     await expect(scheduler.reapExpiredLeases()).resolves.toBeUndefined()

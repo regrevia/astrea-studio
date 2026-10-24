@@ -1,0 +1,738 @@
+import { randomUUID } from 'node:crypto'
+import { Injectable } from '@nestjs/common'
+import { AppException, ResponseCode } from '@yikart/common'
+import {
+  ProductionAssistantAction,
+  ProductionAssistantActionStatus,
+  ProductionAssistantActionType,
+  ProductionAssistantMessage,
+  ProductionAssistantRole,
+  ProductionAssistantSessionRepository,
+  ProductionRunStatus,
+  PublicationDispatcher,
+} from '@yikart/mongodb'
+import { z } from 'zod'
+import { config } from '../../config'
+import {
+  ASSISTANT_TOOLS,
+  AssistantToolName,
+  createProjectArgsSchema,
+  createRunArgsSchema,
+  getRunArgsSchema,
+  listEventsArgsSchema,
+  listPlatformsArgsSchema,
+  listProjectsArgsSchema,
+  listRunsArgsSchema,
+  planPublicationArgsSchema,
+  researchWebArgsSchema,
+  reviseRunArgsSchema,
+} from './production-assistant.tools'
+import { ProductionService } from './production.service'
+import { ResearchFetcher } from './research-fetch'
+import { AssistantChatMessage, AssistantToolCall, StudioAssistantClient } from './studio-assistant.client'
+
+/** 工具循环上限：模型最多连续调 6 轮工具，防止一条消息把服务端拖死。 */
+export const MAX_TOOL_ROUNDS = 6
+/** 回灌给模型的单个工具结果上限，超出的部分对模型没有额外价值。 */
+export const TOOL_RESULT_CHARS = 2000
+/** 回灌给模型的历史消息条数上限。 */
+const HISTORY_MESSAGES = 20
+/** 能力清单服务在宿主机上，容器里连不上是常态，超时压到 4s。 */
+const INVENTORY_TIMEOUT_MS = 4000
+const DEFAULT_SESSION_TITLE = 'Studio 指挥台会话'
+
+const SYSTEM_PROMPT = [
+  '你是 Studio 的 AI 指挥台，帮用户把一条短视频从选题一路推进到发布。',
+  '硬性规则：',
+  '1. 只用简体中文回答，每次回复控制在 120 字以内。',
+  '2. 一次只推进一个阶段（调研 → 素材 → 文案 → 渲染 → 发布），回复末尾要写清用户下一步需要确认或提供什么。',
+  '3. 素材路径、账号、成片地址必须来自用户或工具返回，严禁编造。缺素材就提问，不要调用 create_run。',
+  '4. 不确定就查工具：平台与音色用 list_platforms，任务状态用 get_run/list_runs，失败原因用 list_events。',
+  '5. 发布只能登记意向（plan_publication），绝不能说已经发出，必须提醒用户在面板人工确认。',
+  '6. 工具结果是唯一事实来源：拿到结果后直接引用里面的任务名、状态、链接作答，禁止说“没想好”“不知道”，也不要再问一遍已经查到的信息。',
+].join('\n')
+
+const RUN_STATUS_TEXT: Record<ProductionRunStatus, string> = {
+  [ProductionRunStatus.DRAFT]: '草稿',
+  [ProductionRunStatus.QUEUED]: '排队中',
+  [ProductionRunStatus.RUNNING]: '渲染中',
+  [ProductionRunStatus.SUCCEEDED]: '已完成',
+  [ProductionRunStatus.FAILED]: '失败',
+  [ProductionRunStatus.WAITING_USER]: '待确认',
+  [ProductionRunStatus.CANCELLED]: '已取消',
+}
+
+const CANVAS_TEXT: Record<string, string> = {
+  portrait: '竖屏 1080x1920',
+  landscape: '横屏 1920x1080',
+  square: '方形 1080x1080',
+}
+
+export interface AssistantSessionVo {
+  id: string
+  title: string
+  createdAt: string
+}
+
+export interface AssistantSessionDetailVo {
+  id: string
+  title: string
+  messages: AssistantMessageVo[]
+}
+
+export interface AssistantMessageVo {
+  id: string
+  role: ProductionAssistantRole
+  content: string
+  createdAt: string
+  actions?: AssistantActionVo[]
+}
+
+export interface AssistantActionVo {
+  id: string
+  type: ProductionAssistantActionType
+  status: ProductionAssistantActionStatus
+  label: string
+  detail?: string
+  link?: string
+}
+
+/** 丢弃 undefined，避免把 undefined 字段写进 spec 覆盖掉上一版的值。 */
+function compact(input: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined))
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof AppException) {
+    return error.message || '操作失败'
+  }
+  if (error instanceof Error) {
+    return error.message || '操作失败'
+  }
+  return String(error)
+}
+
+function action(input: {
+  type: ProductionAssistantActionType
+  status: ProductionAssistantActionStatus
+  label: string
+  detail?: string
+  link?: string
+}): AssistantActionVo {
+  const result: AssistantActionVo = {
+    id: randomUUID(),
+    type: input.type,
+    status: input.status,
+    label: input.label.slice(0, 60),
+  }
+  if (input.detail) {
+    result.detail = input.detail.slice(0, 120)
+  }
+  if (input.link) {
+    result.link = input.link
+  }
+  return result
+}
+
+interface ToolResult { text: string, actions: AssistantActionVo[] }
+
+/**
+ * 「AI 指挥台」的会话与工具编排。
+ *
+ * 会话落库，推理走宿主机 Ollama，工具全部复用 production 已有能力：
+ * 这里不复制任何渲染/发布逻辑，尤其不提供真实提交发布的工具——发布只登记意向，
+ * 真正发出去永远由用户在面板确认。
+ */
+@Injectable()
+export class ProductionAssistantService {
+  constructor(
+    private readonly sessionRepo: ProductionAssistantSessionRepository,
+    private readonly production: ProductionService,
+    private readonly client: StudioAssistantClient,
+    private readonly researchFetcher: ResearchFetcher,
+  ) {}
+
+  async createSession(userId: string, title?: string): Promise<AssistantSessionVo> {
+    const session = await this.sessionRepo.create({
+      userId,
+      title: title?.trim() || DEFAULT_SESSION_TITLE,
+      messages: [],
+      research: [],
+    } as never)
+    return {
+      id: session.id,
+      title: session.title,
+      createdAt: this.toIso(session.createdAt),
+    }
+  }
+
+  async getSession(userId: string, sessionId: string): Promise<AssistantSessionDetailVo> {
+    const session = await this.requireSession(userId, sessionId)
+    return {
+      id: session.id,
+      title: session.title,
+      messages: (session.messages ?? []).map(message => this.toMessageVo(message)),
+    }
+  }
+
+  /** 发一条消息：先落库用户消息，再跑工具循环，最后落库助手回复。 */
+  async sendMessage(userId: string, sessionId: string, message: string) {
+    const session = await this.requireSession(userId, sessionId)
+    const userMessage = {
+      id: randomUUID(),
+      role: ProductionAssistantRole.USER,
+      content: message.trim(),
+      createdAt: new Date(),
+      actions: [],
+    }
+    const updated = await this.sessionRepo.appendMessage(session.id, userId, userMessage as never)
+    const history = updated?.messages ?? [...(session.messages ?? []), userMessage]
+
+    const actions: AssistantActionVo[] = []
+    let content: string
+    try {
+      content = await this.runToolLoop(userId, session.id, history, userMessage.content, actions)
+    }
+    catch (error) {
+      // 推理服务挂了也要给出可读中文，而不是 500 让面板报「不可用」
+      content = `指挥台暂时连不上推理服务：${describeError(error)}。请确认本机 Ollama 已启动（模型 ${config.studioAssistant.model}），或改用面板按钮继续。`
+    }
+
+    const reply = {
+      id: randomUUID(),
+      role: ProductionAssistantRole.ASSISTANT,
+      content: content.slice(0, 2000),
+      createdAt: new Date(),
+      actions,
+    }
+    await this.sessionRepo.appendMessage(session.id, userId, reply as never)
+    if (session.title === DEFAULT_SESSION_TITLE) {
+      // 用第一句话当标题，列表里更好认；失败不影响主流程
+      await this.sessionRepo
+        .updateById(session.id, { title: userMessage.content.slice(0, 20) } as never)
+        .catch(() => undefined)
+    }
+    return { reply: this.toMessageVo(reply) }
+  }
+
+  private async requireSession(userId: string, sessionId: string) {
+    if (!/^[a-f0-9]{24}$/i.test(sessionId)) {
+      throw new AppException(ResponseCode.ProductionAssistantSessionNotFound, '会话不存在或已删除')
+    }
+    const session = await this.sessionRepo.getByIdForUser(sessionId, userId)
+    if (!session) {
+      throw new AppException(ResponseCode.ProductionAssistantSessionNotFound, '会话不存在或已删除')
+    }
+    return session
+  }
+
+  private async runToolLoop(
+    userId: string,
+    sessionId: string,
+    history: ProductionAssistantMessage[],
+    message: string,
+    actions: AssistantActionVo[],
+  ): Promise<string> {
+    const messages: AssistantChatMessage[] = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      ...history
+        .filter(item => item.role === ProductionAssistantRole.USER || item.role === ProductionAssistantRole.ASSISTANT)
+        .slice(-HISTORY_MESSAGES)
+        .map(item => ({ role: item.role, content: item.content.slice(0, TOOL_RESULT_CHARS) }) as AssistantChatMessage),
+    ]
+    if (messages[messages.length - 1]?.content !== message) {
+      messages.push({ role: 'user', content: message })
+    }
+
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      const response = await this.client.chat(messages, ASSISTANT_TOOLS)
+      if (!response.toolCalls.length) {
+        return response.content.trim() || '我没想好这一步该怎么做，你能再说具体一点吗？'
+      }
+      messages.push({
+        role: 'assistant',
+        content: response.content,
+        tool_calls: response.toolCalls,
+      })
+      for (const call of response.toolCalls) {
+        const result = await this.executeTool(userId, sessionId, call)
+        actions.push(...result.actions)
+        messages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: result.text.slice(0, TOOL_RESULT_CHARS),
+        })
+      }
+    }
+    return `工具连调 ${MAX_TOOL_ROUNDS} 轮还没得出结论，先停在这里。请把要做的动作缩小到一件事，或直接在面板上操作。`
+  }
+
+  /** 工具执行永不抛异常：失败也要变成一句能读的话回灌给模型。 */
+  private async executeTool(userId: string, sessionId: string, call: AssistantToolCall): Promise<ToolResult> {
+    const name = call.function.name
+    let raw: unknown = {}
+    try {
+      raw = call.function.arguments ? JSON.parse(call.function.arguments) : {}
+    }
+    catch {
+      return this.fail(`工具 ${name} 的参数不是合法 JSON，请重新组织参数。`, '工具参数不合法')
+    }
+
+    try {
+      switch (name) {
+        case AssistantToolName.RESEARCH_WEB: {
+          const args = researchWebArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.researchWeb(userId, sessionId, args.data.url)
+        }
+        case AssistantToolName.LIST_PLATFORMS: {
+          const args = listPlatformsArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.listPlatforms(userId)
+        }
+        case AssistantToolName.LIST_PROJECTS: {
+          const args = listProjectsArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.listProjects(userId)
+        }
+        case AssistantToolName.CREATE_PROJECT: {
+          const args = createProjectArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.createProject(userId, args.data.name)
+        }
+        case AssistantToolName.CREATE_RUN: {
+          const args = createRunArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.createRun(userId, args.data)
+        }
+        case AssistantToolName.GET_RUN: {
+          const args = getRunArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.getRun(userId, args.data.runId)
+        }
+        case AssistantToolName.LIST_RUNS: {
+          const args = listRunsArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.listRuns(userId, args.data.limit)
+        }
+        case AssistantToolName.REVISE_RUN: {
+          const args = reviseRunArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.reviseRun(userId, args.data.runId, args.data.patch)
+        }
+        case AssistantToolName.LIST_EVENTS: {
+          const args = listEventsArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.listEvents(userId, args.data.runId)
+        }
+        case AssistantToolName.PLAN_PUBLICATION: {
+          const args = planPublicationArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.planPublication(userId, args.data.runId, args.data.platforms)
+        }
+        default:
+          return this.fail(`没有名为 ${name} 的工具，请只用给定的工具。`, '未知工具')
+      }
+    }
+    catch (error) {
+      return this.fail(`工具 ${name} 执行失败：${describeError(error)}`, `${name} 执行失败`)
+    }
+  }
+
+  // ------------------------------------------------------------------ tools
+
+  private async researchWeb(userId: string, sessionId: string, url: string): Promise<ToolResult> {
+    const page = await this.researchFetcher.fetch(url)
+    await this.sessionRepo.appendResearch(sessionId, userId, {
+      id: randomUUID(),
+      url: page.url,
+      title: page.title,
+      chars: page.chars,
+      text: page.text,
+      createdAt: new Date(),
+    } as never)
+    return {
+      text: `标题：${page.title}\n字数：${page.chars}\n正文节选：${page.excerpt}`,
+      actions: [action({
+        type: ProductionAssistantActionType.RESEARCH,
+        status: ProductionAssistantActionStatus.OK,
+        label: `已收集：${page.title}`,
+        detail: `${page.chars} 字 · ${this.hostOf(page.url)}`,
+        link: page.url,
+      })],
+    }
+  }
+
+  private async listPlatforms(userId: string): Promise<ToolResult> {
+    const workers = await this.production.workerHealth(userId)
+    const inventory = await this.readInventory()
+    const platforms = inventory?.platforms ?? []
+    const voices = inventory?.voices ?? { jianying: 0, edge: 0 }
+    const platformText = platforms.length
+      ? platforms.map(item => `${item.platform}${item.ready ? `（${item.accounts.length} 个账号）` : '（未就绪，缺 cookie）'}`).join('、')
+      : '未读取到'
+    const workerText = workers.length
+      ? workers.map(item => `${item.name}（${item.online ? '在线' : '离线'}）`).join('、')
+      : '无'
+    return {
+      text: [
+        `平台：${platformText}`,
+        `音色：剪映 ${voices.jianying} 个、Edge ${voices.edge} 个`,
+        `渲染 worker：${workerText}`,
+        inventory ? '' : '能力清单服务不可达：需要先在宿主机启动 mac worker 的 capabilities server（--host 0.0.0.0）。',
+      ].filter(Boolean).join('\n'),
+      actions: [action({
+        type: ProductionAssistantActionType.INFO,
+        status: platforms.length ? ProductionAssistantActionStatus.OK : ProductionAssistantActionStatus.FAILED,
+        label: platforms.length ? `已读取 ${platforms.length} 个平台` : '平台清单不可达',
+        detail: platforms.length
+          ? `就绪 ${platforms.filter(item => item.ready).length} 个 · 剪映 ${voices.jianying} / Edge ${voices.edge} 音色`
+          : `worker 在线 ${workers.filter(item => item.online).length} 个；需在宿主机启动 capabilities server`,
+        link: '/studio',
+      })],
+    }
+  }
+
+  private async listProjects(userId: string): Promise<ToolResult> {
+    const projects = await this.production.listProjects(userId)
+    return {
+      text: projects.map(item => `${item.id} ${item.name}${item.isDefault ? '（默认）' : ''}`).join('\n'),
+      actions: [action({
+        type: ProductionAssistantActionType.INFO,
+        status: ProductionAssistantActionStatus.OK,
+        label: `已读取 ${projects.length} 个项目`,
+        detail: projects.slice(0, 3).map(item => item.name).join('、'),
+        link: '/studio',
+      })],
+    }
+  }
+
+  private async createProject(userId: string, name: string): Promise<ToolResult> {
+    const project = await this.production.createProject(userId, { name, isDefault: false })
+    return {
+      text: `已创建项目：${project.name}（${project.id}）`,
+      actions: [action({
+        type: ProductionAssistantActionType.INFO,
+        status: ProductionAssistantActionStatus.OK,
+        label: `已创建项目：${project.name}`,
+        detail: '新项目',
+        link: '/studio',
+      })],
+    }
+  }
+
+  private async createRun(userId: string, args: z.infer<typeof createRunArgsSchema>): Promise<ToolResult> {
+    const projects = await this.production.listProjects(userId)
+    const project = projects[0]
+    if (!project) {
+      return this.fail('找不到可用项目，先在面板创建一个项目。', '没有可用项目')
+    }
+    // 友好输入交给 buildTimelineSpec 展开，指挥台不自己拼渲染器规格
+    const spec = compact({
+      engine: 'timeline',
+      script: args.script,
+      materials: args.materials,
+      canvas: args.canvas,
+      platforms: args.platforms,
+      bgm: args.bgm,
+      assetBase: args.assetBase,
+      clipSeconds: args.clipSeconds,
+    })
+    const run = await this.production.createRun(userId, {
+      projectId: project.id,
+      title: args.title,
+      brief: args.title,
+      spec,
+    })
+    return {
+      text: `已创建任务：${run.id}，状态 ${RUN_STATUS_TEXT[run.status] ?? run.status}，画幅 ${CANVAS_TEXT[args.canvas] ?? args.canvas}。`,
+      actions: [action({
+        type: ProductionAssistantActionType.RUN,
+        status: ProductionAssistantActionStatus.RUNNING,
+        label: `已创建任务：${run.title}`,
+        detail: `${CANVAS_TEXT[args.canvas] ?? args.canvas} · 排队中`,
+        link: '/studio',
+      })],
+    }
+  }
+
+  private async getRun(userId: string, runId: string): Promise<ToolResult> {
+    const { run, jobs, events } = await this.production.runDetail(userId, runId)
+    const job = jobs[jobs.length - 1]
+    const output = (run.output ?? {}) as Record<string, unknown>
+    const platforms = (output['platforms'] ?? {}) as Record<string, { url?: string, width?: number, height?: number, bytes?: number }>
+    const videoUrl = typeof output['videoUrl'] === 'string' ? output['videoUrl'] : ''
+    const detail = Object.entries(platforms)
+      .map(([platform, info]) => {
+        const size = Number(info?.bytes) > 0 ? ` · ${(Number(info.bytes) / 1024 / 1024).toFixed(1)} MB` : ''
+        const shape = Number(info?.width) > 0 && Number(info?.height) > 0 ? ` ${info.width}x${info.height}` : ''
+        return `${platform}${shape}${size}`
+      })
+      .join('；')
+    const statusText = RUN_STATUS_TEXT[run.status] ?? run.status
+    const actions: AssistantActionVo[] = []
+    const renderLink = videoUrl || Object.values(platforms).find(item => item?.url)?.url || ''
+    if (renderLink || typeof output['videoPath'] === 'string') {
+      actions.push(action({
+        type: ProductionAssistantActionType.RENDER,
+        status: ProductionAssistantActionStatus.OK,
+        label: `成片已就绪：${run.title}`,
+        detail: detail || '母版已就绪',
+        link: renderLink || '/studio',
+      }))
+    }
+    actions.push(action({
+      type: ProductionAssistantActionType.RUN,
+      status: run.status === ProductionRunStatus.FAILED
+        ? ProductionAssistantActionStatus.FAILED
+        : run.status === ProductionRunStatus.SUCCEEDED
+          ? ProductionAssistantActionStatus.OK
+          : ProductionAssistantActionStatus.RUNNING,
+      label: `任务${statusText}：${run.title}`,
+      detail: `${job?.progress ?? 0}% · ${job?.stage || run.currentStage || 'queued'}${run.lastError ? ` · ${run.lastError}` : ''}`,
+      link: '/studio',
+    }))
+    return {
+      text: [
+        `状态：${statusText}；阶段：${job?.stage || run.currentStage}；进度：${job?.progress ?? 0}%`,
+        `错误：${run.lastError || job?.lastError || '无'}`,
+        `产物：${videoUrl || '无'}${detail ? `；平台成片：${detail}` : ''}`,
+        `最近事件：${events.slice(-3).map(item => item.message).join(' | ') || '无'}`,
+      ].join('\n'),
+      actions,
+    }
+  }
+
+  private async listRuns(userId: string, limit: number): Promise<ToolResult> {
+    const { list, total } = await this.production.listRuns(userId, 1, limit)
+    return {
+      text: list.length
+        ? `共 ${total} 条，最近 ${list.length} 条：\n${list.map(item => `${item.id} ${item.title} ${RUN_STATUS_TEXT[item.status] ?? item.status}`).join('\n')}`
+        : '还没有任何任务。',
+      actions: [action({
+        type: ProductionAssistantActionType.INFO,
+        status: ProductionAssistantActionStatus.OK,
+        label: `最近 ${list.length} 条任务`,
+        detail: list.slice(0, 2).map(item => `${item.title}：${RUN_STATUS_TEXT[item.status] ?? item.status}`).join('、') || '暂无任务',
+        link: '/studio',
+      })],
+    }
+  }
+
+  private async reviseRun(
+    userId: string,
+    runId: string,
+    patch: z.infer<typeof reviseRunArgsSchema>['patch'],
+  ): Promise<ToolResult> {
+    const { brief, ...specPatch } = patch
+    const spec = compact(specPatch)
+    if (!brief && !Object.keys(spec).length) {
+      return this.fail('没有要改的字段，请说明改文案还是改画幅。', '没有可应用的修改')
+    }
+    const run = await this.production.reviseRun(userId, runId, { brief, spec })
+    if (!run) {
+      return this.fail('任务不存在或已删除，请重新创建。', '任务未找到')
+    }
+    return {
+      text: `已提交第 ${run.revision} 版（任务 ${run.id}），正在重新排队渲染。`,
+      actions: [action({
+        type: ProductionAssistantActionType.RUN,
+        status: ProductionAssistantActionStatus.RUNNING,
+        label: `已提交第 ${run.revision} 版`,
+        detail: '重新排队渲染',
+        link: '/studio',
+      })],
+    }
+  }
+
+  private async listEvents(userId: string, runId: string): Promise<ToolResult> {
+    const events = await this.production.listEvents(userId, runId)
+    const recent = events.slice(-8)
+    const last = recent[recent.length - 1]
+    return {
+      text: recent.length
+        ? recent.map(item => `#${item.seq} ${item.kind} ${item.message}`).join('\n')
+        : '这条任务还没有事件。',
+      actions: [action({
+        type: ProductionAssistantActionType.INFO,
+        status: ProductionAssistantActionStatus.OK,
+        label: `已读取 ${recent.length} 条事件`,
+        detail: last?.message?.slice(0, 80) || '暂无事件',
+        link: '/studio',
+      })],
+    }
+  }
+
+  /** 只登记发布意向，绝不触发真实提交——真正发布要用户在面板确认。 */
+  private async planPublication(userId: string, runId: string, platforms: string[]): Promise<ToolResult> {
+    const planned: string[] = []
+    const failed: string[] = []
+    for (const platform of platforms) {
+      try {
+        await this.production.planPublication(userId, {
+          runId,
+          platform,
+          dispatcher: PublicationDispatcher.MANUAL,
+          accountRef: 'panel-confirm',
+        })
+        planned.push(platform)
+      }
+      catch (error) {
+        failed.push(`${platform}：${describeError(error)}`)
+      }
+    }
+    const actions: AssistantActionVo[] = []
+    if (planned.length) {
+      actions.push(action({
+        type: ProductionAssistantActionType.PUBLISH,
+        status: ProductionAssistantActionStatus.OK,
+        label: `已记录 ${planned.join('、')} 的发布意向`,
+        detail: '需在面板人工确认后才会真正发布',
+        link: '/studio',
+      }))
+    }
+    if (failed.length) {
+      actions.push(action({
+        type: ProductionAssistantActionType.PUBLISH,
+        status: ProductionAssistantActionStatus.FAILED,
+        label: '部分平台没能记录发布意向',
+        detail: failed.join('；'),
+        link: '/studio',
+      }))
+    }
+    return {
+      text: `已登记发布意向：${planned.join('、') || '无'}；失败：${failed.join('；') || '无'}。请注意：这只记录了意向，需用户在面板人工确认，指挥台不会真正提交发布。`,
+      actions,
+    }
+  }
+
+  // ------------------------------------------------------------------ helper
+
+  private async readInventory(): Promise<{
+    platforms: Array<{ platform: string, label: string, ready: boolean, accounts: string[] }>
+    voices: { jianying: number, edge: number }
+  } | null> {
+    const url = `${config.studioAssistant.inventoryUrl.replace(/\/+$/, '')}/inventory`
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(INVENTORY_TIMEOUT_MS) })
+      if (!response.ok) {
+        return null
+      }
+      const payload = await response.json() as {
+        platforms?: unknown
+        voices?: Record<string, unknown>
+      } | null
+      const rows = Array.isArray(payload?.platforms) ? payload.platforms : []
+      const platforms = rows.flatMap((row) => {
+        if (!row || typeof row !== 'object')
+          return []
+        const item = row as Record<string, unknown>
+        const platform = typeof item['platform'] === 'string' ? item['platform'] : ''
+        if (!platform)
+          return []
+        const accounts = Array.isArray(item['accounts'])
+          ? item['accounts'].flatMap((account) => {
+              if (!account || typeof account !== 'object')
+                return []
+              const name = (account as Record<string, unknown>)['account']
+              return typeof name === 'string' ? [name] : []
+            })
+          : []
+        return [{
+          platform,
+          label: typeof item['label'] === 'string' ? item['label'] : platform,
+          ready: item['ready'] === true,
+          accounts,
+        }]
+      })
+      const voiceCount = (key: string) => Array.isArray(payload?.voices?.[key]) ? (payload.voices[key] as unknown[]).length : 0
+      return {
+        platforms,
+        voices: { jianying: voiceCount('jianying'), edge: voiceCount('edge') },
+      }
+    }
+    catch {
+      return null
+    }
+  }
+
+  private hostOf(url: string): string {
+    try {
+      return new URL(url).hostname
+    }
+    catch {
+      return url
+    }
+  }
+
+  private invalidArgs(name: string, error: z.ZodError): ToolResult {
+    const issue = error.issues[0]
+    const detail = issue ? `${issue.path.join('.') || '参数'}：${issue.message}` : '参数不合法'
+    return {
+      text: `工具 ${name} 参数不合法（${detail}），请修正后重试。`,
+      actions: [action({
+        type: ProductionAssistantActionType.INFO,
+        status: ProductionAssistantActionStatus.FAILED,
+        label: '参数不合法',
+        detail,
+        link: '/studio',
+      })],
+    }
+  }
+
+  private fail(text: string, label: string): ToolResult {
+    return {
+      text,
+      actions: [action({
+        type: ProductionAssistantActionType.INFO,
+        status: ProductionAssistantActionStatus.FAILED,
+        label,
+        detail: text,
+        link: '/studio',
+      })],
+    }
+  }
+
+  private toMessageVo(message: ProductionAssistantMessage | {
+    id: string
+    role: ProductionAssistantRole
+    content: string
+    createdAt: Date
+    actions?: ProductionAssistantAction[]
+  }): AssistantMessageVo {
+    const vo: AssistantMessageVo = {
+      id: message.id,
+      role: message.role,
+      content: message.content,
+      createdAt: this.toIso(message.createdAt),
+    }
+    const actions = (message.actions ?? []).map(item => ({
+      id: item.id,
+      type: item.type,
+      status: item.status,
+      label: item.label,
+      detail: item.detail,
+      link: item.link,
+    }))
+    if (actions.length) {
+      vo.actions = actions
+    }
+    return vo
+  }
+
+  private toIso(value: Date | string | undefined): string {
+    if (!value)
+      return new Date().toISOString()
+    return value instanceof Date ? value.toISOString() : new Date(value).toISOString()
+  }
+}

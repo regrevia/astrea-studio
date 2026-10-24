@@ -12,6 +12,7 @@ import { MaterialRepository } from './material.repository'
 import { MediaGroupRepository } from './media-group.repository'
 import { MediaRepository } from './media.repository'
 import { OAuth2CredentialRepository } from './oauth2-credential.repository'
+import { ProductionAssistantSessionRepository } from './production-assistant-session.repository'
 import {
   ProductionEventRepository,
   ProductionJobRepository,
@@ -38,6 +39,7 @@ export * from './material.repository'
 export * from './media-group.repository'
 export * from './media.repository'
 export * from './oauth2-credential.repository'
+export * from './production-assistant-session.repository'
 export * from './production.repository'
 export * from './publish-record.repository'
 export * from './user.repository'
@@ -65,4 +67,5 @@ export const repositories = [
   PublicationAttemptRepository,
   ProductionWorkerRepository,
   ProductionEventRepository,
+  ProductionAssistantSessionRepository,
 ] as const

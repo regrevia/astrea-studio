@@ -34,6 +34,22 @@ export const apiKeyConfigSchema = z.object({
   prefix: z.string().min(1).default('ai_'),
 }).default({ prefix: 'ai_' })
 
+/**
+ * Studio 指挥台的推理与宿主机能力来源。
+ *
+ * 推理走 OpenAI 兼容的 /chat/completions（容器内默认指向宿主机 Ollama），
+ * 不依赖任何外部厂商 Key；inventoryUrl 指向 mac worker 的 capabilities server，
+ * 用来回答「哪些平台账号、哪些音色可用」。两者都允许用环境变量覆盖：
+ *   STUDIO_ASSISTANT_BASE_URL / STUDIO_ASSISTANT_MODEL / STUDIO_ASSISTANT_API_KEY
+ *   STUDIO_ASSISTANT_INVENTORY_URL
+ */
+export const studioAssistantConfigSchema = z.object({
+  baseUrl: httpUrlSchema.default('http://host.docker.internal:11434/v1').describe('OpenAI 兼容推理服务地址'),
+  model: z.string().min(1).default('qwen3.5:9b').describe('模型名，需要支持原生 tools/tool_calls'),
+  apiKey: z.string().default('').describe('可选 API Key，留空则不带鉴权头'),
+  inventoryUrl: httpUrlSchema.default('http://host.docker.internal:8899').describe('宿主机能力清单地址'),
+})
+
 export const channelConfigSchema = z.object({
   channelDb: channelDbConfigSchema,
   shortLink: z.object({
@@ -67,6 +83,7 @@ export const appConfigSchema = z.object({
   aiClient: aitoearnAiClientConfigSchema,
   channel: channelConfigSchema,
   relay: relayConfigSchema.optional(),
+  studioAssistant: studioAssistantConfigSchema,
 })
 
 export class AppConfig extends createZodDto(appConfigSchema) { }

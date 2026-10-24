@@ -76,6 +76,9 @@ export enum ResponseCode {
   ProductionInvalidState = 12853,
   PublicationAttemptNotFound = 12854,
   ProductionWorkerUnauthorized = 12855,
+  ProductionAssistantSessionNotFound = 12856,
+  ProductionAssistantModelFailed = 12857,
+  ProductionAssistantResearchFailed = 12858,
 
   // 12900-12999: content（内容组合）
   MaterialGroupEmpty = 12900,

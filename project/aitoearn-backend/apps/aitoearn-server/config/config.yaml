@@ -220,3 +220,10 @@ relay:
   serverUrl: https://aitoearn.ai/api
   apiKey: ""
   callbackUrl: http://localhost:8080/api/v2/channels/relay/callback
+studioAssistant:
+  # Studio 指挥台的推理服务：容器内默认打到宿主机 Ollama，无外部 Key
+  baseUrl: ${STUDIO_ASSISTANT_BASE_URL:-http://host.docker.internal:11434/v1}
+  model: ${STUDIO_ASSISTANT_MODEL:-qwen3.5:9b}
+  apiKey: ${STUDIO_ASSISTANT_API_KEY:-}
+  # mac worker 的 capabilities server，用来回答平台账号/音色是否就绪
+  inventoryUrl: ${STUDIO_ASSISTANT_INVENTORY_URL:-http://host.docker.internal:8899}

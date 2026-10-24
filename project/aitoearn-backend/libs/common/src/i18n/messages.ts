@@ -220,6 +220,18 @@ export const messages: Record<ResponseCode, Record<Locale, MessageValue>> = {
     'en-US': 'Worker token is invalid or disabled',
     'zh-CN': 'Worker 令牌无效或已停用',
   },
+  [ResponseCode.ProductionAssistantSessionNotFound]: {
+    'en-US': 'Assistant session not found',
+    'zh-CN': '指挥台会话未找到',
+  },
+  [ResponseCode.ProductionAssistantModelFailed]: {
+    'en-US': 'Assistant model service is unavailable',
+    'zh-CN': '指挥台推理服务不可用',
+  },
+  [ResponseCode.ProductionAssistantResearchFailed]: {
+    'en-US': 'Assistant research fetch failed',
+    'zh-CN': '指挥台联网调研失败',
+  },
   // 12900 (content/material)
   [ResponseCode.MaterialGroupEmpty]: {
     'en-US': 'Material group cannot be empty',
