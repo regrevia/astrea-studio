@@ -21,6 +21,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -450,6 +451,16 @@ MPT_HOME = Path(os.environ.get(
 DEFAULT_VOICE = "sami:BV411_streaming"  # 剪映「解说小帅」，会员音色不经会员也能用
 
 
+TTS_CACHE = Path(os.path.expanduser("~/CreatorStudio/cache/tts"))
+
+
+def _tts_cache_path(text: str, voice: str) -> Path | None:
+    """配音缓存键：音色 + 原文。稿子改一个字就重新合成，不改就复用。"""
+    key = hashlib.sha1(f"{voice}\x00{text}".encode()).hexdigest()[:20]
+    slug = re.sub(r"[^0-9A-Za-z]+", "-", voice).strip("-") or "voice"
+    return TTS_CACHE / slug / f"{key}.mp3"
+
+
 def _tts(text: str, out: Path, voice: str) -> None:
     """剪映音色配音（SAMI 内部接口）。
 
@@ -468,6 +479,12 @@ def _tts(text: str, out: Path, voice: str) -> None:
     env = dict(os.environ)
     env["MPT_HOME"] = str(MPT_HOME)
     env["PYTHONPATH"] = str(MPT_HOME)
+    # 同音色同文本只合成一次：SAMI 流式音色每次采样都有细微差别，
+    # 不缓存的话同一份稿子两次出片口型、时长两样，批量出片没法对比母版。
+    cache = _tts_cache_path(text, voice)
+    if cache is not None and cache.exists() and cache.stat().st_size >= 1000:
+        shutil.copyfile(cache, out)
+        return
     tail = "no output"
     for attempt in range(3):
         if out.exists():
@@ -477,6 +494,12 @@ def _tts(text: str, out: Path, voice: str) -> None:
             capture_output=True, text=True, cwd=str(MPT_HOME), env=env, timeout=240,
         )
         if out.exists() and out.stat().st_size >= 1000:
+            if cache is not None:
+                try:
+                    cache.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(out, cache)
+                except OSError:
+                    pass
             return
         tail = (r.stderr or r.stdout or "no output").strip()[-300:]
         if attempt < 2:
