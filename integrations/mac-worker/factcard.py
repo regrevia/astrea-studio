@@ -19,6 +19,8 @@ from typing import Any
 W, H = 1080, 1920
 TOP_SAFE, BOTTOM_SAFE = 240, 430  # 顶部账号栏 / 底部字幕与按钮区
 
+BODY_SIZE = 78        # 卡面正文字号（1080×1920 下的像素值）
+HOOK_SIZE = 80        # 开场钩子字号
 FONT_PATH = os.environ.get("FACTCARD_FONT", "/System/Library/Fonts/STHeiti Medium.ttc")
 DEFAULT_VOICE = "sami:BV405_streaming"
 DEFAULT_KICKER = "大模型面试题"
@@ -93,20 +95,22 @@ def _seed(slug: str) -> int:
 
 
 
+_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9%\.\-\+/]*|.", re.S)
+
+
 def _wrap_text(draw, text: str, font, max_w: float) -> list[str]:
-    """中文逐字断行；
- 保留为硬换行。"""
+    """中文逐字断行，西文按整词走（PDF / GPT-4 不被劈开）。"""
     out: list[str] = []
     for para in text.split("\n"):
         if not para:
             out.append("")
             continue
         buf = ""
-        for ch in para:
-            probe = buf + ch
+        for tok in _TOKEN_RE.findall(para):
+            probe = buf + tok
             if draw.textlength(probe, font=font) > max_w and buf:
                 out.append(buf)
-                buf = ch
+                buf = tok
             else:
                 buf = probe
         if buf:
@@ -163,43 +167,42 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
     if not hook:
         # 卡片高度跟着正文走，避免大片空白（"PPT 味"最主要的来源）
         measure = ImageDraw.Draw(overlay)
-        body_lines = _wrap_text(measure, body, _font(46), W - 248) if body else []
-        # 下限压到 860：原来 1080 会让只有一行正文的卡片下半张全是空的
-        card_bottom = max(860, body_top + int(len(body_lines) * 46 * 1.45) + 120)
-        draw.rounded_rectangle((76, 500, 1004, card_bottom), radius=56,
+        body_lines = _wrap_text(measure, body, _font(BODY_SIZE), W - 248) if body else []
+        # 卡片高度跟着正文走；下限 1000 让正文区占满上三分之二
+        card_bottom = max(1000, body_top + int(len(body_lines) * BODY_SIZE * 1.42) + 96)
+        draw.rounded_rectangle((76, 470, 1004, card_bottom), radius=56,
                                fill=(255, 255, 255, 14),
                                outline=(255, 255, 255, 70), width=2)
         # 左侧强调条：标题到正文结束
-        draw.rounded_rectangle((100, 560, 112, card_bottom - 90), radius=6,
+        draw.rounded_rectangle((100, 530, 112, card_bottom - 76), radius=6,
                                fill=(*accent, 235))
         # 编号做成右上角小徽章：幽灵大字会和标题抢视线
         if index:
             bf = _font(46)
             bw = draw.textlength(index, font=bf)
-            draw.rounded_rectangle((950 - bw - 34, 528, 966, 600), radius=36,
+            draw.rounded_rectangle((950 - bw - 34, 498, 966, 570), radius=36,
                                    fill=(*accent, 40), outline=(*accent, 150), width=2)
-            draw.text((958 - bw - 17, 564), index, font=bf, fill=(*accent, 245), anchor="mm")
+            draw.text((958 - bw - 17, 534), index, font=bf, fill=(*accent, 245), anchor="mm")
     else:
         # 开场：大引号 + 斜切色块
         draw.polygon([(0, 1200), (W, 980), (W, 1320), (0, 1540)], fill=(*accent, 26))
         draw.rounded_rectangle((76, 500, 180, 512), radius=6, fill=(*accent, 240))
 
     # 顶部 kicker
-    draw.text((76, TOP_SAFE + 44), kicker, font=_font(40), fill=(255, 255, 255, 205))
+    draw.text((76, TOP_SAFE + 16), kicker, font=_font(40), fill=(255, 255, 255, 205))
 
-    # 进度点
-    dot_y = H - 620  # 1300：卡片收紧后进度点也跟着上移，别悬在空白里
-    gap, r = 26, 6
-    start = W // 2 - int((total - 1) * gap / 2)
-    for i in range(total):
-        cx = start + i * gap
-        draw.ellipse((cx - r, dot_y - r, cx + r, dot_y + r),
-                     fill=(*accent, 255) if i == progress else (255, 255, 255, 60))
+    # 顶部进度条：一条线取代分页点，读起来是"进度"不是"翻页"
+    bar_y, bar_h = 344, 8
+    draw.rounded_rectangle((76, bar_y, 1004, bar_y + bar_h), radius=4,
+                           fill=(255, 255, 255, 36))
+    filled = 76 + int((1004 - 76) * (progress + 1) / max(1, total))
+    draw.rounded_rectangle((76, bar_y, filled, bar_y + bar_h), radius=4,
+                           fill=(*accent, 240))
 
     # 正文要点：出图阶段精排（字号/行距/安全区都是像素级控制）
     if body:
-        _draw_block(overlay, body, 46 if not hook else 44, body_top, 124, W - 248,
-                    fill=(255, 255, 255, 236))
+        _draw_block(overlay, body, BODY_SIZE if not hook else HOOK_SIZE, body_top,
+                    124, W - 248, fill=(255, 255, 255, 236), spacing=1.42)
     if hook:
         # 开场卡没有边框，给钩子句一条细分隔线做锚
         draw.rounded_rectangle((124, body_top - 44, 220, body_top - 38), radius=3,
@@ -223,21 +226,7 @@ def _draw_centered(page, text, font, cx, cy, fill, max_w, spacing=1.3):
     from PIL import ImageDraw
 
     draw = ImageDraw.Draw(page)
-    lines: list[str] = []
-    for para in text.split("\n"):
-        if not para:
-            lines.append("")
-            continue
-        buf = ""
-        for ch in para:
-            probe = buf + ch
-            if draw.textlength(probe, font=font) > max_w and buf:
-                lines.append(buf)
-                buf = ch
-            else:
-                buf = probe
-        if buf:
-            lines.append(buf)
+    lines: list[str] = _wrap_text(draw, text, font, max_w)
     heights = [draw.textbbox((0, 0), ln or " ", font=font)[3] for ln in lines]
     total_h = sum(heights) + spacing * font.size * max(0, len(lines) - 1)
     y = cy - total_h / 2
@@ -296,7 +285,11 @@ def _first_sentence(text: str, limit: int = 30) -> str:
     if not text:
         return ""
     cut = min(len(text), limit)
-    for idx in range(cut, max(8, cut - 8), -1):
+    # 落在西文词中间就往后退到词边界（"PDF"不该变成"PD"）
+    while 0 < cut < len(text) and text[cut - 1].isascii() and text[cut - 1].isalnum() \
+            and text[cut].isascii() and text[cut].isalnum():
+        cut -= 1
+    for idx in range(cut, max(6, cut - 8), -1):
         if text[idx - 1] in "。！？，；":
             return text[:idx]
     return text[:cut]
@@ -340,16 +333,16 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
     # 1) 开场钩子
     hook_img = render_card(out_dir / "s00.png", kicker=kicker, index="00",
                            palette_idx=0, progress=0, total=total, slug=slug, hook=True,
-                           body=hook, body_top=880)
+                           body=hook, body_top=800)
     scenes.append({
         "image": str(hook_img),
         "say": str(narration.get("intro") or f"{topic}。{hook}").strip(),
         "text": _unwrap(topic, 10),
-        "caption": _first_sentence(f"{topic.rstrip('？?!！')}？{hook}", 18),
+        "caption": _first_sentence(hook, 21),
         "voice": voice,
         "native": {
             "font": TITLE_FONT, "font_size": _title_size(topic),
-            "transform_y": 0.354, "caption_size": 8, "caption_y": -0.72,
+            "transform_y": 0.458, "caption_size": 8, "caption_y": -0.72,
             "text_anim_in": "居中打字",
             "text_anim_out": "向上溶解",
             "transition_in": TRANSITIONS[0], "transition_duration": 0.7,
@@ -361,7 +354,7 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
     for i, (title, body, say) in enumerate(points, start=1):
         img = render_card(out_dir / f"s{i:02d}.png", kicker=kicker, index=f"0{i}",
                           palette_idx=i, progress=i, total=total, slug=slug,
-                          body=body, body_top=760)
+                          body=body, body_top=680)
         scenes.append({
             "image": str(img),
             "say": say,
@@ -370,7 +363,7 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
             "voice": voice,
             "native": {
                 "font": TITLE_FONT, "font_size": _title_size(title),
-                "transform_y": 0.375, "caption_size": 8, "caption_y": -0.78,
+                "transform_y": 0.458, "caption_size": 8, "caption_y": -0.78,
                 "text_anim_in": TEXT_ANIMS[i % len(TEXT_ANIMS)],
                 "text_anim_out": TEXT_OUTS[i % len(TEXT_OUTS)],
                 "transition_in": TRANSITIONS[i % len(TRANSITIONS)],

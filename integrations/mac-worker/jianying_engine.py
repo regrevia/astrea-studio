@@ -520,7 +520,7 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
     total = 0.0
     stats = {"images": 0, "texts": 0, "effects": 0, "audios": 0,
              "transitions": 0, "text_anims": 0, "fonts": 0, "keyframes": 0,
-             "skipped": []}
+             "characters": 0, "skipped": []}
     for idx, item in enumerate(plan):
         scene, native = item["scene"], item["native"]
         dur = item["duration"]
@@ -581,6 +581,62 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                         stats["keyframes"] += 1
                     except Exception as exc:  # noqa: BLE001 - 关键帧失败不该毁掉整条片
                         stats["skipped"].append(f"keyframe: {exc}")
+
+        # ---- 1.5) 角色轨：鲸鱼娘常驻右下，跟这屏口播一起呼吸
+        char_cfg = _character_config(spec)
+        if char_cfg is not None:
+            track = str(char_cfg.get("track") or "character")
+            try:
+                png = _character_frame(char_cfg, idx, len(plan), job_dir, width, height,
+                                       bool(item["audio"]))
+            except Exception as exc:  # noqa: BLE001 - 角色贴不上不该毁掉整条片
+                png = None
+                stats["skipped"].append(f"character: {exc}")
+            if png:
+                cclip: dict[str, Any] = {
+                    "draft_id": draft_id,
+                    "image_url": str(png),
+                    "width": width,
+                    "height": height,
+                    "start": total,
+                    "end": total + dur,
+                    "track_name": track,
+                    "relative_index": 1,
+                }
+                anim_in = _pick(char_cfg.get("anim_in") or "渐显",
+                                "video_intro_animations")
+                if anim_in:
+                    cclip["intro_animation"] = anim_in
+                    cclip["intro_animation_duration"] = float(
+                        char_cfg.get("anim_in_duration") or 0.5)
+                try:
+                    _post("/add_image", cclip)
+                    stats["characters"] += 1
+                except Exception as exc:  # noqa: BLE001
+                    stats["skipped"].append(f"character_clip: {exc}")
+
+                # 呼吸 + 轻微起伏：position_y 单位是半个画布高，0.008≈8px；
+                # 属性名必须用 pyJianYingDraft 的枚举名（transform_y 会被服务端拒绝）。
+                amp = float(char_cfg.get("bob") or 0.008)
+                breath = float(char_cfg.get("breath") or 1.015)
+                t0 = total + 0.2
+                mid = total + dur / 2
+                t1 = max(mid + 0.3, total + dur - 0.2)
+                sway = float(char_cfg.get("sway") or 1.2)
+                for prop, lo, hi in (("position_y", "0", f"{amp:.4f}"),
+                                     ("uniform_scale", "1", f"{breath:.3f}"),
+                                     ("rotation", "0", f"{sway:.2f}")):
+                    try:
+                        _post("/add_video_keyframe", {
+                            "draft_id": draft_id,
+                            "track_name": track,
+                            "property_types": [prop, prop, prop],
+                            "times": [round(t0, 3), round(mid, 3), round(t1, 3)],
+                            "values": [lo, hi, lo],
+                        })
+                        stats["keyframes"] += 1
+                    except Exception as exc:  # noqa: BLE001
+                        stats["skipped"].append(f"char_keyframe({prop}): {exc}")
 
         # ---- 2) 文字轨：主文案（VIP 字体 + 入场/出场动画）+ 可选逐句字幕
         text = _scene_text(scene)
@@ -667,6 +723,60 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
         total += dur
 
     return {"draft_id": draft_id, "duration": total, "stats": stats}
+
+
+_CHARACTERS_ROOT = Path("~/CreatorStudio/state/characters").expanduser()
+_CHAR_FRAME_CACHE: dict[tuple[str, str], Any] = {}
+
+
+def _character_config(spec: dict[str, Any]) -> dict[str, Any] | None:
+    """spec.character 决定角色层：不加就不贴，加上就常驻右下角。"""
+    cfg = spec.get("character")
+    if cfg is False:
+        return None
+    if cfg is None:
+        # 默认只有分镜卡走角色层，其他引擎的 spec 不该被这条路影响
+        if spec.get("template") != "factcard":
+            return None
+        cfg = {}
+    if not isinstance(cfg, dict) or cfg.get("enabled") is False:
+        return None
+    return cfg
+
+
+def _character_pose(cfg: dict[str, Any], idx: int, total: int) -> str:
+    poses = cfg.get("poses")
+    if isinstance(poses, list) and poses:
+        return str(poses[idx % len(poses)])
+    if idx == 0:
+        return "wave"       # 开场挥手，先把人立住
+    if idx >= total - 1:
+        return "happy"      # 收尾给情绪高点
+    return "point" if idx % 2 else "think"
+
+
+def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
+                     width: int, height: int, speaking: bool) -> Path | None:
+    """把立绘贴到一张透明画布上，交回剪映当独立图层（可单独做动效）。"""
+    from PIL import Image
+
+    import character
+
+    pose = str(cfg.get("pose") or _character_pose(cfg, idx, total))
+    mouth = "half" if speaking else "closed"
+    key = (pose, mouth)
+    figure = _CHAR_FRAME_CACHE.get(key)
+    if figure is None:
+        figure = character.render(pose=pose, mouth=mouth)
+        _CHAR_FRAME_CACHE[key] = figure
+    w = int(float(cfg.get("width") or 460) * width / 1080)
+    x = int(float(cfg.get("x") or 700) * width / 1080)
+    y = int(float(cfg.get("y") or 1150) * height / 1920)
+    canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    canvas.alpha_composite(figure.resize((w, w), Image.LANCZOS), (x, y))
+    out = job_dir / f"char_{idx:02d}.png"
+    canvas.save(out)
+    return out
 
 
 def render_jianying(payload: dict[str, Any], job_dir: Path,
