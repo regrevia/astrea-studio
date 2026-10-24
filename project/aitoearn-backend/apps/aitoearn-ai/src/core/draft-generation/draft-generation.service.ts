@@ -23,6 +23,7 @@ import { z } from 'zod'
 import { TaskStatus } from '../../common'
 import { config } from '../../config'
 import { AiAvailabilityService } from '../ai-availability'
+import { isChannelConfigured } from '../ai/channel-availability'
 import { ImageService } from '../ai/image/image.service'
 import { VideoService } from '../ai/video/video.service'
 import { DraftGenerationMemoryService } from './draft-generation-memory.service'
@@ -716,9 +717,13 @@ export class DraftGenerationService {
   // ==================== 图文草稿生成 ====================
 
   getDraftGenerationPricing(): ReturnType<typeof DraftGenerationPricingVo.create> {
-    const imageModels = config.ai.draftGeneration.imageModels
+    // 只下发凭证可用的模型，未配置的渠道（如 relay/volcengine 未填 key）不进入列表，
+    // 避免前端出现点了必然报错的不可用模型。
+    const imageChannelReady = isChannelConfigured(AiLogChannel.NewApi) || isChannelConfigured(AiLogChannel.Relay)
+    const imageModels = imageChannelReady ? config.ai.draftGeneration.imageModels : []
+    const videoModels = config.ai.models.video.generation.filter(model => isChannelConfigured(model.channel))
 
-    return DraftGenerationPricingVo.create({ imageModels, videoModels: config.ai.models.video.generation })
+    return DraftGenerationPricingVo.create({ imageModels, videoModels })
   }
 
   /**
