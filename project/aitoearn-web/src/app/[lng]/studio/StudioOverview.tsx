@@ -290,7 +290,7 @@ const CHARACTER_KIND_LABELS: Record<string, string> = {
 function PresenterPanel({ characters }: { characters: CharacterInfo[] }) {
   if (!characters.length) {
     return (
-      <p className="text-xs text-muted-foreground">还没有主角素材，放一张透明 PNG 进素材目录就能用。</p>
+      <p className="text-xs text-muted-foreground">还没有主角素材。</p>
     )
   }
   return (
@@ -318,7 +318,7 @@ function PresenterPanel({ characters }: { characters: CharacterInfo[] }) {
           </div>
         ))}
       </div>
-      <p className="text-xs text-muted-foreground">主角自带音色，换主角就换解说。加新主角：新建一个主角文件夹，刷新即出现。</p>
+      <p className="text-xs text-muted-foreground">换主角就换解说。</p>
     </div>
   )
 }
