@@ -221,6 +221,38 @@ def _energy_states(mp3: Path, dur: float) -> list[tuple[float, float]]:
     return [(a, min(1.0, v / peak)) for a, v in levels]
 
 
+def _clause_switch(mp3: Path, dur: float, cfg: dict) -> float | None:
+    """手势换在句内停顿处，而不是死板的 55%：人换手势总在说完半句的时候。"""
+    try:
+        levels = _energy_states(mp3, dur)
+    except Exception:
+        return None
+    if len(levels) < 8:
+        return None
+    vals = [v for _, v in levels]
+    floor = max(0.06, sorted(vals)[int(len(vals) * 0.15)])
+    median = sorted(vals)[len(vals) // 2]
+    # 句读的停顿比静音底噪响：门槛放到中位音量的一半，才抓得到逗号后的换气
+    floor = min(floor * 1.6, median * 0.6)
+    lo = int(len(levels) * 0.18)
+    hi = int(len(levels) * 0.86)
+    best, best_len, run, run_start = 0, 0.0, 0, None
+    for i in range(lo, hi):
+        if levels[i][1] <= floor:
+            if run_start is None:
+                run_start = i
+            run += 1
+            if run > best_len:
+                best, best_len = run_start, run
+        else:
+            run, run_start = 0, None
+    if best_len < 2:
+        return None
+    mid = levels[min(best + best_len // 2, len(levels) - 1)][0]
+    frac = mid / max(0.4, dur)
+    return frac if 0.25 <= frac <= 0.9 else None
+
+
 def _audio_beats(mp3: Path, dur: float, cfg: dict) -> list[tuple[str, float]]:
     """口型跟着实际音量走：静音闭口、轻读半开、重音张开，长短句节奏就不同了。"""
     levels = _energy_states(mp3, dur)
@@ -434,6 +466,10 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             beats = _beats(say, dur, i == total - 1, char_cfg,
                            mp3=mp3 if say else None)
             switch_at = 0.55
+            if alt_pose and say:
+                heard = _clause_switch(mp3, dur, char_cfg)
+                if heard:
+                    switch_at = heard
             elapsed = 0.0
             prev_ov = None      # 上一段口型：换姿态时要和它交叉，不能硬替换
             prev_pose = None
