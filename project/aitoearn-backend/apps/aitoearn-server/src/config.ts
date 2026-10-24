@@ -39,16 +39,24 @@ export const apiKeyConfigSchema = z.object({
  *
  * 推理走 OpenAI 兼容的 /chat/completions（容器内默认指向宿主机 Ollama），
  * 不依赖任何外部厂商 Key；inventoryUrl 指向 mac worker 的 capabilities server，
- * 用来回答「哪些平台账号、哪些音色可用」。两者都允许用环境变量覆盖：
+ * 用来回答「哪些平台账号、哪些音色可用」。整块配置可选：不写也能启动，用下面的默认值；
+ * 需要换模型/端口时优先用环境变量覆盖，其次才改 config.yaml：
  *   STUDIO_ASSISTANT_BASE_URL / STUDIO_ASSISTANT_MODEL / STUDIO_ASSISTANT_API_KEY
  *   STUDIO_ASSISTANT_INVENTORY_URL
  */
+const studioAssistantDefaults = {
+  baseUrl: process.env['STUDIO_ASSISTANT_BASE_URL'] || 'http://host.docker.internal:11434/v1',
+  model: process.env['STUDIO_ASSISTANT_MODEL'] || 'qwen3.5:9b',
+  apiKey: process.env['STUDIO_ASSISTANT_API_KEY'] || '',
+  inventoryUrl: process.env['STUDIO_ASSISTANT_INVENTORY_URL'] || 'http://host.docker.internal:8899',
+}
+
 export const studioAssistantConfigSchema = z.object({
-  baseUrl: httpUrlSchema.default('http://host.docker.internal:11434/v1').describe('OpenAI 兼容推理服务地址'),
-  model: z.string().min(1).default('qwen3.5:9b').describe('模型名，需要支持原生 tools/tool_calls'),
-  apiKey: z.string().default('').describe('可选 API Key，留空则不带鉴权头'),
-  inventoryUrl: httpUrlSchema.default('http://host.docker.internal:8899').describe('宿主机能力清单地址'),
-})
+  baseUrl: httpUrlSchema.default(studioAssistantDefaults.baseUrl).describe('OpenAI 兼容推理服务地址'),
+  model: z.string().min(1).default(studioAssistantDefaults.model).describe('模型名，需要支持原生 tools/tool_calls'),
+  apiKey: z.string().default(studioAssistantDefaults.apiKey).describe('可选 API Key，留空则不带鉴权头'),
+  inventoryUrl: httpUrlSchema.default(studioAssistantDefaults.inventoryUrl).describe('宿主机能力清单地址'),
+}).default(studioAssistantDefaults)
 
 export const channelConfigSchema = z.object({
   channelDb: channelDbConfigSchema,
