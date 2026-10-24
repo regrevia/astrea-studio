@@ -115,8 +115,11 @@ class ManifestHostTest(unittest.TestCase):
             H.load_host(d, hosts_dir=self.tmp)
 
     def test_dict_override_voice_and_placement(self):
-        h = H.load_host({"id": "maid", "voice": "edge:zh-CN-XiaoxiaoNeural",
-                         "placement": {"width": 640}})
+        d = self._write("custom", {"label": "自定义", "kind": "avatar", "clip": "a.png",
+                                   "voice": "sami:BV100_streaming"})
+        (d / "a.png").write_bytes(b"x")
+        h = H.load_host({"id": "custom", "voice": "edge:zh-CN-XiaoxiaoNeural",
+                         "placement": {"width": 640}}, hosts_dir=self.tmp)
         self.assertEqual(h.voice, "edge:zh-CN-XiaoxiaoNeural")
         self.assertEqual(h.placement["width"], 640)
         self.assertEqual(h.placement["x"], H.DEFAULT_PLACEMENT["x"])

@@ -63,7 +63,8 @@ jobs:
       - name: 安装 ffmpeg 与 Pillow
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
+          # 字幕要渲染中文，缺 Noto CJK 会直接报『找不到可用字体』
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk
           python3 -m pip install --disable-pip-version-check pillow
           ffmpeg -version | head -1
           ffprobe -version | head -1

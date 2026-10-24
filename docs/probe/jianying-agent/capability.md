@@ -21,7 +21,7 @@
 本机 REA 6.7.0 的**原生二进制分析 provider 全部不可用**，因此本报告对 dylib 的证据采用**有界 `strings`/`grep`**，而非 REA 反编译。这是可复现的环境限制，不是放弃分析：
 
 ```bash
-/Users/apple/.dsh/skills/rea-cli/scripts/rea.sh providers
+$HOME/.dsh/skills/rea-cli/scripts/rea.sh providers
 # → ghidra: not_configured (GHIDRA_INSTALL_DIR unset)
 #   且 architecture_unsupported: "Ghidra v1 cannot enforce the selected architecture
 #   when importing a universal Mach-O; analyze a thinned Mach-O slice instead."
@@ -375,7 +375,7 @@ head -c 16 "$U/Projects/com.lveditor.draft/envoy_promo_v2/deepagent/deepagent.db
 ### 4.11 REA（JS 制品分析，可用；原生 provider 不可用）
 
 ```bash
-R=/Users/apple/.dsh/skills/rea-cli/scripts/rea.sh
+R=$HOME/.dsh/skills/rea-cli/scripts/rea.sh
 $R --version                     # 6.7.0
 $R providers                     # 确认 ghidra/hopper/ida/kuna 均 not_configured
 # 可用路径（本次已跑，产物已移出仓库：/tmp/jianying-rea/chatbot-rea.json 124 MB）
