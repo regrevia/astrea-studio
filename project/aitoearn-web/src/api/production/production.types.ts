@@ -202,6 +202,17 @@ export interface VoiceInfo {
   voice?: string
 }
 
+/** 成片的主角：虚拟形象 / 真人素材 / 数字人。 */
+export interface CharacterInfo {
+  id: string
+  label: string
+  kind: 'avatar' | 'person' | 'digital_human'
+  voice: string
+  alpha: boolean
+  clips: number
+  source: 'builtin' | 'custom'
+}
+
 /** 能力快照。 */
 export interface Inventory {
   platforms: PlatformInfo[]

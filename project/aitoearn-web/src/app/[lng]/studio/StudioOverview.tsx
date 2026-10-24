@@ -14,10 +14,10 @@
 
 'use client'
 
-import type { Inventory, ProductionRun, ProductionWorker, PublicationAttempt } from '@/api/production/production.types'
-import { AlertCircle, CheckCircle2, Clock, Loader2, Mic, Plus, QrCode, RotateCw, Send, Video } from 'lucide-react'
+import type { CharacterInfo, Inventory, ProductionRun, ProductionWorker, PublicationAttempt } from '@/api/production/production.types'
+import { AlertCircle, CheckCircle2, Clock, Loader2, Mic, Plus, QrCode, RotateCw, Send, UserRound, Video } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { getHealth, getInventory, getProjects, getPublications, getRun, getRuns } from '@/api/production/production.api'
+import { getCharacters, getHealth, getInventory, getProjects, getPublications, getRun, getRuns } from '@/api/production/production.api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -274,6 +274,63 @@ function PlatformMatrix({ inventory }: { inventory: Inventory | null }) {
 }
 
 /** 配音音色：剪映原生（sami:）+ Edge TTS。 */
+/** 主角（成片里负责解说的人）。虚拟形象、真人素材、数字人都走同一份清单。 */
+const CHARACTER_KIND_LABELS: Record<string, string> = {
+  avatar: '虚拟形象',
+  person: '真人素材',
+  digital_human: '数字人',
+}
+
+function PresenterPanel({ characters }: { characters: CharacterInfo[] }) {
+  if (!characters.length) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        没读到主角清单。宿主机上的 capabilities server 没起来时这里会是空的；
+        素材目录是
+        {' '}
+        <code className="text-[10px]">~/CreatorStudio/state/characters/&lt;id&gt;/</code>
+        ，放一张透明 PNG 就能当主角。
+      </p>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-2">
+        {characters.map(c => (
+          <div key={c.id} className="min-w-[220px] rounded-lg border bg-muted/30 px-3 py-2">
+            <div className="flex items-center gap-2">
+              <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-sm font-medium">{c.label}</span>
+              <Badge variant="secondary">{CHARACTER_KIND_LABELS[c.kind] ?? c.kind}</Badge>
+              {c.source === 'custom' && <Badge variant="outline">自定义</Badge>}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              <code className="text-[10px]">{c.id}</code>
+              {' · '}
+              {c.clips}
+              {' '}
+              段素材
+              {' · '}
+              音色
+              {' '}
+              <code className="text-[10px]">{c.voice}</code>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        主角自带音色，换主角就换解说。加新主角：建一个目录写
+        {' '}
+        <code className="text-[10px]">host.json</code>
+        （见
+        {' '}
+        <code className="text-[10px]">integrations/mac-worker/export/CHARACTERS.md</code>
+        ），刷新即出现。
+      </p>
+    </div>
+  )
+}
+
 function VoicePanel({ inventory }: { inventory: Inventory | null }) {
   const [tab, setTab] = useState<'jianying' | 'edge'>('jianying')
   if (!inventory) {
@@ -329,6 +386,7 @@ export default function StudioOverview() {
   const [workers, setWorkers] = useState<ProductionWorker[]>([])
   const [projects, setProjects] = useState<Record<string, string>>({})
   const [inventory, setInventory] = useState<Inventory | null>(null)
+  const [characters, setCharacters] = useState<CharacterInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   /** 新建任务后需要单独追详情：列表接口只回概览，成片产物在 getRun 的 run 里。 */
@@ -340,16 +398,18 @@ export default function StudioOverview() {
       // http.get<T> resolves the whole envelope ({code, data, message}), not the
       // payload — the project convention is `res?.data?.list`. Reading `.list`
       // straight off the envelope is undefined and silently renders empty cards.
-      const [runsRes, pubsRes, healthRes, inv] = await Promise.all([
+      const [runsRes, pubsRes, healthRes, inv, chars] = await Promise.all([
         getRuns({ pageNo: 1, pageSize: 20 }),
         getPublications(),
         getHealth(),
         getInventory(),
+        getCharacters(),
       ])
       setRuns(runsRes?.data?.list ?? [])
       setPublications(pubsRes?.data ?? [])
       setWorkers(healthRes?.data?.workers ?? [])
       setInventory(inv)
+      setCharacters(chars)
       setError('')
     }
     catch (e) {
@@ -494,6 +554,19 @@ export default function StudioOverview() {
         </CardHeader>
         <CardContent>
           <PlatformMatrix inventory={inventory} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <UserRound className="h-4 w-4" />
+            主角
+            <Badge variant="secondary">{characters.length}</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <PresenterPanel characters={characters} />
         </CardContent>
       </Card>
 

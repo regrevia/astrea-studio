@@ -37,9 +37,24 @@ else
 fi
 
 echo "=== building $TARGET from $WEB"
+# buildx does not inherit the shell proxy: without these args every RUN inside
+# the image talks to the internet directly, and corepack's pnpm download dies
+# with a bare "fetch failed" (HTTP_PROXY/HTTPS_PROXY are predefined build args).
+PROXY_ARGS=()
+if [ -n "${HTTP_PROXY:-}" ]; then
+  # 容器里的 127.0.0.1 是容器自己，必须换成 host.docker.internal 才连得上宿主代理。
+  IN_PROXY="${HTTP_PROXY/\/\/127.0.0.1/\/\/host.docker.internal}"
+  IN_PROXY="${IN_PROXY/\/\/localhost/\/\/host.docker.internal}"
+  PROXY_ARGS+=(--build-arg "HTTP_PROXY=$IN_PROXY" --build-arg "HTTPS_PROXY=$IN_PROXY")
+  PROXY_ARGS+=(--build-arg "http_proxy=$IN_PROXY" --build-arg "https_proxy=$IN_PROXY")
+  PROXY_ARGS+=(--build-arg "NO_PROXY=${NO_PROXY:-localhost,127.0.0.1}")
+  echo "=== in-container proxy $IN_PROXY"
+fi
+
 docker build \
   --platform linux/arm64 \
   --build-arg NEXT_TELEMETRY_DISABLED=1 \
+  "${PROXY_ARGS[@]}" \
   -t "$TARGET" \
   "$WEB"
 

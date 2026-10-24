@@ -2,6 +2,7 @@ import type {
   AssistantReply,
   AssistantSession,
   AssistantSessionDetail,
+  CharacterInfo,
   Inventory,
   PageResult,
   ProductionEvent,
@@ -129,5 +130,24 @@ export async function getInventory(base = 'http://127.0.0.1:8899'): Promise<Inve
   catch {
     // 服务没起来不是致命错误：面板照常显示渲染与发布，只是没有能力区。
     return null
+  }
+}
+
+/**
+ * 可用主角清单。宿主上的 capabilities server 顺带读了
+ * ~/CreatorStudio/state/characters，面板不需要知道目录结构。
+ */
+export async function getCharacters(base = 'http://127.0.0.1:8899'): Promise<CharacterInfo[]> {
+  try {
+    const res = await fetch(`${base}/characters`, { cache: 'no-store' })
+    if (!res.ok) {
+      return []
+    }
+    const payload = await res.json() as { characters?: CharacterInfo[] }
+    return Array.isArray(payload.characters) ? payload.characters : []
+  }
+  catch {
+    // 服务没起来就当没有主角可选，面板其余部分照常。
+    return []
   }
 }
