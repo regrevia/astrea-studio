@@ -75,7 +75,7 @@
       "noProject": "No production project yet. Create a project before rendering.",
       "submitFailed": "Submit failed: {{message}}",
       "unknown": "unknown error",
-      "narrationLines": "Script line count is off: use {withIntroOutro} lines (with intro and outro) or {pointsOnly} lines (points only)."
+      "narrationLines": "Script line count is off: use {{withIntroOutro}} lines (with intro and outro) or {{pointsOnly}} lines (points only)."
     },
     "narration": "Voice-over script",
     "narrationPlaceholder": "One line per screen: intro, point 1, point 2…, outro",

@@ -194,9 +194,7 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
     else:
         # 开场：大引号 + 斜切色块
         draw.polygon([(0, 1200), (W, 980), (W, 1320), (0, 1540)], fill=(*accent, 26))
-        # 短强调条只在正文区靠下时才画，否则会和下面的钩子分隔线叠成两道杠
-        if body_top - 44 > 600:
-            draw.rounded_rectangle((76, 500, 180, 512), radius=6, fill=(*accent, 240))
+        # 开场卡不再单独画强调条：它和正文上方的分隔线只差一百多像素，会读成两道杠
 
     # 顶部 kicker
     draw.text((76, TOP_SAFE + 16), kicker, font=_font(40), fill=(255, 255, 255, 205))

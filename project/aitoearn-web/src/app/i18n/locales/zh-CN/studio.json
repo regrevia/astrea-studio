@@ -75,7 +75,7 @@
       "noProject": "还没有制作项目，先创建 project 再出片。",
       "submitFailed": "提交失败：{{message}}",
       "unknown": "未知错误",
-      "narrationLines": "口播稿行数对不上：写 {withIntroOutro} 行（含开场收尾）或 {pointsOnly} 行（只写要点）。"
+      "narrationLines": "口播稿行数对不上：写 {{withIntroOutro}} 行（含开场收尾）或 {{pointsOnly}} 行（只写要点）。"
     },
     "narration": "口播稿",
     "narrationPlaceholder": "一行一屏：开场、要点 1、要点 2…、收尾",
