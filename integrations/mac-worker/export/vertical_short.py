@@ -39,7 +39,8 @@ DEFAULT_VOICE = factcard.DEFAULT_VOICE
 # 收尾卡比正文多停一点：观众要时间读完那句结论再走
 TAIL_HOLD = 0.35
 FADE = 0.22
-XFADE = 0.40  # 相邻两屏叠化时长：整屏硬切是「PPT 翻页」最重的一笔
+XFADE = 0.40
+TAIL = 1.00  # 话说完再定一秒：立刻黑屏是最廉价的收尾  # 相邻两屏叠化时长：整屏硬切是「PPT 翻页」最重的一笔
 
 
 class VerticalError(RuntimeError):
@@ -300,6 +301,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         char_cfg = {}
 
     video, overlay, audio = [], [], []
+    last_ov = None
     t = 0.0
     for i, (scene, card) in enumerate(zip(scenes, cards)):
         text_layers = layer_sets[i]
@@ -330,12 +332,14 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         # 一行一行落：每行 0.12s 间隔淡入，比整屏切过去更像有人在讲
         # 叠化中段就把字提上来，否则新屏会先空 0.4 秒
         lead = XFADE * 0.5 if i > 0 else 0.0
+        # 收尾定住的那一秒里字要还在，否则卡面是空的
+        text_end = t + dur + (TAIL if i == total - 1 else 0.0)
         for n, layer in enumerate(text_layers):
             at = max(0.0, t - lead + 0.10 + 0.12 * n)
             overlay.append({
                 "src": str(layer["png"]),
                 "start": round(at, 3),
-                "end": round(t + dur, 3),
+                "end": round(text_end, 3),
                 "x": float(layer["x"]), "y": float(layer["y"]),
                 "opacity": 1.0, "width": int(layer["w"]),
                 "fade": 0.30,
@@ -402,8 +406,20 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                         prev_ov["fade"] = max(prev_ov["fade"], 0.15)
                     overlay.append(ov)
                     prev_ov, prev_pose = ov, use_pose
+                    last_ov = ov
                 elapsed += seg
         t += dur
+
+    # 收尾定住：最后一张卡再推一点、人物留到最后，然后才淡出
+    if cards:
+        video.append({"src": str(cards[-1]), "out": round(TAIL, 3),
+                      "zoom": [1.015, 1.05], "fade_in": 0.0,
+                      "fade_out": round(TAIL * 0.55, 3)})
+        if last_ov is not None:
+            last_ov["end"] = round(t + TAIL, 3)
+            last_ov["fade"] = max(last_ov.get("fade") or 0.0,
+                                  round(TAIL * 0.55, 3))
+        t += TAIL
 
     return {
         "canvas": {"width": spec["width"], "height": spec["height"], "fps": spec["fps"]},
