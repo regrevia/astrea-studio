@@ -705,7 +705,9 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                     "track_name": track,
                     "relative_index": 1,
                 }
-                if k == 0:
+                # 只在全片第一次出场时渐显。每屏都渐显 = 六次闪现，
+                # 角色像贴纸一样反复贴上取下；跨屏连续在场才像"人一直在"。
+                if k == 0 and idx == 0:
                     anim_in = _pick(char_cfg.get("anim_in") or "渐显",
                                     "video_intro_animations")
                     if anim_in:
