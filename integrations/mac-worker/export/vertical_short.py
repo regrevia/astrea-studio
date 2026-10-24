@@ -126,12 +126,13 @@ def _stage(cfg: dict, idx: int, total: int) -> dict:
     脚本里显式给了 width/x/y 就照用，这里只补空位。
     """
     out = dict(cfg)
+    # 竖屏里人物占宽太小就只是贴纸：开场到收尾都在画面 1/3 以上
     if idx == 0:
-        want = {"width": 700, "x": 320, "y": 830}
+        want = {"width": 770, "x": 288, "y": 800}
     elif idx == total - 1:
-        want = {"width": 664, "x": 494, "y": 966}
+        want = {"width": 730, "x": 460, "y": 930}
     else:
-        want = {"width": 620, "x": 560, "y": 1014}
+        want = {"width": 680, "x": 520, "y": 985}
     for k, v in want.items():
         if not out.get(k):
             out[k] = v
@@ -504,6 +505,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     gesture_audit: list[dict] = []
     switch_audit: list[float] = []
     motion_audit: list[float] = []
+    char_widths: list[int] = []
     for i, sc in enumerate(scenes):
         card = Path(str(sc["image"]))
         if i == 0:
@@ -563,7 +565,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             audio.append({"src": str(mp3), "start": round(t, 3), "volume": 1.0})
         else:
             dur = 2.0
-        z0, z1 = (1.0, 1.045) if i % 2 == 0 else (1.045, 1.0)
+        # 卡面在讲述期间慢慢推近/拉远：一秒一帧的静卡最像 PPT
+        z0, z1 = (1.0, 1.07) if i % 2 == 0 else (1.07, 1.0)
         video.append({
             "src": str(card), "out": round(dur, 3), "zoom": [z0, z1],
             "fade_in": FADE if i == 0 else 0.0,
@@ -617,6 +620,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             motion = _pose_motion(pose, say)
             motion_audit.append(motion.get("gain", 1.0))
             char_scene = _stage(char_cfg, i, total)
+            char_widths.append(int(float(char_scene.get("width") or 0)))
             beats = _beats(say, dur, i == total - 1, char_cfg,
                            mp3=mp3 if say else None)
             switch_at = 0.55
@@ -702,7 +706,9 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         "assetBase": str(workdir),
         "meta": {"engine": "vertical_short", "duration": round(t, 3),
                  "scenes": total, "voice": voice,
-                 "gesture": _gesture_summary(gesture_audit, switch_audit, motion_audit)},
+                 "gesture": _gesture_summary(gesture_audit, switch_audit, motion_audit),
+                 # 人物占宽：竖屏里缩成一张小贴纸，再准的手势也没人看见
+                 "char_widths": char_widths},
     }
 
 

@@ -77,6 +77,12 @@ def check(video: Path, spec: Path) -> dict:
     if want and abs(got - float(want)) > 0.35:
         findings.append({"code": "duration_mismatch", "level": "warn",
                          "detail": f"{got:.2f}s vs {float(want):.2f}s"})
+    # 人物占宽：竖屏里缩成一张小贴纸，再准的手势也没人看见
+    widths = [int(w) for w in ((meta.get("meta") or {}).get("char_widths") or []) if w]
+    canvas_w = int(((meta.get("canvas") or {}).get("width")) or 1080)
+    if widths and max(widths) < int(0.55 * canvas_w):
+        findings.append({"code": "character_small", "level": "warn", "at": 0.0,
+                         "detail": f"人物最大占宽 {max(widths)}px，不到画面六成，像贴纸"})
     # at 是秒数：界面上直接能跳到那一帧，不然只说「有问题」等于没说。
     for i in np.flatnonzero(whole < FLAT_STD)[:5]:
         findings.append({"code": "blank_frame", "level": "error",
