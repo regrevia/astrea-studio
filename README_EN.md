@@ -28,6 +28,8 @@ Upstream provides account connections, platform publishing, and the web/backend 
 - **AI voiceover**: 14 native JianYing voices and 9 Edge TTS voices, synthesized locally.
 - **JianYing Pro**: writes the timeline into a JianYing draft (native transitions, filters and text animations) or drives JianYing's export panel to export per-platform files. macOS requires Accessibility permission; this export automation does not work on Windows.
 - **Publishing**: posts to signed-in platform accounts; every submission is confirmed by a human in the dashboard first.
+- **Own timeline renderer**: one spec yields the master — video, images and alpha-channel character overlays, multi-track audio, loudness normalisation and frame-exact enter/exit motion; no JianYing required, no window stealing focus.
+- **Virtual-host explainer style**: give it a content JSON (page titles, narration, character actions) and it composes page cards, caption bars, character loops and background music into a 1080p explainer; the same spec can then be written into a JianYing draft for final polish.
 - **Local data**: rendering, exporting and publishing run on your machine; projects and videos stay on local disk.
 
 The section below is the upstream AiToEarn documentation, kept verbatim for reference.

@@ -73,11 +73,28 @@ Pillow
   License    : HPND
   Scope      : 字幕与图文贴片渲染。
 
+dsh-pet
+  Repository : https://github.com/PC2005-cloud/dsh-pet
+  License    : MIT
+  Copyright  : Copyright (c) PC2005-cloud
+  Scope      : 「虚拟主播讲技术」风格里的小女仆动作素材（带 alpha 通道的 VP9 webm）。
+               仅在本机已安装 dsh-pet 时从其资源目录读取，不随本仓库分发。
+               人物形象与动作素材的版权归原作者；本项目不主张任何相关商标或形象权利。
+               Alpha-channel VP9 clips used as the presenter character in the
+               "virtual host explains tech" style. Read from a locally installed
+               dsh-pet package; not redistributed with this repository. The
+               character and its motion assets remain the author's property.
+
 =====================================================================
 四、说明 / Notes
 =====================================================================
 
 - 本仓库不包含任何上游项目的商标授权。AiToEarn 的名称与标识归其权利人所有。
   No trademark rights are granted. The AiToEarn name and marks belong to their owners.
+- 示例片使用的声音全部为自产：配音由剪映原生音色（用户本机具备的能力）生成，
+  背景音乐由 ffmpeg 合成器实时合成，不含任何第三方录音或音乐素材。
+  All audio in the sample output is generated: narration via 剪映 native voices on the
+  user's own machine, background music synthesized on the fly with ffmpeg. No
+  third-party recordings or music files are included or used.
 - 若你分发本项目的修改版本，请保留本文件与 LICENSE 中的版权声明。
   If you redistribute a modified version, keep this file and the notices in LICENSE.
