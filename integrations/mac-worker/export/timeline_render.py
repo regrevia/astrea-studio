@@ -85,8 +85,11 @@ def _color(value, default: str) -> tuple:
     return tuple(int(s[i:i + 2], 16) for i in (0, 2, 4, 6))
 
 
+OVERLAY_EASES = ("linear", "out-quad", "out-cubic", "in-cubic", "out-back")
+
+
 def _overlay_edge(raw, key: str, idx: int):
-    """解析 overlay 的入场/出场（{"from"/"to": 边, "duration": 秒}）。"""
+    """解析 overlay 的入场/出场（{"from"/"to": 边, "duration": 秒, "ease": 曲线}）。"""
     if not raw:
         return None
     side = str(raw.get(key) or ("right" if key == "from" else "left"))
@@ -96,7 +99,25 @@ def _overlay_edge(raw, key: str, idx: int):
     dur = float(raw.get("duration") if raw.get("duration") is not None else 0.45)
     if dur <= 0:
         raise SpecError(f"overlay[{idx}] {key} duration 必须大于 0，得到 {dur}")
-    return {"side": side, "duration": dur}
+    ease = str(raw.get("ease") or "linear")
+    if ease not in OVERLAY_EASES:
+        raise SpecError(
+            f"overlay[{idx}] {key}.ease 只能是 {OVERLAY_EASES}，得到 {ease!r}")
+    return {"side": side, "duration": dur, "ease": ease}
+
+
+def _ease_progress(expr_u: str, ease: str) -> str:
+    """把线性进度 [0,1] 换成缓动后的进度表达式（ffmpeg expr 方言）。"""
+    u = f"clip(({expr_u}),0,1)"
+    if ease == "out-quad":
+        return f"(1-pow(1-{u},2))"
+    if ease == "out-cubic":
+        return f"(1-pow(1-{u},3))"
+    if ease == "in-cubic":
+        return f"pow({u},3)"
+    if ease == "out-back":
+        return f"(1+2.70158*pow({u}-1,3)+1.70158*pow({u}-1,2))"
+    return u
 
 
 def load_spec(path, base: Path | None = None) -> dict:
@@ -321,8 +342,10 @@ def _overlay_axis_expr(item: dict, axis: str, canvas: dict) -> str:
             off = -ov_w if enter["side"] == "left" else W
         else:
             off = -span if enter["side"] == "top" else H
+        p = _ease_progress(f"(t-{start:.3f})/{d:.3f}",
+                           enter.get("ease") or "linear")
         expr = (f"if(lt(t,{start + d:.3f}),{off:.3f}+({base:.3f}-({off:.3f}))"
-                f"*(t-{start:.3f})/{d:.3f},{expr})")
+                f"*{p},{expr})")
 
     leave = item.get("exit")
     if leave and leave["side"] in (("left", "right") if axis == "x" else ("top", "bottom")):
@@ -332,8 +355,10 @@ def _overlay_axis_expr(item: dict, axis: str, canvas: dict) -> str:
             off = -ov_w if leave["side"] == "left" else W
         else:
             off = -span if leave["side"] == "top" else H
+        p = _ease_progress(f"(t-{t0:.3f})/{d:.3f}",
+                           leave.get("ease") or "linear")
         expr = (f"if(gt(t,{t0:.3f}),{base:.3f}+({off:.3f}-({base:.3f}))"
-                f"*(t-{t0:.3f})/{d:.3f},{expr})")
+                f"*{p},{expr})")
 
     motion = item.get("motion") or {}
     mtype = motion.get("type") or "none"

@@ -183,7 +183,7 @@ def make_caption(path: Path, text: str, width: int = PAGE["w"]) -> Path:
     if cur:
         lines.append(cur)
     lines = lines or [""]
-    h = pad_y * 2 + lh * len(lines)
+    h = pad_y * 2 + lh * (len(lines) - 1) + 46
     img = Image.new("RGBA", (width, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     d.rounded_rectangle([0, 0, width - 1, h - 1], radius=18,
