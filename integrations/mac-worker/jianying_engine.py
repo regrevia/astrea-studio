@@ -955,13 +955,17 @@ def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
     explicit = str((scene or {}).get("pose") or "").strip()
     if explicit:
         return explicit
+    text = " ".join(str((scene or {}).get(k) or "")
+                    for k in ("say", "text", "caption"))
+    hit = _keyword_pose(text)
+    # 开场挥手、收尾高兴是默认礼数；但这句话本身在发问或在说缺口，
+    # 还挥手/傻笑就假了——语义优先于礼数。
+    if hit in ("think", "shrug"):
+        return hit
     if idx == 0:
         return "wave"       # 开场挥手，先把人立住
     if idx >= total - 1:
         return "happy"      # 收尾给情绪高点
-    text = " ".join(str((scene or {}).get(k) or "")
-                    for k in ("say", "text", "caption"))
-    hit = _keyword_pose(text)
     if hit:
         return hit
     return "point" if idx % 2 else "think"

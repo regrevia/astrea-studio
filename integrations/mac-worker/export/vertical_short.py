@@ -224,6 +224,24 @@ def _blink_spans(start: float, seg: float, blinks: list[float]) -> list[tuple[fl
     return spans
 
 
+def _gesture_summary(audit: list[dict]) -> dict:
+    """手势自检：这句话本身有明确动作线索时，演的姿势该跟它一致。
+
+    没有线索的句子按奇偶兜底，不算错；线索和姿势打架才是「贴图」——
+    比如说缺口却在挥手。
+    """
+    # 首屏挥手、末屏高兴是礼数，不参与对齐核算
+    checked = [a for a in audit if a["want"] and a["idx"] > 0 and not a["last"]]
+    clash = [a for a in checked if a["pose"] != a["want"]]
+    return {
+        "scenes": len(audit),
+        "checked": len(checked),
+        "mismatch": len(clash),
+        "poses": sorted({a["pose"] for a in audit}),
+        "clash_at": [a["at"] for a in clash[:5]],
+    }
+
+
 def _pose_motion(pose: str) -> dict:
     return dict(_POSE_MOTION.get(pose, _POSE_MOTION["idle"]))
 
@@ -433,6 +451,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     cards: list[Path] = []
     layer_sets: list[list[dict]] = []
     kicker = str(script.get("kicker") or factcard.DEFAULT_KICKER)
+    gesture_audit: list[dict] = []
     for i, sc in enumerate(scenes):
         card = Path(str(sc["image"]))
         if i == 0:
@@ -528,6 +547,14 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             # 一屏一张立绘就是贴图：按口型拍点切成几段，手势在中段换一次，
             # 角色才是在"讲这句话"，而不是被贴上来定格。
             pose = str(char_cfg.get("pose") or JE._scene_pose(char_cfg, i, total, scene))
+            # 作者用 poses 列表指定了整条片的手势，那是意图不是错配；显式 pose 同理
+            if not char_cfg.get("pose") and not char_cfg.get("poses"):
+                # 记下「这句话该做什么动作」和「实际做了什么」，交给成片体检核对
+                said = " ".join(str(scene.get(k) or "")
+                                for k in ("say", "text", "caption"))
+                want = JE._keyword_pose(said)
+                gesture_audit.append({"at": round(t, 2), "idx": i, "pose": pose,
+                                      "want": want, "last": i == total - 1})
             alt_pose = (None if char_cfg.get("pose") else
                         JE._second_half_pose(char_cfg, i, total, scene))
             if not char_cfg.get("gesture_sync", True):
@@ -617,7 +644,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         "audio": audio,
         "assetBase": str(workdir),
         "meta": {"engine": "vertical_short", "duration": round(t, 3),
-                 "scenes": total, "voice": voice},
+                 "scenes": total, "voice": voice,
+                 "gesture": _gesture_summary(gesture_audit)},
     }
 
 

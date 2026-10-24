@@ -9,6 +9,8 @@ set -uo pipefail
 # 出片前先把文案判据回归跑一遍：判据一改，好稿被误判就会在这里先炸，不用等三分钟渲染
 /usr/bin/python3 "$(dirname "$0")/../integrations/mac-worker/test_copy_calibration.py" || {
   echo "文案判据回归未通过，先修判据再出片"; exit 1; }
+/usr/bin/python3 "$(dirname "$0")/../integrations/mac-worker/test_gesture_sync.py" || {
+  echo "手势同步回归未通过，先修手势再出片"; exit 1; }
 
 SPEC="${1:?用法: batch_smoke.sh <spec.json> [条数]}"
 N="${2:-3}"

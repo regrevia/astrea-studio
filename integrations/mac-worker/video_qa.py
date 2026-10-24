@@ -128,6 +128,19 @@ def check(video: Path, spec: Path) -> dict:
             findings.append({"code": "character_static", "level": "warn",
                              "at": round(at, 2),
                              "detail": f"{at:.1f}s 起角色不动"})
+    # 角色手势有没有跟上这句话：姿势线索和实际姿势打架，就是「贴图」
+    gesture = (meta.get("meta") or {}).get("gesture") if isinstance(meta, dict) else None
+    if isinstance(gesture, dict):
+        poses = gesture.get("poses") or []
+        if int(gesture.get("scenes") or 0) >= 3 and len(poses) == 1:
+            findings.append({"code": "gesture_flat", "level": "warn",
+                             "detail": f"全片只有一种手势（{poses[0]}），像贴图"})
+        checked = int(gesture.get("checked") or 0)
+        clash = int(gesture.get("mismatch") or 0)
+        if checked >= 2 and clash * 2 >= checked:
+            at = (gesture.get("clash_at") or [None])[0]
+            findings.append({"code": "gesture_offtext", "level": "warn", "at": at,
+                             "detail": f"{clash}/{checked} 屏的手势和这句话对不上"})
     return {"video": str(video), "duration": got, "findings": findings,
             "ok": not [f for f in findings if f["level"] == "error"]}
 
