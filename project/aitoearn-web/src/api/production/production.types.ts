@@ -59,6 +59,8 @@ export interface ProductionCopyFinding {
   code?: string
   level?: string
   where?: string
+  /** 出问题的秒数；有它就能直接跳到母版那一帧。 */
+  at?: number
   detail?: string
 }
 

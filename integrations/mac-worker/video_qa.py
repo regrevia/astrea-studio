@@ -57,16 +57,22 @@ def check(video: Path, spec: Path) -> dict:
     if want and abs(got - float(want)) > 0.35:
         findings.append({"code": "duration_mismatch", "level": "warn",
                          "detail": f"{got:.2f}s vs {float(want):.2f}s"})
+    # at 是秒数：界面上直接能跳到那一帧，不然只说「有问题」等于没说。
     for i in np.flatnonzero(whole < FLAT_STD)[:5]:
         findings.append({"code": "blank_frame", "level": "error",
-                         "detail": f"{i * STEP:.2f}s"})
+                         "at": round(float(i) * STEP, 2),
+                         "detail": f"{i * STEP:.2f}s 整帧发黑"})
     # 卡面上有字的时间段，应该占满整条片子（叠化时也不该两块同时消失）
-    if len(text) and (text < FLAT_STD).mean() > 0.03:
-        findings.append({"code": "text_gap", "level": "warn",
-                         "detail": f"{(text < FLAT_STD).mean() * 100:.0f}% 的帧卡面没字"})
-    if len(char) and (char < FLAT_STD).mean() > 0.03:
-        findings.append({"code": "character_gap", "level": "warn",
-                         "detail": f"{(char < FLAT_STD).mean() * 100:.0f}% 的帧没人"})
+    for code, series, label in (("text_gap", text, "卡面没字"),
+                                ("character_gap", char, "画面里没人")):
+        if not len(series):
+            continue
+        miss = series < FLAT_STD
+        if miss.mean() <= 0.03:
+            continue
+        at = float(np.flatnonzero(miss)[0]) * STEP
+        findings.append({"code": code, "level": "warn", "at": round(at, 2),
+                         "detail": f"{at:.1f}s 起{label}（{(miss.mean() * 100):.0f}% 的帧）"})
     return {"video": str(video), "duration": got, "findings": findings,
             "ok": not [f for f in findings if f["level"] == "error"]}
 
