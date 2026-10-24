@@ -531,10 +531,15 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             label = script.get("cta_label")
             if label is None:
                 label = "轮到你了"
-            layers = (_title_layers(str(label), workdir, i) if str(label).strip() else [])
-            layers += _block_layers(cta_text, factcard.HOOK_SIZE, 700, workdir, f"h{i:02d}",
+            # 收尾卡是整条的落点：栏目名退成一行小字，那句话当标题居中，
+            # 两句同一字号会互相抢，读起来像没排完。
+            layers = (_block_layers(str(label), 48, 556, workdir, f"l{i:02d}",
                                     align="center", left=124, max_w=center_w,
-                                    fill=(255, 255, 255, 214))
+                                    fill=(255, 255, 255, 168)) if str(label).strip() else [])
+            cta_size = 84 if len(cta_text) <= 13 else 72
+            layers += _block_layers(cta_text, cta_size, 662, workdir, f"h{i:02d}",
+                                    align="center", left=124, max_w=center_w,
+                                    fill=(255, 255, 255, 236))
         else:
             layers = _title_layers(str(sc.get("text") or ""), workdir, i)
             body = raw_bodies[i - 1] if 0 < i <= len(raw_bodies) else ""
