@@ -159,12 +159,21 @@ def _body_size(text: str, measure=None, max_w: float = W - 264) -> tuple[int, in
     """
     if not text:
         return BODY_SIZE, 0
+    def _clean(rows: list[str]) -> bool:
+        # 末行只剩一两个字是「孤字」：比小一号更难看，宁可整句小一点排成一行
+        if len(rows) == 1:
+            return True
+        if len(rows) > 2:
+            return False
+        last, first = len(rows[-1]), len(rows[0])
+        return last >= 3 and last >= first * 0.45
+
     for size in _BODY_CANDIDATES:
         if measure is not None:
             lines = _wrap_text(measure, text, _font(size), max_w)
         else:
             lines = [text]
-        if len(lines) <= 2:
+        if _clean(lines):
             return size, len(lines)
     # 最小字号还是超两行：返回真实行数，卡片高度要按它算，否则正文穿出卡底
     lines = _wrap_text(measure, text, _font(_BODY_CANDIDATES[-1]), max_w) if measure is not None else [text]
