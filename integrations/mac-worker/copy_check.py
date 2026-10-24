@@ -23,6 +23,12 @@ TEMPLATE_PHRASES = (
     "全方位", "多维度", "深度解析", "一文读懂", "建议收藏",
 )
 
+# 解释腔：文案里出现「也就是说」这类连接词，等于在替读者理解，PPT 文案里不该有。
+EXPLAINER_PHRASES = (
+    "也就是说", "换句话说", "简单来说", "简单讲", "其实", "实际上",
+    "可以说", "某种程度上", "某种意义上", "换言之", "通俗地讲", "打个比方",
+)
+
 # 说了等于没说的名词，通常可以换成具体动作。
 EMPTY_NOUNS = ("价值", "能力", "体系", "方法论", "认知", "维度", "层面", "颗粒度")
 
@@ -46,12 +52,25 @@ def _squash(text: str) -> str:
     return re.sub(r"\s+", "", text or "")
 
 
+def _split_point(raw: str) -> tuple[str, str, str]:
+    """「标题::卡面正文[::口播稿]」→ 三段；只有一段时当成正文。"""
+    parts = [p.strip() for p in str(raw).split("::")]
+    if len(parts) >= 3:
+        return parts[0], parts[1], parts[2]
+    if len(parts) == 2:
+        return parts[0], parts[1], ""
+    return "", parts[0], ""
+
+
 def check_copy(*, hook: str = "", points: Iterable[str] = (), cta: str = "",
                narration: Iterable[str] = (), topic: str = "") -> dict[str, Any]:
     """返回 {findings:[{code,level,where,detail}], metrics:{...}}。
     points 每项允许 "标题::正文" 形式。"""
     points = list(points)
-    bodies = [p.split("::", 1)[1] if "::" in p else p for p in points]
+    # 要点是「标题::卡面正文::口播稿」三段：旧版只切第一个 ::，
+    # 把口播稿也算进卡面正文，卡面明明一行却报「正文 32 字」。
+    parsed = [_split_point(p) for p in points]
+    bodies = [body or title for title, body, _ in parsed]
     spoken = [s for s in narration if s]
     surfaces = {
         "开场": _squash(hook),
@@ -74,6 +93,12 @@ def check_copy(*, hook: str = "", points: Iterable[str] = (), cta: str = "",
                 add("template_phrase", "warn", where, f"出现「{phrase}」，读起来像模板")
 
     full = " ".join(v for v in surfaces.values() if v)
+    for where, text in surfaces.items():
+        for phrase in EXPLAINER_PHRASES:
+            if phrase in text:
+                add("explainer_tone", "warn", where, f"「{phrase}」是在解释，删掉更利落")
+        if "（" in text or "(" in text or "——" in text:
+            add("parenthetical", "info", where, "括号/破折号补充可以删或改写进主句")
     for noun in EMPTY_NOUNS:
         if noun in full:
             add("empty_noun", "info", "全文", f"「{noun}」可以换成具体动作")
@@ -94,22 +119,21 @@ def check_copy(*, hook: str = "", points: Iterable[str] = (), cta: str = "",
     if lengths and metrics["spread"] < 5:
         add("flat_rhythm", "warn", "全文",
             f"句子长度都在 {metrics['min_len']}-{metrics['max_len']} 字，没有长短交替，听着平")
-    if lengths and metrics["min_len"] > 14:
-        add("no_short_line", "warn", "全文", "没有一句短句，缺呼吸口")
-    longs = [s for s in sents if len(s) > 32]
+    if lengths and metrics["min_len"] > 10:
+        add("no_short_line", "warn", "全文", "没有一句 10 字以内的短句，缺呼吸口")
+    longs = [s for s in sents if len(s) > 26]
     if longs:
-        add("long_line", "warn", "全文", f"{len(longs)} 句超过 32 字，一口气念不完：「{longs[0][:18]}…」")
+        add("long_line", "warn", "全文", f"{len(longs)} 句超过 26 字，一口气念不完：「{longs[0][:16]}…」")
 
     for i, s in enumerate(spoken, start=1):
-        if len(s) > 34:
+        if len(s) > 28:
             add("long_spoken", "warn", f"口播第{i}句", f"{len(s)} 字，字幕会被切成三段以上")
-        if re.search(r"[，；]", s) is None and len(s) > 20:
+        if re.search(r"[，；]", s) is None and len(s) > 16:
             add("no_comma", "info", f"口播第{i}句", "长句里没有逗号，TTS 只能硬断")
 
-    for i, (title, body) in enumerate(
-            (p.split("::", 1) if "::" in p else (p, "") for p in points), start=1):
-        if body and len(_squash(body)) > 26:
-            add("point_body_long", "info", f"要点{i}", f"卡面正文 {len(_squash(body))} 字，会占四行以上")
+    for i, (title, body, _) in enumerate(parsed, start=1):
+        if body and len(_squash(body)) > 18:
+            add("point_body_long", "warn", f"要点{i}", f"卡面正文 {len(_squash(body))} 字，超过一行半")
 
     deduped, seen = [], set()
     for f in findings:

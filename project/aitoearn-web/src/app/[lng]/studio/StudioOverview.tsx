@@ -52,6 +52,8 @@ function RunRow({ run, projectName }: { run: ProductionRun, projectName?: string
   const busy = run.status === 'queued' || run.status === 'running'
   // 各平台成片：后端按平台重新交付后写进 run.output.platforms，没有就是还没出片。
   const outputPlatforms = Object.entries(run.output?.platforms ?? {})
+  // 文案体检只有 warn 值得上屏；info 是可改可不改的建议，不占位置。
+  const copyWarnings = (run.output?.copyCheck?.findings ?? []).filter(f => f.level === 'warn' && f.detail)
 
   return (
     <div className="flex items-start gap-3 rounded-lg border p-3">
@@ -87,6 +89,15 @@ function RunRow({ run, projectName }: { run: ProductionRun, projectName?: string
 
         {run.lastError && (
           <p className="mt-1 line-clamp-2 text-xs text-red-600">{run.lastError}</p>
+        )}
+
+        {copyWarnings.length > 0 && (
+          <p className="mt-1 line-clamp-2 text-xs text-amber-600">
+            文案 ·
+            {' '}
+            {copyWarnings[0].detail}
+            {copyWarnings.length > 1 ? ` 等 ${copyWarnings.length} 处` : ''}
+          </p>
         )}
 
         {outputPlatforms.length > 0 && (

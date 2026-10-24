@@ -50,6 +50,28 @@ export interface ProductionRunOutput {
   duration?: number
   canvas?: ProductionCanvas
   platforms?: Record<string, ProductionPlatformVideo>
+  copyCheck?: ProductionCopyCheck
+}
+
+/** 文案体检里的一条提醒。level 为 warn 才值得上屏，info 是可选建议。 */
+export interface ProductionCopyFinding {
+  code?: string
+  level?: string
+  where?: string
+  detail?: string
+}
+
+/** worker 出片时顺手跑的文案体检；ok=false 表示有值得看一眼的地方。 */
+export interface ProductionCopyCheck {
+  ok?: boolean
+  findings?: ProductionCopyFinding[]
+  metrics?: {
+    sentences?: number
+    avg_len?: number
+    min_len?: number
+    max_len?: number
+    spread?: number
+  }
 }
 
 /** 制作任务。 */

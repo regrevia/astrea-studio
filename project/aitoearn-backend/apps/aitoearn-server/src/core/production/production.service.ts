@@ -72,8 +72,13 @@ function normalizeRunOutput(
     }
   }
 
+  // 剪映草稿不出视频文件，但文案体检对写稿的人有用，跟着 output 一起回去。
+  const copyCheck = result['copyCheck'] !== null && typeof result['copyCheck'] === 'object'
+    ? result['copyCheck'] as Record<string, unknown>
+    : null
+
   const videoKey = typeof result['videoKey'] === 'string' ? result['videoKey'] : ''
-  if (!videoKey && !Object.keys(platforms).length) {
+  if (!videoKey && !Object.keys(platforms).length && !copyCheck) {
     return null
   }
   const output: Record<string, unknown> = { ...existing }
@@ -91,6 +96,9 @@ function normalizeRunOutput(
   }
   if (Object.keys(platforms).length) {
     output['platforms'] = platforms
+  }
+  if (copyCheck) {
+    output['copyCheck'] = copyCheck
   }
   return output
 }

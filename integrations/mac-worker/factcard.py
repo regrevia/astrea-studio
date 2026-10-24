@@ -99,8 +99,8 @@ def _wrap_text(draw, text: str, font, max_w: float) -> list[str]:
                     if buf[j] in _ORPHAN_PUNCT:
                         cut = j + 1
                         break
-                far_enough = cut > 0 and draw.textlength(buf[:cut], font=font) >= max_w * 0.88
-                if far_enough and len(buf) - cut <= 3:
+                far_enough = cut > 0 and draw.textlength(buf[:cut], font=font) >= max_w * 0.78
+                if far_enough and len(buf) - cut <= 4:
                     out.append(buf[:cut])
                     buf = buf[cut:] + tok
                 else:
@@ -138,6 +138,27 @@ def _draw_block(page, text: str, size: int, top: int, left: int, max_w: float,
         y += int(size * spacing)
     return y
 
+_BODY_CANDIDATES = (96, 88, BODY_SIZE)
+
+
+def _body_size(text: str, measure=None, max_w: float = W - 248) -> tuple[int, int]:
+    """PPT 式短句配 78px 会显得卡片空：在能排成两行以内的前提下取最大字号。
+
+    只看字数会挑出把「按镜头切关键帧」拦腰断成 5+2 的字号——断句比字号更显眼。
+    返回 (字号, 行数)。
+    """
+    if not text:
+        return BODY_SIZE, 0
+    for size in _BODY_CANDIDATES:
+        if measure is not None:
+            lines = _wrap_text(measure, text, _font(size), max_w)
+        else:
+            lines = [text]
+        if len(lines) <= 2:
+            return size, len(lines)
+    return BODY_SIZE, 2
+
+
 def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
                 progress: int, total: int, slug: str, hook: bool = False,
                 body: str = "", body_top: int = 640, plain: bool = False,
@@ -172,12 +193,20 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
     if plain:
         # 收尾卡不要空卡框：没有正文的圆角矩形只会显得空
         draw.polygon([(0, 1180), (W, 1010), (W, 1340), (0, 1510)], fill=(*accent, 30))
+    measure = ImageDraw.Draw(overlay)
+    body_size, _ = _body_size(body, measure) if body else (BODY_SIZE, 0)
     if not hook and not plain:
         # 卡片高度跟着正文走，避免大片空白（"PPT 味"最主要的来源）
-        measure = ImageDraw.Draw(overlay)
-        body_lines = _wrap_text(measure, body, _font(BODY_SIZE), W - 248) if body else []
+        body_lines = _wrap_text(measure, body, _font(body_size), W - 248) if body else []
+        # 短句放大后仍贴着卡顶会显得上重下轻，往下挪一点让正文落在版心
+        if body_size > BODY_SIZE:
+            body_top += 56 if body_size >= 110 else 40
         # 卡片高度跟着正文走；下限 1000 让正文区占满上三分之二
-        card_bottom = max(1000, body_top + int(len(body_lines) * BODY_SIZE * 1.42) + 96)
+        # 一行正文还给 1000 的卡底，下半张卡就是空的：短句把卡收到 900 上下
+        floor = 1000 if len(body_lines) > 1 else 900
+        # 上限 1010：立绘头顶从 1014 起，卡片再长就把角色闷在卡里
+        card_bottom = min(1010, max(floor,
+                                   body_top + int(len(body_lines) * body_size * 1.42) + 96))
         draw.rounded_rectangle((76, 470, 1004, card_bottom), radius=56,
                                fill=(255, 255, 255, 14),
                                outline=(255, 255, 255, 70), width=2)
@@ -201,15 +230,17 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
 
     # 顶部进度条：一条线取代分页点，读起来是"进度"不是"翻页"
     bar_y, bar_h = 344, 8
-    draw.rounded_rectangle((76, bar_y, 1004, bar_y + bar_h), radius=4,
+    # 有品牌标的卡把进度条让开：白底圆角块压在条尾上像画错了
+    bar_right = 1004 - (176 if logo else 0)
+    draw.rounded_rectangle((76, bar_y, bar_right, bar_y + bar_h), radius=4,
                            fill=(255, 255, 255, 36))
-    filled = 76 + int((1004 - 76) * (progress + 1) / max(1, total))
+    filled = 76 + int((bar_right - 76) * (progress + 1) / max(1, total))
     draw.rounded_rectangle((76, bar_y, filled, bar_y + bar_h), radius=4,
                            fill=(*accent, 240))
 
     # 正文要点：出图阶段精排（字号/行距/安全区都是像素级控制）
     if body:
-        _draw_block(overlay, body, BODY_SIZE if not hook else HOOK_SIZE, body_top,
+        _draw_block(overlay, body, body_size if not hook else HOOK_SIZE, body_top,
                     124, W - 248, fill=(255, 255, 255, 236), spacing=1.42)
     if hook:
         # 开场卡没有边框，给钩子句一条细分隔线做锚
@@ -278,7 +309,8 @@ def render_previews(spec: dict, out_dir: Path) -> list[Path]:
         # 字号换算是相对量：以「1080 宽画布 size=8 ≈ 44px 字幕」为锚点
         title_px = max(24, int(float(native.get("font_size") or 12) * w / 195))
         cy = h / 2 - float(native.get("transform_y", -0.45)) * h / 2
-        _draw_centered(page, scene.get("text") or "", _font(title_px), w / 2, cy,
+        cx = w / 2 + float(native.get("transform_x") or 0) * w / 2
+        _draw_centered(page, scene.get("text") or "", _font(title_px), cx, cy,
                        (255, 255, 255), w * 0.72)
         cap = scene.get("caption") or ""
         if cap:
@@ -303,8 +335,16 @@ def _title_size(text: str) -> int:
     return 14
 
 def _unwrap(text: str, limit: int = 17) -> str:
-    """中文按字数硬折行，剪映不会自动折得好看。"""
+    """中文按字数硬折行，剪映不会自动折得好看。
+
+    有逗号且两半都不长时优先在逗号后断：按字数硬切会把
+    「给 AI 一个链接，它能」和「读到什么程度」排成悬殊的两行。
+    """
     text = re.sub(r"\s+", "", text)
+    if len(text) > limit:
+        for j, ch in enumerate(text):
+            if ch in "，,、；;：" and 4 <= j + 1 <= limit and len(text) - j - 1 <= limit:
+                return text[:j + 1] + "\n" + text[j + 1:]
     return "\n".join(text[i:i + limit] for i in range(0, len(text), limit))
 
 
@@ -394,15 +434,17 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
     for i, (title, body, say) in enumerate(points, start=1):
         img = render_card(out_dir / f"s{i:02d}.png", kicker=kicker, index=f"0{i}",
                           palette_idx=i, progress=i, total=total, slug=slug,
-                          body=body, body_top=680)
+                          body=body, body_top=700)
         scenes.append({
             "image": str(img),
             "say": say,
             "text": _unwrap(title, 11),
                 "voice": voice,
             "native": {
-                "font": TITLE_FONT, "font_size": _title_size(title),
-                "transform_y": 0.458, "caption_size": 8, "caption_y": -0.78,
+                # 要点标签降级成小号、贴左的栏目名：正文放大后它不该再当标题
+                "font": TITLE_FONT, "font_size": 12, "transform_y": 0.40,
+                "transform_x": -0.62,
+                "caption_size": 8, "caption_y": -0.78,
                 "text_anim_in": TEXT_ANIMS[i % len(TEXT_ANIMS)],
                 "text_anim_out": TEXT_OUTS[i % len(TEXT_OUTS)],
                 "transition_in": TRANSITIONS[i % len(TRANSITIONS)],

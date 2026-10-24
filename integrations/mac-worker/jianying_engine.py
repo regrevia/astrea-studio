@@ -719,18 +719,20 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                 except Exception as exc:  # noqa: BLE001
                     stats["skipped"].append(f"character_clip: {exc}")
             stats["characters"] += clips
+            stats.setdefault("poses", []).append(f"{idx}:{pose}")
             if clips:
                 # 呼吸 + 轻微起伏：position_y 单位是半个画布高，0.008≈8px；
                 # 属性名必须用 pyJianYingDraft 的枚举名（transform_y 会被服务端拒绝）。
                 bob_k, sway_k = _MOTION.get(pose, (1.0, 1.0))
                 amp = float(char_cfg.get("bob") or 0.008) * bob_k
-                breath = 1.0 + (float(char_cfg.get("breath") or 1.015) - 1.0) * bob_k
+                base = float(_POSE_SCALE.get(pose, 1.0))
+                breath = base + (float(char_cfg.get("breath") or 1.015) - 1.0) * bob_k
                 t0 = total + 0.2
                 mid = total + dur / 2
                 t1 = max(mid + 0.3, total + dur - 0.2)
                 sway = float(char_cfg.get("sway") or 1.2) * sway_k
                 for prop, lo, hi in (("position_y", "0", f"{amp:.4f}"),
-                                     ("uniform_scale", "1", f"{breath:.3f}"),
+                                     ("uniform_scale", f"{base:.3f}", f"{breath:.3f}"),
                                      ("rotation", "0", f"{sway:.2f}")):
                     try:
                         _post("/add_video_keyframe", {
@@ -866,6 +868,9 @@ _POSE_RULES = (
 # 每个姿态的动幅：(上下起伏倍数, 摆动倍数)。想事情就该比挥手安静。
 _MOTION = {"idle": (1.0, 1.0), "wave": (1.3, 1.8), "point": (0.9, 0.7),
            "think": (0.6, 0.5), "happy": (1.5, 2.0), "shrug": (0.7, 0.6)}
+# 姿态还该带一点体型差别：兴奋时凑近，思考时退半步。只改关键帧倍数，
+# 立绘本身不重画，帧缓存还能复用。
+_POSE_SCALE = {"happy": 1.06, "wave": 1.04, "point": 1.02, "think": 0.98}
 
 
 def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
@@ -920,13 +925,14 @@ def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
     if figure is None:
         figure = character.render(pose=pose, mouth=mouth, eyes=eyes)
         _CHAR_FRAME_CACHE[key] = figure
-    w = int(float(cfg.get("width") or 560) * width / 1080)
+    w = int(float(cfg.get("width") or 620) * width / 1080)
     fig = figure.resize((w, w), Image.LANCZOS)
     # 立绘四周有透明留白：按内容框对齐，否则右边缘会把鲸尾切掉
     bb = fig.getbbox() or (0, 0, w, w)
     cw, chh = bb[2] - bb[0], bb[3] - bb[1]
-    x = int(float(cfg.get("x") or 650) * width / 1080)
-    y = int(float(cfg.get("y") or 1070) * height / 1920)
+    # 620 宽 + 底边压在 1650：比卡面低一档，又不和底部字幕抢位置
+    x = int(float(cfg.get("x") or 560) * width / 1080)
+    y = int(float(cfg.get("y") or 1014) * height / 1920)
     x = max(0, min(x, width - 32 - cw))
     y = max(0, min(y, height - chh))
     canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
@@ -1012,13 +1018,20 @@ def render_jianying(payload: dict[str, Any], job_dir: Path,
 
         raw = payload.get("spec") or {}
         narr = raw.get("narration") or {}
+        pts = [str(x) for x in (raw.get("points") or [])]
+        # 口播稿可能写在要点第三段（标题::卡面正文::口播稿），体检要按讲述顺序读
+        says = [x.split("::")[2] if x.count("::") >= 2 else "" for x in pts]
+        spoken = [str(narr.get("intro") or "")] if narr.get("intro") else []
+        fallback = [str(x) for x in (narr.get("points") or [])]
+        spoken += [s for s in (says or fallback) if s]
+        if narr.get("cta"):
+            spoken.append(str(narr["cta"]))
         copy_report = check_copy(
             topic=str(raw.get("topic") or ""),
             hook=str(raw.get("hook") or ""),
-            points=[str(x) for x in (raw.get("points") or [])],
+            points=pts,
             cta=str(raw.get("cta") or ""),
-            narration=[str(narr.get(k) or "") for k in ("intro", "cta")]
-            + [str(x) for x in (narr.get("points") or [])],
+            narration=spoken,
         )
     except Exception as exc:  # noqa: BLE001 - 体检失败不影响出片
         copy_report = {"findings": [], "metrics": {}, "ok": True, "error": str(exc)[:160]}
