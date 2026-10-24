@@ -256,5 +256,57 @@ class TestRealEncode(unittest.TestCase):
             self.assertTrue(row["output"].rsplit(".", 1)[-1] == "mp4")
 
 
+class TestDryRun(unittest.TestCase):
+    """`--dry-run` 是预览：不能报失败、不能退出码 1、不能落任何产物文件。
+
+    这条是真实踩过的坑：dry-run 的每行 status 是 "planned"，旧实现按
+    `len(results) - ok` 算失败数，于是 17 个平台全"失败"、CLI 退出码 1，
+    CI 里 `set -e` 会把一次正常的计划预览当成红。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp(prefix="deliver-dry-"))
+        cls.master = cls.tmp / "master.mp4"
+        r = subprocess.run(
+            [D.FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+             "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=0.5",
+             "-f", "lavfi", "-i", "sine=frequency=440:duration=0.5",
+             "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+             "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest",
+             str(cls.master)], capture_output=True, text=True, timeout=180)
+        if r.returncode != 0:
+            raise unittest.SkipTest(f"生成母版失败: {r.stderr[-300:]}")
+        cls.out = cls.tmp / "planned"
+        cls.ev = D.deliver(cls.master, ["douyin", "bilibili"],
+                           cls.out, dry_run=True, quiet=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_not_counted_as_failure(self):
+        self.assertEqual(self.ev["failed"], 0, self.ev["platforms"])
+        self.assertEqual(self.ev["planned"], 2)
+        self.assertEqual(self.ev["ok"], 0)
+        self.assertTrue(self.ev["dry_run"])
+
+    def test_rows_carry_plan_and_cmd(self):
+        for row in self.ev["platforms"]:
+            self.assertEqual(row["status"], "planned")
+            self.assertTrue(row["cmd"], "dry-run 行要能打印将要执行的命令")
+            self.assertIn("x264", " ".join(row["cmd"]))
+
+    def test_no_files_written(self):
+        written = sorted(p.name for p in self.tmp.rglob("*")
+                         if p.is_file() and p.suffix != ".mp4")
+        self.assertEqual([n for n in written if n != "master.mp4"], [])
+
+    def test_cli_exit_code_is_zero(self):
+        code = D.main(["--master", str(self.master), "--platform", "all",
+                       "--outdir", str(self.tmp / "cli"), "--dry-run"])
+        self.assertEqual(code, 0, "dry-run 计划成功时退出码必须是 0")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

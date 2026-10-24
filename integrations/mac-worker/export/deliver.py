@@ -329,14 +329,18 @@ def deliver(master_path, platforms, outdir="~/CreatorStudio/out",
         results.append(row)
 
     ok = sum(1 for r in results if r.get("status") == "ok")
+    planned = sum(1 for r in results if r.get("status") == "planned")
+    failed = sum(1 for r in results if r.get("status") == "failed")
     evidence = {
         "master": {k: master[k] for k in
                    ("path", "width", "height", "fps", "duration", "vcodec", "acodec")},
         "master_size": master["size"],
         "fit": fit,
+        "dry_run": bool(dry_run),
         "platforms": results,
         "ok": ok,
-        "failed": len(results) - ok,
+        "planned": planned,
+        "failed": failed,
         "written_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
     }
     return evidence
@@ -380,7 +384,12 @@ def main(argv=None) -> int:
     print(f"母版: {args.master}")
     evidence = deliver(args.master, platforms, args.outdir, args.fit,
                        args.dry_run, args.stem)
-    print(f"\n{evidence['ok']} 个平台合格，{evidence['failed']} 个失败")
+    if evidence.get("dry_run"):
+        # --dry-run 只是预览，没编码当然没有"合格"的产物；按失败报是错的
+        print(f"\n{evidence['planned']} 个平台已规划（dry-run 未编码），"
+              f"{evidence['failed']} 个计划失败")
+    else:
+        print(f"\n{evidence['ok']} 个平台合格，{evidence['failed']} 个失败")
 
     if args.evidence:
         p = Path(os.path.expanduser(args.evidence))
