@@ -32,6 +32,13 @@ def test_semantics_beat_courtesy() -> None:
     assert JE._scene_pose({}, 4, 5, {"say": "没覆盖的部分我不编"}) == "shrug"
 
 
+def test_stronger_cue_wins() -> None:
+    """一句话同时命中好几条线索时，按具体度打分，而不是按规则书写顺序。"""
+    assert JE._keyword_pose("未覆盖的部分为什么还要硬编") == "shrug"
+    assert JE._keyword_pose("这一步一定要抽帧") == "point"
+    assert JE._keyword_pose("居然真的搞定了") == "happy"
+
+
 def test_courtesy_still_default() -> None:
     assert JE._scene_pose({}, 0, 5, {"say": "这条视频只花了一分钱"}) == "wave"
     assert JE._scene_pose({}, 4, 5, {"say": "去平台上试一条"}) == "happy"
@@ -61,6 +68,7 @@ def test_author_poses_are_intent() -> None:
 
 if __name__ == "__main__":
     test_semantics_beat_courtesy()
+    test_stronger_cue_wins()
     test_courtesy_still_default()
     test_baselines_have_no_clash()
     test_author_poses_are_intent()

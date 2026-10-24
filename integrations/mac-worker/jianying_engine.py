@@ -938,12 +938,31 @@ _MOTION = {"idle": (1.0, 1.0), "wave": (1.3, 1.8), "point": (0.9, 0.7),
 _POSE_SCALE = {"happy": 1.06, "wave": 1.04, "point": 1.02, "think": 0.98}
 
 
+# 一句话常常同时命中好几种线索（「为什么这一步一定要抽帧」里有疑问也有动作）。
+# 按规则顺序取第一个，等于让「忍不住想问」压过「正在指」，演出来的动作跟句子重心错开。
+# 改成打分：词越长越具体分越高，同分再按规则顺序。
+# 说「我没覆盖到」是比发问更重的动作：观众记住的是坦白，不是问句
+_POSE_BASE = {"shrug": 1.30, "think": 1.10, "point": 1.0, "happy": 0.95}
+
+
+def _keyword_scores(text: str) -> dict[str, float]:
+    scores: dict[str, float] = {}
+    for pose, keys in _POSE_RULES:
+        for key in keys:
+            if key and key in text:
+                # 长词是更具体的线索：「为什么」比「吗」指向更明确
+                scores[pose] = scores.get(pose, 0.0) + _POSE_BASE.get(pose, 1.0) * (0.6 + 0.12 * len(key))
+    return scores
+
+
 def _keyword_pose(text: str) -> str:
     """只看这句话在讲什么，返回对应姿态；没有线索返回空串。"""
-    for pose, keys in _POSE_RULES:
-        if any(key in text for key in keys):
-            return pose
-    return ""
+    scores = _keyword_scores(text)
+    if not scores:
+        return ""
+    order = {pose: i for i, (pose, _) in enumerate(_POSE_RULES)}
+    # 分高者胜，同分按规则顺序（缺口 > 疑问 > 动作 > 情绪）
+    return max(scores, key=lambda pose: (round(scores[pose], 3), -order.get(pose, 9)))
 
 
 def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
