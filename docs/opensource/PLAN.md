@@ -33,6 +33,15 @@ python3 timeline_render.py --spec spec.json --out master.mp4 --json
 python3 deliver.py --master master.mp4 --platform douyin,bilibili --outdir out/
 ```
 
+**已完成**：`bash scripts/export_timeline_repo.sh --smoke` 生成 `dist/creator-studio-timeline/`
+（README + `examples/spec.json` + `examples/make_demo_assets.py` + `requirements.txt` +
+`.github/workflows/ci.yml` + 生成物 `expected_labels.py` + MIT `LICENSE`
++ 三模块与其三个测试）。验证：发布包内 `unittest` 48 项 + 平台档案 34 项全绿；
+真渲染 9 秒 1080x1920 母版并出 douyin 规格；把发布包整目录拷到 `/tmp` 后按 README
+四步原样复现成功（缺 `--spec`、素材路径不存在均按 spec 错误 `EXIT=2`）。
+打包脚本顺带做公开面自检（个人路径/内网地址/凭证），并从 `platform_registry.LABELS`
+现抽 `expected_labels.py`，避免发布包里「测试和自己比对」。
+
 - spec 格式即 README 的核心内容（画布/切片/字幕/BGM/音频），字段含义与取值范围要写死。
 - 平台档案必须携带 `source` 字段并诚实标注：当前 17 个平台**全是 `assumed`**，
   没有任何官方原文核实过。公开发布时这条要写在最显眼的位置，否则就是在替平台方

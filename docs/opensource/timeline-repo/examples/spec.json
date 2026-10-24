@@ -1,0 +1,19 @@
+{
+  "canvas": { "width": 1080, "height": 1920, "fps": 30 },
+  "video": [
+    { "src": "assets/a.mp4", "in": 0, "out": 3 },
+    { "src": "assets/b.mp4", "in": 0, "out": 3 },
+    { "src": "assets/c.mp4", "in": 0, "out": 3 }
+  ],
+  "text": [
+    { "text": "第一段：硬切", "start": 0.4, "end": 2.8, "y": 0.16, "size": 0.05 },
+    { "text": "第二段：多行居中\n底衬 + 淡入淡出", "start": 3.4, "end": 5.6, "y": 0.5,
+      "size": 0.06, "box": "#00000099", "radius": 0.35, "fade": 0.2 },
+    { "text": "第三段：描边", "start": 6.2, "end": 8.8, "y": 0.86,
+      "size": 0.045, "color": "#ffd166", "stroke": 4, "stroke_color": "#3a2a00" }
+  ],
+  "audio": [
+    { "src": "assets/bgm.m4a", "start": 0, "volume": 0.3, "loop": true,
+      "fade": 0.6, "role": "bgm" }
+  ]
+}

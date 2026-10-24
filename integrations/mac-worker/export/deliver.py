@@ -263,7 +263,7 @@ def encode(plan: Plan, timeout: int = 3600) -> dict:
     return {"seconds": round(cost, 1), "cmd": plan.argv()}
 
 
-def deliver(master_path, platforms, outdir="~/CreatorStudio/out",
+def deliver(master_path, platforms, outdir="out",
             fit: str = DEFAULT_FIT, dry_run: bool = False,
             stem: str = "", quiet: bool = False) -> dict:
     """母版 → N 个平台成片。返回证据 dict（dry_run 时不含产物）。"""
@@ -351,7 +351,7 @@ def main(argv=None) -> int:
         description="母版 → 各平台合规成片（headless，不碰 GUI）")
     ap.add_argument("--master", help="母版视频路径")
     ap.add_argument("--platform", default="", help="平台 id，逗号分隔；all=全部档案")
-    ap.add_argument("--outdir", default="~/CreatorStudio/out")
+    ap.add_argument("--outdir", default="out")
     ap.add_argument("--fit", default=DEFAULT_FIT, choices=sorted(FIT_MODES),
                     help="比例不一致时的处理方式：" +
                          "；".join(f"{k}={v}" for k, v in FIT_MODES.items()))

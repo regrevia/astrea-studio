@@ -2,8 +2,8 @@
 """platform_profiles 的单测。
 
 跑法（仓库当前没有 pytest，两条都支持）：
-    python3.11 integrations/mac-worker/export/test_platform_profiles.py
-    python3 -m pytest integrations/mac-worker/export/test_platform_profiles.py -q
+    python3 test_platform_profiles.py          # 在本目录下执行
+    python3 -m pytest test_platform_profiles.py -q
 
 为什么写成「pytest 风格函数 + 自带 __main__」：
   本仓库没装 pytest（``python3 -m pytest`` 直接 ModuleNotFoundError），但
@@ -16,6 +16,10 @@
   本模块为了零副作用复制了一份平台清单（见模块 docstring）。复制就会漂移，
   所以这里用 importlib **真读** ``../../platform_registry.py`` 的 ``LABELS``，
   断言两边 id 集合、中文名全等——上游加/删平台而本模块没跟，测试必须红。
+
+  独立发布包（``creator-studio-timeline``）里没有 platform_registry.py：
+  打包脚本 ``scripts/export_timeline_repo.sh`` 会把真值 LABELS 抽成同级的
+  ``expected_labels.py``。同一份测试在两个仓库里都跑，比对的仍是同一份真值。
 """
 from __future__ import annotations
 
@@ -30,13 +34,16 @@ sys.path.insert(0, str(HERE))          # 直接 python3 跑本文件时也能 im
 import platform_profiles as pp  # noqa: E402  (必须在 sys.path 调整之后)
 
 REGISTRY_PATH = HERE.parent / "platform_registry.py"
+EXPECTED_LABELS_PATH = HERE / "expected_labels.py"
 
 
 def _load_registry_labels() -> dict[str, str]:
-    """加载仓库真值 platform_registry.LABELS（import 期无副作用，不会跑 SAU）。"""
-    assert REGISTRY_PATH.exists(), f"找不到仓库真值 {REGISTRY_PATH}"
-    spec = importlib.util.spec_from_file_location("_registry_truth", REGISTRY_PATH)
-    assert spec and spec.loader, "无法加载 platform_registry.py"
+    """加载平台清单真值（import 期无副作用，不会跑 SAU）。"""
+    path = REGISTRY_PATH if REGISTRY_PATH.exists() else EXPECTED_LABELS_PATH
+    assert path.exists(), (
+        f"找不到平台真值：{REGISTRY_PATH} 与 {EXPECTED_LABELS_PATH} 都不存在")
+    spec = importlib.util.spec_from_file_location("_registry_truth", path)
+    assert spec and spec.loader, f"无法加载 {path.name}"
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)

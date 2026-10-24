@@ -1,0 +1,3 @@
+# 只有画面里出现文字时才需要 Pillow（字幕走 Pillow 画 PNG + overlay，不走 drawtext）。
+# 纯画面/纯音频的 spec 不装也能跑。
+Pillow>=9.0

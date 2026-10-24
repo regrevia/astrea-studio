@@ -1,0 +1,96 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit:
+    # 单元测试不需要 ffmpeg / Pillow：渲染与交付的决策逻辑都是纯函数。
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: 单元测试（渲染 + 交付）
+        run: python -m unittest discover -p 'test_*.py' -v
+
+      # 这 34 项是 pytest 风格、自带 __main__，unittest 发现不到，必须单列一行。
+      - name: 平台档案（34 项）
+        run: python test_platform_profiles.py
+
+  render:
+    # 真渲染冒烟：素材现场合成，断言落在 ffprobe 读到的产物属性上，不看日志。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 装 ffmpeg + 字体 + Pillow
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk
+          python -m pip install --upgrade pip pillow
+          ffmpeg -version | head -1
+
+      - name: 合成演示素材
+        run: python examples/make_demo_assets.py --out examples/assets
+
+      - name: 渲染母版并断言产物
+        run: |
+          python timeline_render.py --spec examples/spec.json --out /tmp/master.mp4 --json
+          python - <<'PY'
+          import json, subprocess
+          info = json.loads(subprocess.run(
+              ["ffprobe", "-v", "error", "-show_streams", "-show_format",
+               "-of", "json", "/tmp/master.mp4"],
+              capture_output=True, text=True, check=True).stdout)
+          v = next(s for s in info["streams"] if s["codec_type"] == "video")
+          a = next(s for s in info["streams"] if s["codec_type"] == "audio")
+          dur = float(info["format"]["duration"])
+          assert (v["width"], v["height"]) == (1080, 1920), v
+          assert v["codec_name"] == "h264", v
+          assert a["codec_name"] == "aac", a
+          assert abs(dur - 9.0) <= 0.2, dur
+          print("master ok:", v["width"], "x", v["height"], round(dur, 2), "s")
+          PY
+
+      - name: 交付决策（17 平台 dry-run，不编码）
+        # dry-run 仍要探测母版（拿分辨率/帧率），所以放在母版渲染之后。
+        run: |
+          python deliver.py --master /tmp/master.mp4 --platform all --dry-run \
+            --evidence /tmp/dry-run.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/dry-run.json"))
+          assert data["dry_run"] is True, data
+          assert data["failed"] == 0, data["platforms"]
+          assert data["planned"] == 17, len(data["platforms"])
+          print("dry-run ok:", data["planned"], "个平台")
+          PY
+
+      - name: 出两个平台规格并断言真的落了文件
+        run: |
+          python deliver.py --master /tmp/master.mp4 --platform douyin,bilibili \
+            --outdir /tmp/out --evidence /tmp/deliver.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/deliver.json"))
+          assert data["failed"] == 0, data["platforms"]
+          for row in data["platforms"]:
+              assert row["status"] == "ok", row
+              # 只看 status 不够：没有字节数就说明编码没真的产出文件
+              assert row["bytes"] > 0, row
+              assert row["probe"]["width"] > 0 and row["probe"]["height"] > 0, row
+          got = {r["platform"]: (r["probe"]["width"], r["probe"]["height"])
+                 for r in data["platforms"]}
+          assert got["douyin"] == (1080, 1920), got
+          assert got["bilibili"] == (1920, 1080), got
+          print("deliver ok:", got)
+          PY

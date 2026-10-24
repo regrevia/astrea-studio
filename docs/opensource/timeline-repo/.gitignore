@@ -1,0 +1,15 @@
+# 演示素材由 examples/make_demo_assets.py 生成，不进仓库（体积大且可复现）
+examples/assets/
+# 渲染产物（母版/平台成片都是可再生的）
+*.mp4
+*.m4a
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+# 本机证据/日志
+evidence*.json
+*.log
+.DS_Store
