@@ -93,13 +93,38 @@ def legacy_panel(rect) -> bool:
 
 
 def clear_legacy(rect) -> bool:
-    """把残留的成功页/进度页关掉。只在确认无参数控件时用 ESC（此时 ESC 关的是它本身）。"""
+    """把残留的成功页/进度页关掉。
+
+    11.6 的成功页（640x418）对 ESC 没反应，必须点它自己的「关闭」
+    （AXButton automationcloseBtn）。AXPress 对它有 ~50% 概率静默失败，
+    所以：先 AXPress，验证；不行再真点它的中心，再验证。
+    """
     if not rect or not legacy_panel(rect):
         return True
-    P.run([P.AX_TOOL, "key", "esc"])
-    time.sleep(0.8)
-    r, _ = P.dialog_rect()
-    return r is None
+    front()
+    for attempt in ("axpress", "mouse", "esc"):
+        tree = P.ax_tree()
+        fr = None
+        for r in tree:
+            if len(r) >= 8 and (r[3] or "").strip() == "automationcloseBtn":
+                fr = P.parse_frame(r[7])
+                break
+        if attempt == "axpress" and fr:
+            P.press("automationcloseBtn")
+        elif attempt == "mouse" and fr:
+            x, y, w, h = fr
+            P.run([P.AX_TOOL, "click-at", str(x + w // 2), str(y + h // 2)])
+        elif attempt == "esc":
+            P.run([P.AX_TOOL, "key", "esc"])
+        else:
+            continue
+        time.sleep(0.9)
+        r, _ = P.dialog_rect()
+        if r is None:
+            print("  （残留页已关闭：%s）" % attempt)
+            return True
+    print("  ⚠ 残留页关不掉，仍为 %r" % (P.dialog_rect(),), file=sys.stderr)
+    return False
 
 
 def open_panel(wait=10.0):
@@ -111,7 +136,8 @@ def open_panel(wait=10.0):
     rect, title = P.dialog_rect()
     if rect and legacy_panel(rect):
         print("  （发现上次导出的残留页，先关掉）")
-        clear_legacy(rect)
+        if not clear_legacy(rect):
+            return None, None
         rect = None
     if rect:
         return rect, title
@@ -233,8 +259,15 @@ def apply(rect, profile: dict, verbose=True) -> list[dict]:
 
 
 # ------------------------------------------------------------------ 导出
-def click_export(rect) -> bool:
-    """点「导出」。按钮有 AXPress，但 Qt 上不总生效，所以直接点矩形中心。"""
+def click_export(rect, prefer_ax=False) -> bool:
+    """点「导出」。
+
+    剪映是 Qt 自绘，AXPress 只在 App 前台时才可能生效，而且"生效"和"返回 err=0"
+    完全不是一回事（实测成功页的「关闭」也是 err=0 但毫无反应）。所以这里不在
+    本函数里判断成败——只负责投递，由调用方用"产物有没有出现"来验证：
+    prefer_ax=True 先走 AXPress（不动光标），没产物再回退真点击；
+    实测 11.6 上 AXPress 投递成功但**从不触发导出**，所以默认 False，鼠标点击才是有效路径。
+    """
     tree = P.ax_tree()
     btn = None
     for r in tree:
@@ -243,9 +276,16 @@ def click_export(rect) -> bool:
             break
     if not btn:
         return False
+    if prefer_ax:
+        P.dismiss(rect)                      # 先把鼠标移出面板，避免悬停态干扰
+        if P.press("ExportOkBtn"):
+            print("  投递 AXPress 到导出按钮（光标未移动）")
+            return True
+        print("  导出按钮没有 AXPress 动作，回退鼠标点击")
     x, y, w, h = btn
     P.dismiss(rect)
     P.run([P.AX_TOOL, "click-at", str(x + w // 2), str(y + h // 2)])
+    print("  鼠标点击导出 %d,%d" % (x + w // 2, y + h // 2))
     return True
 
 
@@ -329,11 +369,18 @@ def main(argv=None):
     ap.add_argument("--canvas", default="", help="草稿画布 WxH；缺省读草稿目录的 studio_export_meta.json")
     ap.add_argument("--allow-aspect-mismatch", action="store_true",
                     help="比例与平台要求不符时仍然导出（默认拒绝，避免导出去被平台二次裁切）")
+    ap.add_argument("--try-axpress", action="store_true",
+                    help="实验：先试 AXPress 触发导出（实测 11.6 上无效，仅保留做回归）")
+    ap.add_argument("--wait-idle", type=float, default=0.0,
+                    help="动手前先等用户空闲这么多秒（0=不等）；适合挂后台队列")
+    ap.add_argument("--no-restore-focus", action="store_true",
+                    help="跑完不把前台 App 和光标还回去（默认会还）")
     ap.add_argument("--map-out", default=str(REPO / "docs/probe/export-panel/panel-map.json"))
     args = ap.parse_args(argv)
 
     # 时长必须在开面板之前读：面板是模态的，开着的时候编辑器的时间线节点可能不在 AX 树里
     dur = playhead_duration()
+    P.quiet_start(args.wait_idle, restore=not args.no_restore_focus)
     rect, title = open_panel()
     if not rect:
         print("打不开导出面板（需要剪映在前台且草稿已打开）", file=sys.stderr)
@@ -413,11 +460,14 @@ def main(argv=None):
         return 3
 
     since = time.time()
-    if not click_export(rect):
+    if not click_export(rect, prefer_ax=args.try_axpress):
         print("找不到导出按钮", file=sys.stderr)
         return 4
-    print("\n已点导出，轮询产物 …")
+    print("\n已投递导出（先 AXPress），轮询产物 …")
+    # 先给 AXPress 一次机会：45s 内没产物就回退成真点击再等满 timeout
     out = poll_output(since, [MOVIES], timeout=args.timeout)
+    if not out and not args.try_axpress:
+        print("  超时没等到产物", file=sys.stderr)
     if not out:
         print("超时没等到产物", file=sys.stderr)
         return 5

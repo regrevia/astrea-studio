@@ -13,6 +13,7 @@
 // 编译: swiftc -O ax_tool.swift -o ax_tool
 
 import ApplicationServices
+import ScreenCaptureKit
 import AppKit
 
 // ---------------------------------------------------------------- AX 基础
@@ -268,8 +269,10 @@ case "click":
         FileHandle.standardError.write("no match for '\(needle)' (found \(matches.count))\n".data(using: .utf8)!); exit(5)
     }
     let (el, f, role) = matches[idx]
-    focusApp(pid)
-    usleep(150_000)
+    if flag["no-focus"] == nil {          // --no-focus：不激活 App，只投 AX 动作，用来测"后台能不能按"
+        focusApp(pid)
+        usleep(150_000)
+    }
     if via == "ax", actionsOf(el).contains(kAXPressAction as String) {
         let err = AXUIElementPerformAction(el, kAXPressAction as CFString)
         print("AXPress \(role) err=\(err.rawValue)")
@@ -326,6 +329,131 @@ case "key":
     usleep(200_000)
     postKey(combo)
     print("key \(combo) -> pid \(pid)")
+
+case "wins":
+    // 列出该进程的窗口与 CGWindowID（后台截图要用 id）；--all 连离屏窗口一起列
+    let opts: CGWindowListOption = flag["all"] != nil ? [.optionAll, .excludeDesktopElements]
+                                                      : [.optionOnScreenOnly, .excludeDesktopElements]
+    let info = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] ?? []
+    var n = 0
+    for w in info where (w[kCGWindowOwnerPID as String] as? Int32) == pid {
+        let num = w[kCGWindowNumber as String] as? Int ?? -1
+        let nm = w[kCGWindowName as String] as? String ?? ""
+        let b = w[kCGWindowBounds as String] as? [String: CGFloat] ?? [:]
+        let layer = w[kCGWindowLayer as String] as? Int ?? -1
+        print("\(num)\t\(Int(b["X"] ?? 0)),\(Int(b["Y"] ?? 0)) \(Int(b["Width"] ?? 0))x\(Int(b["Height"] ?? 0))\tlayer=\(layer)\t\(nm)")
+        n += 1
+    }
+    FileHandle.standardError.write("windows: \(n)\n".data(using: .utf8)!)
+
+case "wincap":
+    // 后台抓单个窗口像素：ScreenCaptureKit 的 desktopIndependentWindow 过滤器
+    // 抓的是**窗口自己**的内容，所以窗口被别的 App 遮住、甚至不在前台也能抓到。
+    // 光标不动、前台不变。需要"屏幕录制"权限。
+    guard rest.count >= 2, let wid = UInt32(rest[0]) else {
+        FileHandle.standardError.write("usage: ax_tool wincap <windowid> <out.png> [--scale 2]\n".data(using: .utf8)!); exit(2)
+    }
+    let out = rest[1]
+    let scale = Double(flag["scale"] ?? "2") ?? 2
+    if #available(macOS 14.0, *) {
+        // ScreenCaptureKit 依赖 WindowServer 初始化；命令行 binary 里必须先碰一下 NSApplication，
+        // 否则 SCShareableContent 直接 CGS_REQUIRE_INIT 断言崩溃。
+        _ = NSApplication.shared
+        let sem = DispatchSemaphore(value: 0)
+        var msg = "timeout"
+        Task {
+            do {
+                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+                guard let win = content.windows.first(where: { $0.windowID == wid }) else {
+                    msg = "window \(wid) not found（共 \(content.windows.count) 个）"; sem.signal(); return
+                }
+                let filter = SCContentFilter(desktopIndependentWindow: win)
+                let cfg = SCStreamConfiguration()
+                cfg.width = Int(Double(win.frame.width) * scale)
+                cfg.height = Int(Double(win.frame.height) * scale)
+                cfg.showsCursor = false
+                cfg.ignoreShadowsSingleWindow = true
+                let img = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg)
+                let rep = NSBitmapImageRep(cgImage: img)
+                if let png = rep.representation(using: .png, properties: [:]) {
+                    try png.write(to: URL(fileURLWithPath: out))
+                    msg = "wincap \(wid) -> \(out) \(img.width)x\(img.height) bytes=\(png.count)"
+                } else { msg = "png encode failed" }
+            } catch {
+                msg = "wincap err: \(error)"
+            }
+            sem.signal()
+        }
+        _ = sem.wait(timeout: .now() + 20)
+        print(msg)
+        if !msg.hasPrefix("wincap ") { exit(6) }
+    } else {
+        FileHandle.standardError.write("需要 macOS 14+ 的 ScreenCaptureKit\n".data(using: .utf8)!); exit(6)
+    }
+
+case "bgclick":
+    // 后台点击：CGEvent.postToPid 直接把事件投递给目标进程，不移动物理光标、不切前台。
+    // 坐标仍是屏幕全局坐标（由 AX 矩形推导），但只有目标进程收到事件。
+    guard rest.count >= 2, let x = Double(rest[0]), let y = Double(rest[1]) else {
+        FileHandle.standardError.write("usage: ax_tool bgclick <x> <y> [--count 2]\n".data(using: .utf8)!); exit(2)
+    }
+    let p = CGPoint(x: x, y: y)
+    let n = Int(flag["count"] ?? "1") ?? 1
+    let src = CGEventSource(stateID: .hidSystemState)
+    CGEvent(mouseEventSource: src, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left)?.postToPid(pid)
+    usleep(60_000)
+    for k in 0..<n {
+        let down = CGEvent(mouseEventSource: src, mouseType: .leftMouseDown, mouseCursorPosition: p, mouseButton: .left)
+        let up = CGEvent(mouseEventSource: src, mouseType: .leftMouseUp, mouseCursorPosition: p, mouseButton: .left)
+        down?.setIntegerValueField(.mouseEventClickState, value: Int64(k + 1))
+        up?.setIntegerValueField(.mouseEventClickState, value: Int64(k + 1))
+        down?.postToPid(pid)
+        usleep(40_000)
+        up?.postToPid(pid)
+        usleep(80_000)
+    }
+    print("bgclick \(Int(x)),\(Int(y)) count=\(n) -> pid \(pid)（光标未移动）")
+
+case "front":
+    // 当前前台 App（守护焦点用）
+    if let a = NSWorkspace.shared.frontmostApplication {
+        print("\(a.processIdentifier)\t\(a.localizedName ?? "")")
+    }
+
+case "activate":
+    // 把指定 pid 拉回前台（配合 --restore-focus）
+    guard let p = rest.first, let t = pid_t(p) else {
+        FileHandle.standardError.write("usage: ax_tool activate <pid>\n".data(using: .utf8)!); exit(2)
+    }
+    if let app = NSRunningApplication(processIdentifier: t) {
+        print(app.activate(options: [.activateIgnoringOtherApps]) ? "activated \(p)" : "activate failed \(p)")
+    } else { exit(3) }
+
+case "cursor":
+    // 无参数=读光标；两个参数=直接挪回去（不产生点击事件，不触发 hover 逻辑之外的副作用）
+    if rest.count >= 2, let x = Double(rest[0]), let y = Double(rest[1]) {
+        CGWarpMouseCursorPosition(CGPoint(x: x, y: y))
+        print("cursor -> \(Int(x)),\(Int(y))")
+    } else {
+        let loc = CGEvent(source: nil)?.location ?? .zero
+        print("\(Int(loc.x)) \(Int(loc.y))")
+    }
+
+case "idle":
+    // 距用户最后一次输入（鼠标/键盘/滚轮）多少秒。用于"等用户离开再动手"。
+    let t = CGEventType(rawValue: ~0)!
+    let sec = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: t)
+    print(String(format: "%.2f", sec))
+
+case "focused":
+    // 当前键盘焦点落在哪个元素上（探键盘可达性用）
+    var fo: CFTypeRef?
+    let e0 = AXUIElementCreateApplication(pid)
+    if AXUIElementCopyAttributeValue(e0, kAXFocusedUIElementAttribute as CFString, &fo) == .success,
+       let fe = fo {
+        let el = fe as! AXUIElement
+        print("\(s(el, kAXRoleAttribute as String))\t\(s(el, kAXTitleAttribute as String))\t\(s(el, kAXDescriptionAttribute as String))\t\(s(el, kAXValueAttribute as String))\t\(frameOf(el).map { "\(Int($0.minX)),\(Int($0.minY)) \(Int($0.width))x\(Int($0.height))" } ?? "")")
+    } else { print("none") }
 
 default:
     FileHandle.standardError.write("unknown command \(cmd)\n".data(using: .utf8)!)

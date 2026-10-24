@@ -19,6 +19,7 @@ import json
 import os
 import re
 import subprocess
+import atexit
 import time
 
 APP = "VideoFusion-macOS"
@@ -139,6 +140,83 @@ def controls(tree):
         if fr:
             out.setdefault(nid, fr)
     return out
+
+
+# --------------------------------------------------------------- 焦点/光标归还
+def front_pid():
+    """当前前台 App：(pid, 名字)。"""
+    out = (run([AX_TOOL, "front"]).stdout or "").strip()
+    if not out:
+        return None
+    parts = out.split("\t")
+    try:
+        return (int(parts[0]), parts[1] if len(parts) > 1 else "")
+    except ValueError:
+        return None
+
+
+def activate(pid):
+    return (run([AX_TOOL, "activate", str(pid)]).stdout or "").strip()
+
+
+def cursor():
+    out = (run([AX_TOOL, "cursor"]).stdout or "").strip().split()
+    return (float(out[0]), float(out[1])) if len(out) >= 2 else None
+
+
+def idle():
+    """距用户最后一次输入多少秒。"""
+    return float((run([AX_TOOL, "idle"]).stdout or "0").strip())
+
+
+_QUIET = {}
+
+
+def quiet_start(wait_idle=0.0, max_wait=300.0, restore=True):
+    """GUI 脉冲的"别打扰用户"开关。
+
+    做两件事：1) 可选地等用户已经离开（无键鼠输入）wait_idle 秒再动手；
+    2) 记下当前前台 App 和光标位置，进程退出时（atexit，所以任何 return 都覆盖）
+    把光标挪回去、把前台 App 还回去。
+
+    注意：剪映的 Qt 控件对 AXPress 全部无效、对 CGEvent.postToPid 也不响应，
+    所以点击**必须**真的把剪映拿到前台并移动物理光标。这里只能把"打扰时长"
+    压到最短（实测整段 12–18s），做不到零打扰。
+    """
+    if restore:
+        try:
+            _QUIET["front"] = front_pid()
+            _QUIET["cursor"] = cursor()
+        except Exception:
+            pass
+    if wait_idle and wait_idle > 0:
+        print("  等待用户空闲 ≥%.0fs 再操作（最多等 %.0fs）…" % (wait_idle, max_wait))
+        deadline = time.time() + max_wait
+        while time.time() < deadline:
+            try:
+                if idle() >= wait_idle:
+                    break
+            except Exception:
+                break
+            time.sleep(0.5)
+        print("  用户已空闲 %.1fs，开始" % idle())
+    if restore:
+        atexit.register(quiet_restore)
+
+
+def quiet_restore():
+    cur = _QUIET.get("cursor")
+    if cur:
+        try:
+            run([AX_TOOL, "cursor", str(int(cur[0])), str(int(cur[1]))])
+        except Exception:
+            pass
+    fr = _QUIET.get("front")
+    if fr and fr[0] != os.getpid():
+        try:
+            activate(fr[0])
+        except Exception:
+            pass
 
 
 def press(needle: str, index: int = 0) -> bool:
