@@ -40,5 +40,41 @@
       "sessionFailed": "Could not load the session: {{message}}",
       "emptyReply": "The console returned nothing. Please send it again."
     }
+  },
+  "factCard": {
+    "title": "One-click fact card",
+    "subtitle": "Pick a topic and points, submit once, and get a vertical fact card; the draft lands in the Jianying draft box automatically, no manual import.",
+    "topic": "Topic",
+    "topicPlaceholder": "What is KV Cache",
+    "hook": "Opening hook",
+    "hookPlaceholder": "Optional, e.g. When VRAM runs out, the model lives on it",
+    "points": "Points",
+    "pointsCount": "{{min}}-{{max}} items",
+    "pointLabel": "Point {{index}}",
+    "pointPlaceholder": "Store only K and V::because Q is used once for this step",
+    "pointsHint": "Write each point as \"title::detail\" with a double colon; cards are rendered in the order you enter them.",
+    "addPoint": "Add a point",
+    "removePoint": "Remove this point",
+    "voice": "Voice",
+    "voiceHint": "Voice-over is synthesized on the worker host; female by default.",
+    "voiceOptions": {
+      "female": "Sweet narration (female)",
+      "male": "Narrator Xiaoshuai (male)"
+    },
+    "kicker": "Series name",
+    "kickerHint": "Shown at the top-left of each card; defaults to 大模型面试题.",
+    "submit": "Generate video",
+    "submitHint": "The worker renders each card and voice-over; the draft reaches Jianying within a minute.",
+    "success": "Submitted: run {{runId}} is queued.",
+    "draftHint": "The draft appears in the Jianying draft box automatically; no manual import needed.",
+    "openDraftBox": "Open draft box",
+    "error": {
+      "topicRequired": "Please fill in the topic",
+      "minPoints": "Add at least {{min}} points",
+      "pointFormat": "Point {{index}} must use the \"title::detail\" format (double colon)",
+      "noProject": "No production project yet. Create a project before rendering.",
+      "submitFailed": "Submit failed: {{message}}",
+      "unknown": "unknown error"
+    }
   }
 }

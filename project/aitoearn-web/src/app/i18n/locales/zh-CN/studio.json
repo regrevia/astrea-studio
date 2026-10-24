@@ -40,5 +40,41 @@
       "sessionFailed": "读取会话失败：{{message}}",
       "emptyReply": "指挥台没有返回内容，请再发一次。"
     }
+  },
+  "factCard": {
+    "title": "干货卡一键出片",
+    "subtitle": "填选题和要点，一次提交就出竖屏干货卡；草稿自动进剪映草稿箱，不用手动导入。",
+    "topic": "选题",
+    "topicPlaceholder": "KV Cache 是什么",
+    "hook": "开场钩子",
+    "hookPlaceholder": "可选，例如：显存不够时，模型靠它续命",
+    "points": "要点",
+    "pointsCount": "{{min}}-{{max}} 条",
+    "pointLabel": "第 {{index}} 条要点",
+    "pointPlaceholder": "只存 K 和 V::因为 Q 只在当前这一步用一次",
+    "pointsHint": "每条写成「标题::说明」，用英文双冒号分隔；按填写顺序逐屏出卡。",
+    "addPoint": "加一条要点",
+    "removePoint": "删除这一条",
+    "voice": "音色",
+    "voiceHint": "配音在 worker 本机合成，默认女声。",
+    "voiceOptions": {
+      "female": "甜美解说（女声）",
+      "male": "解说小帅（男声）"
+    },
+    "kicker": "系列名",
+    "kickerHint": "显示在卡面左上角，默认「大模型面试题」。",
+    "submit": "一键出片",
+    "submitHint": "提交后 worker 逐屏出卡并配音，几十秒内草稿进剪映。",
+    "success": "已提交，任务 {{runId}} 正在排队。",
+    "draftHint": "草稿会自动出现在剪映草稿箱，无需手动导入。",
+    "openDraftBox": "去草稿箱",
+    "error": {
+      "topicRequired": "请填写选题",
+      "minPoints": "至少填 {{min}} 条要点",
+      "pointFormat": "第 {{index}} 条要点要用「标题::说明」格式（英文双冒号）",
+      "noProject": "还没有制作项目，先创建 project 再出片。",
+      "submitFailed": "提交失败：{{message}}",
+      "unknown": "未知错误"
+    }
   }
 }

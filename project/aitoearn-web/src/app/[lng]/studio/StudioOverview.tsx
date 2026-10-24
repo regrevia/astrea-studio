@@ -24,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/utils/className'
 import AssistantPanel from './components/AssistantPanel'
+import FactCardForm from './components/FactCardForm'
 import NewRunForm from './components/NewRunForm'
 import { formatKib, PLATFORM_LABELS } from './studioConstants'
 
@@ -593,6 +594,8 @@ export default function StudioOverview() {
           <NewRunForm projects={projects} onCreated={handleCreated} />
         </CardContent>
       </Card>
+
+      <FactCardForm projects={projects} onCreated={handleCreated} />
 
       <Card>
         <CardHeader className="pb-2">

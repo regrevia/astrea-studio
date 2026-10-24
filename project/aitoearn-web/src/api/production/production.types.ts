@@ -171,6 +171,54 @@ export interface TimelineSpecInput {
   bgm?: { src: string, volume?: number }
 }
 
+/* ------------------------------------------------------------------ 干货卡输入
+ * 「干货卡一键出片」用 factcard 模板：选题 + 开场钩子 + 「标题::说明」要点 + 音色。
+ * 卡面出图、逐屏字幕、转场和配音全部由 worker 的 factcard 模块展开，
+ * 前端只负责把用户填的内容按这个结构提交。
+ */
+
+/** 干货卡可用音色。BV405 甜美解说（女声），BV411 解说小帅（男声）。 */
+export type FactCardVoice = 'sami:BV405_streaming' | 'sami:BV411_streaming'
+
+/** 干货卡 spec。points 每项是「标题::说明」，建议 2-4 条。 */
+export interface FactCardSpec {
+  /**
+   * 渲染通道按 `run.spec.engine` 派切：只有 jianying 才会出剪映草稿。
+   * 顶层 engine 会被接口 DTO 丢掉，所以 spec 里必须再带一份。
+   */
+  engine: 'jianying'
+  template: 'factcard'
+  /** 选题，同时作为开场字幕。 */
+  topic: string
+  /** 开场钩子，留空由 worker 用默认钩子。 */
+  hook?: string
+  /** 要点，每项「标题::说明」（英文双冒号）。 */
+  points: string[]
+  /** 收尾口播。 */
+  cta: string
+  voice: FactCardVoice
+  /** 系列名，显示在卡面左上角。 */
+  kicker: string
+}
+
+/** 创建干货卡任务的请求体。 */
+export interface CreateFactCardRunInput {
+  engine: 'jianying'
+  template: 'factcard'
+  projectId: string
+  title: string
+  brief: string
+  spec: FactCardSpec
+}
+
+/** POST production/runs 的返回：只回任务句柄，渲染异步进行。 */
+export interface CreateRunResult {
+  runId: string
+  status: string
+  revision: number
+  statusUrl: string
+}
+
 /* ------------------------------------------------------------------ 能力清单
  * 来自宿主机的 capabilities_server.py（GET /inventory），不是后端 API。
  * 这些是宿主事实：cookie 落盘状态、可用的 TTS 音色、工具链版本。

@@ -3,6 +3,8 @@ import type {
   AssistantSession,
   AssistantSessionDetail,
   CharacterInfo,
+  CreateFactCardRunInput,
+  CreateRunResult,
   Inventory,
   PageResult,
   ProductionEvent,
@@ -56,10 +58,18 @@ export function createRun(data: {
   spec?: Record<string, unknown>
   facts?: Record<string, unknown>
 }) {
-  return http.post<{ runId: string, status: string, revision: number, statusUrl: string }>(
+  return http.post<CreateRunResult>(
     'production/runs',
     data,
   )
+}
+
+/**
+ * 干货卡一键出片：factcard 模板，worker 在宿主机逐屏出卡并配音，
+ * 交付物是剪映草稿目录，直接出现在剪映草稿箱里。
+ */
+export function createFactCardRun(data: CreateFactCardRunInput) {
+  return http.post<CreateRunResult>('production/runs', data)
 }
 
 /** 精确修改：合并 spec 补丁并重新渲染。 */
