@@ -39,6 +39,14 @@ def test_stronger_cue_wins() -> None:
     assert JE._keyword_pose("居然真的搞定了") == "happy"
 
 
+def test_punctuation_anchor() -> None:
+    """换势要落在逗号后面：锚点按字数比例给，太短或没标点就放弃。"""
+    a = vs._punctuation_anchor("链接丢给 AI，它只读到标题。跟没读差不多。")
+    assert a is not None and 0.25 <= a <= 0.75
+    assert vs._punctuation_anchor("短") is None
+    assert vs._punctuation_anchor("没有标点的一整句话就这样读完了") is None
+
+
 def test_courtesy_still_default() -> None:
     assert JE._scene_pose({}, 0, 5, {"say": "这条视频只花了一分钱"}) == "wave"
     assert JE._scene_pose({}, 4, 5, {"say": "去平台上试一条"}) == "happy"
@@ -69,6 +77,7 @@ def test_author_poses_are_intent() -> None:
 if __name__ == "__main__":
     test_semantics_beat_courtesy()
     test_stronger_cue_wins()
+    test_punctuation_anchor()
     test_courtesy_still_default()
     test_baselines_have_no_clash()
     test_author_poses_are_intent()

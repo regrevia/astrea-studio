@@ -277,7 +277,30 @@ def _energy_states(mp3: Path, dur: float) -> list[tuple[float, float]]:
     return [(a, min(1.0, v / peak)) for a, v in levels]
 
 
-def _clause_switch(mp3: Path, dur: float, cfg: dict) -> float | None:
+def _punctuation_anchor(say: str) -> float | None:
+    """按标点猜「半句」在哪：TTS 的停顿和逗号位置基本对得上。
+
+    取正文 25%–75% 之间最靠近中间的那个断句符，把它在字数里的比例当锚点。
+    """
+    text = " ".join(str(say or "").split())
+    n = len(text)
+    marks = "，。：；、,;:！？!?"
+    if n < 8:
+        return None
+    best, best_d = None, 9.9
+    for i, ch in enumerate(text):
+        if ch not in marks or i < 2 or i > n - 3:
+            continue
+        frac = (i + 1) / n
+        if not 0.25 <= frac <= 0.75:
+            continue
+        d = abs(frac - 0.5)
+        if d < best_d:
+            best, best_d = frac, d
+    return best
+
+
+def _clause_switch(mp3: Path, dur: float, cfg: dict, say: str = "") -> float | None:
     """手势换在句内停顿处，而不是死板的 55%：人换手势总在说完半句的时候。"""
     try:
         levels = _energy_states(mp3, dur)
@@ -309,6 +332,7 @@ def _clause_switch(mp3: Path, dur: float, cfg: dict) -> float | None:
         return None
     # 换在句中最舒服：太早像抽筋，太晚等于后半段没手势。
     # 所以不挑最长的停顿，而是挑「够长且靠中间」的那个。
+    anchor = _punctuation_anchor(say)
     best_frac, best_score = None, -1e9
     for start, length in runs:
         if length < 2:
@@ -317,9 +341,14 @@ def _clause_switch(mp3: Path, dur: float, cfg: dict) -> float | None:
         frac = mid / max(0.4, dur)
         if not 0.25 <= frac <= 0.78:
             continue
-        score = length - abs(frac - 0.5) * 10
+        # 有标点锚点就以它为准：停在哪不重要，重要的是停在那个逗号后
+        score = (length - abs(frac - anchor) * 22) if anchor else (length - abs(frac - 0.5) * 10)
         if score > best_score:
             best_frac, best_score = frac, score
+    # 句子里真有逗号，但那段没测出停顿（气声、连读）时，宁可按字面位置换，
+    # 也不要为了「有停顿」把换势甩到半句中间。
+    if anchor and (best_frac is None or abs(best_frac - anchor) > 0.10):
+        return anchor
     return best_frac
 
 
@@ -576,13 +605,16 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                         JE._second_half_pose(char_cfg, i, total, scene))
             if not char_cfg.get("gesture_sync", True):
                 alt_pose = None
+            # 后半句还是同一个动作，就别为了「换」而换：白做一次溶解，观众看不出来
+            if alt_pose == pose:
+                alt_pose = None
             motion = _pose_motion(pose)
             char_scene = _stage(char_cfg, i, total)
             beats = _beats(say, dur, i == total - 1, char_cfg,
                            mp3=mp3 if say else None)
             switch_at = 0.55
             if alt_pose and say:
-                heard = _clause_switch(mp3, dur, char_cfg)
+                heard = _clause_switch(mp3, dur, char_cfg, say)
                 if heard:
                     switch_at = heard
                 switch_audit.append(round(switch_at, 2))
