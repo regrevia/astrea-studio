@@ -46,10 +46,12 @@ compose 是**两层**:仓库 `docker-compose.yml` 是模板 → `python3 deploy/
 
 **未打通(= 本阶段真正的工作)**:
 
-1. **剪映 11.6 是否认这些草稿的时间线** —— 存疑。平台产出的 `studio_*` 草稿只写
-   明文 `draft_content.json`;而 11.6 自己创建的草稿**只写加密的 `draft_info.json`**
-   (base64 包流密码,熵 ≈7.998),两者结构不同。用户在 11.6 里遇到
-   「无法导出,时间线为空」。
+1. ~~剪映 11.6 是否认这些草稿的时间线~~ —— **根因已定位并已修(2026-10-24)**。
+   剪映的草稿注册表 `<draft_root>/root_meta_info.json` 里每条记录都有
+   `draft_json_file` 字段,**一律指向 `draft_info.json`**:11.6 **只读 `draft_info.json`**,
+   `draft_content.json` 只是历史文件名,它根本不看。平台过去只写 `draft_content.json`,
+   于是列表里草稿在、时间线恒为空(注册表里 `tm_duration`、`draft_timeline_materials_size` 也都是 0)。
+   修法见 §5 P1。
 2. **导出闭环**:macOS 上 `auto_exporter` 不可用;AX 已能点到「导出面板弹出」,
    面板内按钮 Qt 自绘、AX 不可见,需坐标标定 + 产物轮询。
 3. **配音/TTS**:`spec.voice` 已有 `sami:BV411_streaming` 这类标识,但未闭环到草稿音轨。
@@ -85,13 +87,19 @@ compose 是**两层**:仓库 `docker-compose.yml` 是模板 → `python3 deploy/
 - 出现但空 → 迭代 `draft_meta_info.json` 字段(已有明文样本可对照);
 - 根本不出现 → 只认自家加密格式,转 P3 的 AX/CDP 驱动路线。
 
-**P1 — 修引擎三处硬伤(不依赖 P0,可并行)**
-1. `studio_6adc23ad…` / `studio_6adc2526…` / `jy_native_demo` 三个草稿**共用同一个
-   timeline UUID `91E08AC5-…`**(模板克隆没换 id)→ 每草稿生成唯一 id。
-2. `draft_meta_info.json` 里 `tm_duration = 0`、`draft_timeline_materials_size_ = 0`、
-   缺 `draft_cover` → 补齐,避免列表显示 0 秒/无封面。
-3. `draft_fold_path` 写死 `~/Movies/...`,与容器真实路径
-   `~/Library/Containers/com.lemon.lvpro/Data/Movies/...` 不一致 → 统一以容器路径为准。
+**P1 — 引擎修复(代码已改,待一次人工确认)**
+1. ✅ **输出 `draft_info.json`(明文)**:`_deploy()` 之后新增 `_normalize_draft()`,
+   同时写草稿根与 `Timelines/<id>/` 两处;若目标已是剪映写的密文则**拒绝覆盖**。
+2. ✅ **每草稿独立 id**:模板模式沿用模板 id,导致三个草稿共用 `91E08AC5-…`;
+   现在部署后统一换新 UUID,并同步 `Timelines/` 目录名、`project.json(.bak)`、
+   `timeline_layout.json`、`draft_meta_info.json.draft_id`。
+3. ✅ **meta 补全**:`tm_duration`、`draft_timeline_materials_size_` 按真实值写。
+4. ❌ 撤回一条曾进过计划的"硬伤":`~/Movies/JianyingPro` 与
+   `~/Library/Containers/com.lemon.lvpro/Data/Movies/JianyingPro` 是**同一个目录**
+   (inode 相同),不存在路径不一致问题,不必改。
+
+**验收动作(1 分钟)**:`jy_native_demo` 已原地修好(备份 `/tmp/jy_native_demo.pre-normalize.tgz`),
+在剪映里打开它,看时间线是否出现 5 段文字、总长 19s。
 
 **P2 — 改写验收口径**:把 `copy_draft_external` 从验收项里删掉,换成
 「时间线非空 + 导出成功」的可测信号(导出产物 = `~/Movies/JianyingPro/.../export/` 下的 mp4 + 时长/分辨率校验)。
