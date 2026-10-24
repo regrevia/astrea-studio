@@ -56,7 +56,7 @@
     "addPoint": "Add a point",
     "removePoint": "Remove this point",
     "voice": "Voice",
-    "voiceHint": "Voice-over is synthesized on the worker host; female by default.",
+    "voiceHint": "Voice is synthesized on this machine. Female by default.",
     "voiceOptions": {
       "female": "Sweet narration (female)",
       "male": "Narrator Xiaoshuai (male)"
@@ -64,7 +64,7 @@
     "kicker": "Series name",
     "kickerHint": "Shown at the top-left of each card; defaults to 大模型面试题.",
     "submit": "Generate video",
-    "submitHint": "The worker renders each card and voice-over; the draft reaches Jianying within a minute.",
+    "submitHint": "Cards and voice are generated scene by scene; the draft lands in Jianying in under a minute.",
     "success": "Submitted: run {{runId}} is queued.",
     "draftHint": "The draft appears in the Jianying draft box automatically; no manual import needed.",
     "openDraftBox": "Open draft box",
@@ -79,6 +79,6 @@
     },
     "narration": "Voice-over script",
     "narrationPlaceholder": "One line per screen: intro, point 1, point 2…, outro",
-    "narrationHint": "Optional. Full script = {withIntroOutro} lines; points only = {pointsOnly} lines."
+    "narrationHint": "Leave blank to read your notes aloud. {{withIntroOutro}} lines include opening and closing; {{pointsOnly}} lines replace the points only."
   }
 }

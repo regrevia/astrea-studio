@@ -31,7 +31,7 @@ import { formatKib, PLATFORM_LABELS } from './studioConstants'
 /** 每 3 秒刷新一次；渲染本身就是分钟级，再快只是浪费请求。 */
 const POLL_MS = 3000
 
-/** 扫码登录坞。宿主上的独立小服务（8898），只做登录、不发布。 */
+/** 扫码登录坞：独立小服务，只做登录、不发布。 */
 const LOGIN_DOCK = 'http://127.0.0.1:8898/'
 
 const STATUS_META: Record<string, { label: string, tone: string, icon: typeof Clock }> = {
@@ -175,17 +175,7 @@ function PublicationRow({ row }: { row: PublicationAttempt }) {
 function PlatformMatrix({ inventory }: { inventory: Inventory | null }) {
   if (!inventory) {
     return (
-      <p className="py-3 text-sm text-muted-foreground">
-        能力服务未启动。在
-        {' '}
-        <code className="rounded bg-muted px-1">integrations/mac-worker</code>
-        {' '}
-        下运行
-        {' '}
-        <code className="rounded bg-muted px-1">python3 capabilities_server.py</code>
-        {' '}
-        即可看到平台与音色清单。
-      </p>
+      <p className="py-3 text-sm text-muted-foreground">平台清单还没读到，稍后刷新。</p>
     )
   }
 
@@ -285,13 +275,7 @@ const CHARACTER_KIND_LABELS: Record<string, string> = {
 function PresenterPanel({ characters }: { characters: CharacterInfo[] }) {
   if (!characters.length) {
     return (
-      <p className="text-xs text-muted-foreground">
-        没读到主角清单。宿主机上的 capabilities server 没起来时这里会是空的；
-        素材目录是
-        {' '}
-        <code className="text-[10px]">~/CreatorStudio/state/characters/&lt;id&gt;/</code>
-        ，放一张透明 PNG 就能当主角。
-      </p>
+      <p className="text-xs text-muted-foreground">还没有主角素材，放一张透明 PNG 进素材目录就能用。</p>
     )
   }
   return (
@@ -319,15 +303,7 @@ function PresenterPanel({ characters }: { characters: CharacterInfo[] }) {
           </div>
         ))}
       </div>
-      <p className="text-xs text-muted-foreground">
-        主角自带音色，换主角就换解说。加新主角：建一个目录写
-        {' '}
-        <code className="text-[10px]">host.json</code>
-        （见
-        {' '}
-        <code className="text-[10px]">integrations/mac-worker/export/CHARACTERS.md</code>
-        ），刷新即出现。
-      </p>
+      <p className="text-xs text-muted-foreground">主角自带音色，换主角就换解说。加新主角：新建一个主角文件夹，刷新即出现。</p>
     </div>
   )
 }
@@ -609,7 +585,7 @@ export default function StudioOverview() {
           {active.length === 0
             ? (
                 <p className="py-4 text-center text-sm text-muted-foreground">
-                  没有正在渲染的任务。新建任务后，worker 会在几秒内领取。
+                  没有正在渲染的任务。新建任务后，几秒内就会开始。
                 </p>
               )
             : active.map(run => (
@@ -645,7 +621,7 @@ export default function StudioOverview() {
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span>执行器：</span>
         {workers.length === 0
-          ? <span className="text-red-600">没有 worker 注册，任务不会被处理</span>
+          ? <span className="text-red-600">暂时没有可用的出片流程，任务会排队等着</span>
           : workers.map(w => (
               <Badge
                 key={w.name}
@@ -658,7 +634,7 @@ export default function StudioOverview() {
               </Badge>
             ))}
         {onlineWorkers.length === 0 && workers.length > 0 && (
-          <span className="text-red-600">全部离线，请检查 worker 是否在运行</span>
+          <span className="text-red-600">目前都不可用，任务会排队等着</span>
         )}
       </div>
     </div>

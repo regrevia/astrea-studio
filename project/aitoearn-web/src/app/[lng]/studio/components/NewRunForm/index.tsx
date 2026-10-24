@@ -95,7 +95,7 @@ export default function NewRunForm({ projects, onCreated }: NewRunFormProps) {
       setTitle('')
       setScriptText('')
       setBgmSrc('')
-      setSuccessMessage(`已创建任务 ${res.data.runId}，worker 领取后开始渲染。`)
+      setSuccessMessage(`已创建任务 ${res.data.runId}，稍后开始渲染。`)
     }
     finally {
       setSubmitting(false)
@@ -138,7 +138,7 @@ export default function NewRunForm({ projects, onCreated }: NewRunFormProps) {
           onChange={event => setAssetBase(event.target.value)}
         />
         <span className={hintClass}>
-          worker 本机可读的绝对路径；下面填的文件名都相对这个目录。
+          本机可读的目录，下面填的文件名都相对它。
         </span>
       </div>
 
@@ -208,7 +208,7 @@ export default function NewRunForm({ projects, onCreated }: NewRunFormProps) {
             onValueChange={setBgmVolume}
           />
         </div>
-        <span className={hintClass}>文件名相对素材根目录；音量 0–1，留空用默认音量。</span>
+        <span className={hintClass}>文件名相对素材根目录；音量 0–1，不填按默认音量。</span>
       </div>
 
       <div className="flex flex-col gap-1.5 sm:col-span-2">
@@ -247,7 +247,7 @@ export default function NewRunForm({ projects, onCreated }: NewRunFormProps) {
           {!submitting && <Plus className="h-4 w-4" />}
           创建任务
         </Button>
-        <span className={hintClass}>提交后几秒内被 worker 领取，成片按平台分别交付。</span>
+        <span className={hintClass}>提交后几秒内开始处理，成片按平台分别交付。</span>
       </div>
     </form>
   )

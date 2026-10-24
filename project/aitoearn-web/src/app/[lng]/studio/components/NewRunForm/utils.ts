@@ -8,7 +8,7 @@
 
 import type { TimelineCanvas, TimelineSpecInput } from '@/api/production/production.types'
 
-/** worker 本机可读的素材根目录默认值。macOS 上 /tmp 即 /private/tmp，两种写法等价。 */
+/** 本机可读的素材根目录默认值。macOS 上 /tmp 即 /private/tmp，两种写法等价。 */
 export const DEFAULT_ASSET_BASE = '/private/tmp/demo_c/asset'
 
 /** 每句文案的默认时长（秒）。表单不暴露，需要更细的控制直接调后端 API。 */
@@ -52,7 +52,7 @@ export function validateRunForm(values: RunFormValues): string {
   if (parseLines(values.materialsText).length === 0)
     return '请填写素材文件名，每行一个'
   if (!values.assetBase.trim())
-    return '请填写素材根目录（worker 本机可读的绝对路径）'
+    return '请填写素材根目录（本机可读的绝对路径）'
   if (values.platforms.length === 0)
     return '请至少选择一个发布平台'
   return ''
