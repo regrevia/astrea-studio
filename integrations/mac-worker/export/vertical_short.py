@@ -283,9 +283,25 @@ def _audio_beats(mp3: Path, dur: float, cfg: dict) -> list[tuple[str, float]]:
             segs[-1] = (segs[-1][0], segs[-1][1] + 0.1)
         else:
             segs.append((st, 0.1))
-    total = sum(sec for _, sec in segs) or 1.0
+    # 一句话说完嘴不会「啪」地闭上：先落到半开，再闭。句末留一点余开更像在呼吸
+    eased: list[tuple[str, float]] = []
+    release = float(cfg.get("lip_release") or 0.12)
+    for st, sec in segs:
+        if st == "closed" and sec > release * 2 and eased and eased[-1][0] != "closed":
+            eased.append(("half", release))
+            eased.append((st, sec - release))
+        else:
+            eased.append((st, sec))
+    merged: list[tuple[str, float]] = []
+    for st, sec in eased:
+        if merged and merged[-1][0] == st:
+            merged[-1] = (st, merged[-1][1] + sec)
+        else:
+            merged.append((st, sec))
+    eased = merged
+    total = sum(sec for _, sec in eased) or 1.0
     scale = dur / total
-    return [(st, sec * scale) for st, sec in segs if st]
+    return [(st, sec * scale) for st, sec in eased if st]
 
 
 def _beats(say: str, dur: float, last: bool, cfg: dict,
