@@ -162,6 +162,106 @@ python3 jianying_export.py --platform bilibili --canvas 1920x1080
   （`696,301 1168x780` / `0,30 2560x1320` / 面板 `640x720` 或 `640x418` 收起态），
   所以只存**窗口相对坐标**。
 
+### 能不能"不占鼠标、不抢前台"？—— 现状与实测边界
+
+结论先说：**做不到零打扰，但已经把打扰压到 12–18 秒的一次脉冲**。
+下面是三条实测（不是推测），决定了这个边界：
+
+| 能力 | 结果 | 证据 |
+|---|---|---|
+| 后台**读**面板像素 | ✅ 可行 | `ax_tool wincap <windowid> out.png` 用 ScreenCaptureKit 的 `desktopIndependentWindow`，Finder 在前台时照样抓到 1280×836 的面板内容，OCR 正常 |
+| 后台**点击**（`CGEvent.postToPid`） | ❌ 无效 | 事件投递成功、返回 0，但剪映 Qt 完全不处理：点「关闭」后面板仍在 |
+| 后台**按控件**（`AXPress` / `AXValue`） | ❌ 无效 | 参数行是无 action 的 `AXStaticText`；`ExportOkBtn` 有 `AXPress`，返回 `err=0` 但**什么都不发生**（和标题栏导出按钮同一个毛病） |
+
+所以：**参数行必须有真点击，就必须有前台，就必须动物理光标**。能省的只是"看"——
+以前每次校验都要抢前台截图，现在改用 `wincap` 后台抓，前台只留给点击。
+
+为此加了三个开关（`export/jianying_export.py`）：
+
+```bash
+python3 jianying_export.py --platform bilibili --canvas 1920x1080 \
+        --wait-idle 8          # 等用户 8 秒没键鼠输入再动手（挂后台队列用）
+                               # 默认结束时会还原：前台 App + 光标位置
+                               # --no-restore-focus 可关掉
+```
+
+`panel.quiet_start()` 在动手前记下前台 App 与光标，`atexit` 里还原
+（用 `atexit` 是因为脚本有多条 `return`，比包 `try/finally` 更不容易漏）。
+实测：Finder 在前 → dry-run → 退出后前台仍是 Finder、光标回到原位。
+
+### 零打扰的三条路：已选 C（2026-10-24 决定）
+
+| 路线 | 做法 | 状态 |
+|---|---|---|
+| A | 第二个 macOS 登录会话（FUS），GUI 跑在后台会话、独立光标 | 未做，降为**备用/高级通道**（只给必须用面板的人工工序） |
+| B | macOS 虚拟机（Tart/UTM） | 未做，隔离最好但装系统+剪映授权成本高 |
+| **C** | **不用剪映面板，自己渲染母版 + 自己按平台规格交付** | **已落地，见下节** |
+
+C 的选择理由：A 解决不了并发（一台机一次只能导一条）、依赖剪映登录态/TCC/版本，
+且没法容器化；C 是普通后台进程，能塞进现有 Linux 容器和 aitoearn-server 一起跑、
+可重试可观测，并且复用已有的平台档案矩阵与 ffprobe 校验。
+
+远控/无头这条路已经验证不通（`CGWindowListCreateImage` 在新 SDK 里被移除；
+`postToPid` 被 Qt 丢弃；AXPress 全灭），不要再往"完全后台点击"上投时间。
+
+### C 路线已落地：spec → 母版 → 多平台（全程无 GUI）
+
+两个新模块（都在 `integrations/mac-worker/export/`）：
+
+| 文件 | 职责 | 依赖 |
+|---|---|---|
+| `timeline_render.py` | 我们自己的 timeline spec → 母版 mp4（片段拼接/字幕/配乐/响度） | ffmpeg + Pillow |
+| `deliver.py` | 母版 mp4 → 各平台规格（分辨率/帧率/码率/容器/补边策略） | 仅 ffmpeg |
+
+链路是**两段可独立重跑**的纯后台进程，任何一段失败都不用从头来：
+
+```bash
+cd integrations/mac-worker/export
+python3 timeline_render.py --spec spec.json --out master.mp4   # 9s 竖版实测 1.5s
+python3 deliver.py --master master.mp4 --platform douyin,bilibili --outdir out --fit blur
+```
+
+**spec 契约**（JSON，相对路径以 spec 所在目录为基准）：
+
+```json
+{"canvas": {"width":1080,"height":1920,"fps":30},
+ "video": [{"src":"a.mp4","in":0,"out":3,"fit":"cover|contain","speed":1.0}],
+ "text":  [{"text":"多行\n字幕","start":0.4,"end":2.8,"x":0.5,"y":0.78,
+            "size":0.045,"color":"#ffffff","stroke":2.5,"stroke_color":"#000000",
+            "box":"#00000055","radius":0.5,"align":"center","fade":0.25}],
+ "audio": [{"src":"bgm.m4a","start":0,"volume":0.18,"loop":true,"fade":1.0}]}
+```
+
+四条设计取舍，都是踩过坑才定的：
+
+1. **文字用 Pillow 画 RGBA PNG 再 overlay**，不用 `drawtext`/`subtitles`——
+   这台机器的 ffmpeg 9 构建**没有 freetype/libass**（`ffmpeg -filters` 里根本没有
+   这三个滤镜），装了也画不出字。Pillow 顺带拿到描边/圆角底衬/多行居中，
+   且不依赖系统 fontconfig（容器里换 Noto CJK 只需设 `TIMELINE_FONT`）。
+2. **音轨与画面分离**：片段只出画面，声音全部来自 `audio[]`。
+   避免 concat 要求每段都有音轨的老坑，也让"配乐 0.2 + 旁白 1.0 + 一段原声"可组合。
+   混完统一过 `loudnorm=I=-16:TP=-1.5`，实测 -15.9 LUFS。
+3. **尺寸全部相对画布高度**（`size` 是字号占画布高的比例），1080p/4K 视觉一致。
+4. **不放大母版**：`deliver.target_dims()` 发现母版短边小于目标短边时，按短边等比缩目标，
+   720p 母版投 B 站就出 1280x720 并在证据里写 `不放大`。**拉伸永远不是选项**。
+5. 竖化横片默认 `--fit blur`（模糊背景填充），另有 `contain`（黑边，最快最稳）、
+   `crop`（满屏但切边）；`eq=brightness` 一律不加——limited range 黑是 16，
+   压暗会到 0，实测顶部条 YAVG 0 vs 中部 16，播放器上会偏色。
+
+v1 **不做转场/花字/贴纸**：硬切等于剪映"无转场"，`xfade` 需要首尾帧重叠重算时间轴，
+等真需要再加。要花字/特效就退回剪映面板（人工/高级通道），这是刻意的分工。
+
+**验证方式（不读图片，全部数值化）**：产物一律 `ffprobe` + 亮度采样判，
+字幕用"有字幕/无字幕两次渲染逐像素 diff"确认——实测三条字幕分别影响 6.6%/13.7%/7.1%
+像素、差异全部落在 1358–1636 行（字幕带），最大差 199。不要用整带均值判字幕，
+分辨率高时会被背景稀释（曾因此误判"字幕没进片"）。
+
+测试：`python3 test_timeline_render.py`（18）+ `python3 test_deliver.py`（26）
++ `python3 test_platform_profiles.py`（34）= **78 全绿，约 6 秒**。
+
+已知限制：① 无转场/动画模板，这类需求要 Remotion/剪映；② 平台矩阵 17 个仍全是
+`assumed`；③ 还没接进 worker 的 job kind（现在是 CLI，worker 只是没接线）。
+
 ### 平台档案
 
 `export/platform_profiles.py`：17 个平台（与 `platform_registry.py` 一一对应），
@@ -180,6 +280,12 @@ cd ~/Desktop/work/Studio/creator-studio && python3 deploy/render_config.py
 # 起/看运行时栈
 cd ~/CreatorStudio/config && docker compose --env-file compose.env -f compose.yml \
   --project-name creatorstudio up -d
+
+# C 路线：spec → 母版 → 平台规格（全程无 GUI）
+cd ~/Desktop/work/Studio/creator-studio/integrations/mac-worker/export
+python3 timeline_render.py --spec spec.json --out master.mp4 --dry-run   # 先看命令
+python3 deliver.py --master master.mp4 --platform all --outdir ~/CreatorStudio/out
+python3 test_timeline_render.py && python3 test_deliver.py && python3 test_platform_profiles.py
 
 # 健康检查(平台/worker/S3/剪映)
 cd ~/Desktop/work/Studio/creator-studio && python3 deploy/doctor.py
