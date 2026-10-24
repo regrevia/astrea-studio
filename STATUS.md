@@ -256,10 +256,12 @@ v1 **不做转场/花字/贴纸**：硬切等于剪映"无转场"，`xfade` 需�
 像素、差异全部落在 1358–1636 行（字幕带），最大差 199。不要用整带均值判字幕，
 分辨率高时会被背景稀释（曾因此误判"字幕没进片"）。
 
-测试：`python3 test_timeline_render.py`（18）+ `python3 test_deliver.py`（26）
-+ `python3 test_platform_profiles.py`（34）= **78 全绿，约 6 秒**。
+测试：`python3 test_timeline_render.py`（18）+ `python3 test_deliver.py`（30）
++ `python3 test_platform_profiles.py`（34）+ `test_worker_timeline.py`（7）= **89 全绿，约 8 秒**。
+`test_platform_profiles.py` 是 pytest 风格函数 + 自带 `__main__`，
+`unittest discover` 会静默跳过它（报 0 个用例却"成功"）——CI 里必须单独敲一遍。
 
-#### 接进平台（代码已就绪，服务未重启）
+#### 接进平台（已激活 + 端到端跑通）
 
 新增 job kind `render_timeline`，三处改动：
 
@@ -277,17 +279,41 @@ v1 **不做转场/花字/贴纸**：硬切等于剪映"无转场"，`xfade` 需�
 payload 不带 `runId` 就是本地试跑：不传 S3、不发草稿，只回本地路径。
 每次 job 的 spec 都落盘到 `~/CreatorStudio/timeline/<jobId>/spec.json`，出问题能原样复现。
 
-激活还需要两步（没动你正在跑的服务）：
+激活路径（都已执行，可重复）：
 ```bash
-launchctl kickstart -k gui/$(id -u)/local.creatorstudio.worker     # 重启 worker
-cd project/aitoearn-backend && pnpm nx build aitoearn-server        # 再重建 server 容器
+NX_DAEMON=false ./deploy/build_images.sh aitoearn-server   # 本地镜像 creator-studio/aitoearn-server:local
+bash deploy/recreate_server.sh                             # 只重建 server 容器，不碰其它服务
+rsync -a --delete integrations/ ~/CreatorStudio/runtime/integrations/   # worker 跑的是运行时副本
+launchctl kickstart -k gui/$(id -u)/local.creatorstudio.worker
 ```
+worker 启动与空闲(>600s)时会 `POST /api/production/worker/capabilities` 自刷新能力表，
+所以新增 job kind **不再需要手改库**——这之前是踩过的坑：
+claim 的过滤读的是库里的 `productionWorker.capabilities`，注册时缺 `render_timeline`
+会让任务永远没人领，且 worker 看上去一切正常。
 
-测试：`integrations/mac-worker/test_worker_timeline.py`（7，离线跑，不带 runId 不联网）。
+**端到端验收（2026-10-24 实测，全程无 GUI）**：
+`deploy/p2_timeline_e2e.py --mode friendly` 只提交"文案+素材+画幅"（前端表单发的就是这份），
+服务端在 `createRun` 里展开成完整 spec 再落库。
+
+| 项 | 结果 |
+|---|---|
+| run | `6adc54b57aa82b66b89b9f30` `succeeded`，母版 9.0s 1080x1920 |
+| spec 展开 | `video` 3 段 / `text` 3 条（0.2→2.8 递推）/ `audio` bgm 0.35 loop |
+| `run.output.platforms` | `douyin` 1080×1920 1.66MiB、`bilibili` 1920×1080 2.12MiB |
+| 母版与平台件 | 三个 key 全部 `/oss/...` 200 可回读，ffprobe 尺寸/时长一致 |
+| 字幕真的进片 | 字幕带(y1600-1740)与源片逐像素 diff 均值 68 / 最大 199；对照带 0.05 |
+| 响度 | 集成响度 -16.2 LUFS（目标 -16），峰值 -12.0 dBFS |
+| 发布意图 | `publicationAttempt.content.assetKey` 分别指向对应平台成片，不是母版 |
+| 前端 | `/studio` 页面跑出「新建时间轴任务」表单，任务列表按平台出「抖音 1080×1920 1698 KiB / B站 1920×1080 2170 KiB」 |
+
+关键点：**发布阶段取的是平台成片而不是母版**（`planPublication` 里
+`platforms[platform]?.key || output.videoPath`）。之前 `run.output` 只有
+`videoPath`，多平台交付等于白做——发布永远发母版。
 
 已知限制：① 无转场/动画模板，这类需求要 Remotion/剪映；② 平台矩阵 17 个仍全是
-`assumed`；③ 前端还不会构造 timeline spec（现在只能手写 JSON 提交）；
-④ 交付阶段目前只落到本地/S3，没有回写平台发布草稿的 `platformFiles`。
+`assumed`；③ 交付阶段只落到本地/S3，没有回写平台的发布草稿箱
+（形态是 `run.output.platforms[platform] = {key,url,width,height,bytes}`，
+不是旧文档里写的 `platformFiles`）。
 
 ### 平台档案
 

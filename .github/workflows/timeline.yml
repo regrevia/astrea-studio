@@ -1,0 +1,139 @@
+# C 路线的公开面守门：单元测试 + 真实出片冒烟。
+#
+# 这里不跳过任何一步。渲染类测试在没装 ffmpeg 的 runner 上"跳过"等于假绿——
+# 我们要的是"一条 spec 真的能出 mp4"。
+name: timeline
+
+on:
+  push:
+    paths:
+      - 'integrations/mac-worker/**'
+      - 'deploy/make_demo_assets.py'
+      - 'scripts/check_public_surface.sh'
+      - '.github/workflows/timeline.yml'
+  pull_request:
+    paths:
+      - 'integrations/mac-worker/**'
+      - 'deploy/make_demo_assets.py'
+      - 'scripts/check_public_surface.sh'
+      - '.github/workflows/timeline.yml'
+  workflow_dispatch:
+
+jobs:
+  unit:
+    name: 单元测试 + 公开面
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # 只有带字幕的渲染才需要 Pillow，这里先装上，保证测试覆盖到 Pillow 分支。
+      - name: 安装依赖
+        run: python3 -m pip install --disable-pip-version-check pillow
+
+      - name: 公开面门（个人路径/内网地址/凭证/禁发文件）
+        run: ./scripts/check_public_surface.sh
+
+      # 注意：test_platform_profiles.py 是 pytest 风格函数 + 自带 __main__，
+      # `unittest discover` 会静默跳过它（0 个用例）。必须单独跑，
+      # 否则 CI 看着绿、34 个平台档案断言其实一次都没跑。
+      - name: 渲染与交付单元测试
+        working-directory: integrations/mac-worker/export
+        run: |
+          python3 -m unittest discover -p 'test_*.py' -v
+          python3 test_platform_profiles.py
+
+      - name: worker 任务执行器测试
+        working-directory: integrations/mac-worker
+        run: python3 -m unittest test_worker_timeline -v
+
+  render:
+    name: 真实出片冒烟
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装 ffmpeg 与 Pillow
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          python3 -m pip install --disable-pip-version-check pillow
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+
+      # 素材不进仓库：现场合成三支 3 秒竖版片段 + 一段 BGM。
+      - name: 合成演示素材
+        run: python3 deploy/make_demo_assets.py --out "$RUNNER_TEMP/assets"
+
+      # spec 里的相对路径按 spec 文件所在目录解析，所以把它写在素材旁边。
+      - name: 写一条 spec 并出母版
+        run: |
+          cat > "$RUNNER_TEMP/assets/spec.json" <<'JSON'
+          {
+            "canvas": {"width": 1080, "height": 1920, "fps": 30},
+            "video": [
+              {"src": "a.mp4", "in": 0, "out": 3},
+              {"src": "b.mp4", "in": 0, "out": 3},
+              {"src": "c.mp4", "in": 0, "out": 3}
+            ],
+            "text": [
+              {"text": "自有 spec 渲染母版", "start": 0.2, "end": 2.8},
+              {"text": "不启动剪映，也不抢占前台", "start": 3.2, "end": 5.8},
+              {"text": "一条 spec 出全部平台规格", "start": 6.2, "end": 8.8}
+            ],
+            "audio": [{"src": "bgm.m4a", "start": 0, "volume": 0.35, "loop": true}]
+          }
+          JSON
+          python3 integrations/mac-worker/export/timeline_render.py \
+            --spec "$RUNNER_TEMP/assets/spec.json" \
+            --out "$RUNNER_TEMP/master.mp4" --json
+
+      # 断言写在产物上，不写在渲染器的退出码上。
+      - name: 校验母版（时长/分辨率/编码/音轨）
+        run: |
+          set -eu
+          probe() { ffprobe -v error -select_streams "$1" -show_entries "$2" -of default=nw=1:nk=1 "$3"; }
+          dur=$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$RUNNER_TEMP/master.mp4")
+          w=$(probe v:0 stream=width "$RUNNER_TEMP/master.mp4")
+          h=$(probe v:0 stream=height "$RUNNER_TEMP/master.mp4")
+          vcodec=$(probe v:0 stream=codec_name "$RUNNER_TEMP/master.mp4")
+          acodec=$(probe a:0 stream=codec_name "$RUNNER_TEMP/master.mp4")
+          echo "duration=$dur ${w}x${h} v=$vcodec a=$acodec"
+          python3 - "$dur" "$w" "$h" "$vcodec" "$acodec" <<'PY'
+          import sys
+          dur, w, h, vcodec, acodec = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4], sys.argv[5]
+          assert abs(float(dur) - 9.0) <= 0.2, f"时长应约 9s，实际 {dur}"
+          assert (w, h) == (1080, 1920), f"画布应为 1080x1920，实际 {w}x{h}"
+          assert vcodec == "h264", f"视频编码应为 h264，实际 {vcodec}"
+          assert acodec == "aac", f"音轨编码应为 aac，实际 {acodec}"
+          print("母版校验通过")
+          PY
+
+      - name: 交付到两个平台（dry-run 与真实各一次）
+        run: |
+          set -eu
+          python3 integrations/mac-worker/export/deliver.py \
+            --master "$RUNNER_TEMP/master.mp4" --platform all --outdir "$RUNNER_TEMP/plan" --dry-run
+          python3 integrations/mac-worker/export/deliver.py \
+            --master "$RUNNER_TEMP/master.mp4" --platform douyin,bilibili \
+            --outdir "$RUNNER_TEMP/out" --evidence "$RUNNER_TEMP/deliver.json"
+          cat "$RUNNER_TEMP/deliver.json"
+          python3 - "$RUNNER_TEMP/deliver.json" <<'PY'
+          import json, sys
+          ev = json.load(open(sys.argv[1]))
+          rows = ev["platforms"]
+          ok = [r for r in rows if r.get("status") == "ok"]
+          print(f"交付 {len(rows)} 个平台，成功 {len(ok)}")
+          assert len(ok) == 2, f"两个平台都应成功，实际 {len(ok)}: {rows}"
+          for r in ok:
+              assert r.get("size", 0) > 0, f"产物为空: {r}"
+          names = {r["platform"] for r in ok}
+          assert names == {"douyin", "bilibili"}, f"平台不匹配: {names}"
+          PY

@@ -19,8 +19,8 @@
 | `deploy/*` | 本机运行栈：镜像构建、容器重建、worker 安装、验收脚本 | ~2k | bash/python3 |
 
 测试现状（全部用 `python3 xxx.py` 直接跑，不依赖 pytest）：
-`test_worker_timeline.py` 7 + `test_timeline_render.py` 18 + `test_deliver.py` 26 +
-`test_platform_profiles.py` 34 = **85 项通过**。
+`test_worker_timeline.py` 7 + `test_timeline_render.py` 18 + `test_deliver.py` 30 +
+`test_platform_profiles.py` 34 = **89 项通过**。
 
 ## 2. 拆成两个可独立发布的仓库
 
@@ -66,7 +66,8 @@ python3 deliver.py --master master.mp4 --platform douyin,bilibili --outdir out/
 
 ## 4. CI
 
-- **单元测试**：`python3 -m unittest`（85 项），Linux runner 即可，无需 ffmpeg。
+- **单元测试**：`python3 -m unittest discover`（48 项）+ `python3 test_platform_profiles.py`
+  （34 项，pytest 风格、`unittest` 发现不到，必须单列一步），Linux runner 即可，无需 ffmpeg。
 - **渲染冒烟**：需要 ffmpeg 9 + Pillow。素材不落库，用
   `python3 deploy/make_demo_assets.py` 现场合成（三支 3 秒 1080x1920 片段 +
   一段 BGM），再跑 `timeline_render.py` 出 9 秒母版，用 ffprobe 断言
@@ -90,10 +91,10 @@ python3 deliver.py --master master.mp4 --platform douyin,bilibili --outdir out/
 
 | 阶段 | 内容 | 完成判据 |
 | --- | --- | --- |
-| P0 | 公开面门 + 本文档 + plist 模板化 + CI 骨架 | `check_public_surface.sh` 通过，CI 绿 |
+| P0 | 公开面门 + 本文档 + plist 模板化 + CI 骨架 | ✅ `check_public_surface.sh` 通过；CI 见 `.github/workflows/timeline.yml`（未在真实 runner 上跑过） |
 | P1 | 拆出 `creator-studio-timeline` 并发布，README 用真实 spec 示例 | 陌生机器上两条命令出片 |
 | P2 | 发 `creator-studio-worker`，写清它需要什么平台接口 | 与本仓库文档一致 |
-| P3 | 平台本体的时间轴任务表单/发布侧接入（见 `STATUS.md`） | 面板建任务 → 出片 → 发布 |
+| P3 | 平台本体的时间轴任务表单/发布侧接入（见 `STATUS.md`） | ✅ 已完成：表单建任务 → 后台出片 → 平台规格 → 发布台账（run `6adc54b57aa82b66b89b9f30`） |
 
 P1 的验收必须在一台**没装过本项目**的机器上做一次；本机能跑通只证明没忘东西，
 不证明别人能跑通。

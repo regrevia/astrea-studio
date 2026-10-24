@@ -190,6 +190,24 @@ Without the LaunchAgent the worker still runs (`cd integrations/mac-worker &&
 /usr/bin/python3 worker.py --verbose`), but it dies with the terminal session.
 It is stdlib-only, so no venv is needed.
 
+### Timeline render lane (`render_timeline`)
+
+`do_timeline()` renders a master from our own timeline spec (ffmpeg + Pillow), and
+when the spec lists `platforms` it also delivers one file per platform. It is a plain
+background render — no GUI, no 剪映 — so it is safe to run while you keep working.
+
+Two operational facts learned the hard way:
+
+- **Claim filtering reads the DB row, not the worker process.** If
+  `productionWorker.capabilities` lacks `render_timeline`, jobs sit in `queued`
+  forever while the worker looks perfectly healthy. The worker now self-registers on
+  boot and on idle (>600 s) via `POST /api/production/worker/capabilities`; against an
+  older server image that endpoint 404s and the worker says so in its log.
+- **A killed worker leaves a `running` job with an expired lease**, and the run then
+  stays `queued` — the UI shows a zombie "进行中" row.
+  `ProductionService.reapExpiredLeases()` fails the job and puts the run back to
+  `queued` so a retry can pick it up.
+
 ## Backup and restore
 
 ```bash
