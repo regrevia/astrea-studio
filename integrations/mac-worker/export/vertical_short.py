@@ -396,16 +396,29 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     center_w = factcard.W - 248
     cards: list[Path] = []
     layer_sets: list[list[dict]] = []
+    kicker = str(script.get("kicker") or factcard.DEFAULT_KICKER)
     for i, sc in enumerate(scenes):
-        cards.append(Path(str(sc["image"])))
+        card = Path(str(sc["image"]))
+        if i == total - 1 and not script.get("cta_card"):
+            # 收尾空卡 + 一句飘着的字，最容易读成「没做完」：给收尾也铺一块卡面
+            card = factcard.render_card(
+                workdir / f"cta{i:02d}.png", kicker=kicker, index="",
+                palette_idx=len(factcard.PALETTES) - 1, progress=total - 1,
+                total=total, slug="cta", hook=False, draw_body=False)
+        cards.append(card)
         if i == 0:
             layers = _block_layers(hook_text, factcard.HOOK_SIZE, 800, workdir, f"h{i:02d}",
                                    align="center", left=124, max_w=center_w,
                                    fill=(255, 255, 255, 214))
         elif i == total - 1:
-            layers = _block_layers(cta_text, factcard.HOOK_SIZE, 700, workdir, f"h{i:02d}",
-                                   align="center", left=124, max_w=center_w,
-                                   fill=(255, 255, 255, 214))
+            # 卡面左上角是空的强调条，配一句栏目名才不像是漏排了
+            label = script.get("cta_label")
+            if label is None:
+                label = "轮到你了"
+            layers = (_title_layers(str(label), workdir, i) if str(label).strip() else [])
+            layers += _block_layers(cta_text, factcard.HOOK_SIZE, 700, workdir, f"h{i:02d}",
+                                    align="center", left=124, max_w=center_w,
+                                    fill=(255, 255, 255, 214))
         else:
             layers = _title_layers(str(sc.get("text") or ""), workdir, i)
             body = raw_bodies[i - 1] if 0 < i <= len(raw_bodies) else ""
