@@ -267,7 +267,9 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     # 标题取原始文本：剪映层那份被压掉空格，"KV Cache" 会粘成 "KVCache"
     raw_bodies = []
     for raw in points_raw:
-        parts = str(raw).split("::", 1)
+        # 三段式是「标题::卡面正文::口播」：卡面只放第二段，
+        # 口播那段是给耳朵的，混进卡面就会看见一串 ::
+        parts = str(raw).split("::")
         raw_bodies.append(" ".join(parts[1].split()) if len(parts) > 1 else "")
     hook_text = " ".join(str(script.get("hook") or factcard.DEFAULT_HOOK).split())
     cta_text = " ".join(str(script.get("cta") or factcard.DEFAULT_CTA).split())

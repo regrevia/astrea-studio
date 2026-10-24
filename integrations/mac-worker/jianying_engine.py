@@ -910,14 +910,23 @@ def _second_half_pose(cfg: dict[str, Any], idx: int, total: int,
     # 让"陈述→思考 / 思考→陈述"有落点，而不是整屏一个定格。
     if head in ("point", "think"):
         return "think" if head == "point" else "point"
+    if head == "wave":
+        # 开场挥手说完「它只读到标题」还在挥就假了：后半句按内容收住
+        return _keyword_pose(tail) or "think"
     return None
 
 
 # 讲述内容 → 姿态。角色得跟着这句话在做什么，而不是按屏号轮流摆姿势。
 _POSE_RULES = (
-    ("think", ("？", "?", "为什么", "怎么", "是不是", "到底", "吗")),
-    ("point", ("记住", "第一条", "第二", "第三", "关键", "注意", "一定要", "重点")),
-    ("happy", ("真的", "太", "最", "居然", "竟然", "惊喜", "爽")),
+    # 说话内容 → 动作：手要跟着这句话在做的事，而不是跟着句号。
+    ("shrug", ("不编", "未覆盖", "读不到", "看不见", "没法", "做不到",
+               "缺口", "漏掉", "抱歉")),
+    ("think", ("？", "?", "为什么", "怎么", "是不是", "到底", "吗",
+               "只读到", "差不多", "想想", "凭")),
+    ("point", ("抽帧", "喂给", "挂上", "跳过去", "引用", "记住", "第一条",
+               "第二步", "第三步", "关键", "注意", "一定要", "重点")),
+    ("happy", ("真的", "太", "最", "居然", "竟然", "惊喜", "爽", "好用",
+               "拿下", "搞定")),
 )
 # 每个姿态的动幅：(上下起伏倍数, 摆动倍数)。想事情就该比挥手安静。
 _MOTION = {"idle": (1.0, 1.0), "wave": (1.3, 1.8), "point": (0.9, 0.7),
@@ -925,6 +934,14 @@ _MOTION = {"idle": (1.0, 1.0), "wave": (1.3, 1.8), "point": (0.9, 0.7),
 # 姿态还该带一点体型差别：兴奋时凑近，思考时退半步。只改关键帧倍数，
 # 立绘本身不重画，帧缓存还能复用。
 _POSE_SCALE = {"happy": 1.06, "wave": 1.04, "point": 1.02, "think": 0.98}
+
+
+def _keyword_pose(text: str) -> str:
+    """只看这句话在讲什么，返回对应姿态；没有线索返回空串。"""
+    for pose, keys in _POSE_RULES:
+        if any(key in text for key in keys):
+            return pose
+    return ""
 
 
 def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
@@ -942,9 +959,9 @@ def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
         return "happy"      # 收尾给情绪高点
     text = " ".join(str((scene or {}).get(k) or "")
                     for k in ("say", "text", "caption"))
-    for pose, keys in _POSE_RULES:
-        if any(key in text for key in keys):
-            return pose
+    hit = _keyword_pose(text)
+    if hit:
+        return hit
     return "point" if idx % 2 else "think"
 
 
