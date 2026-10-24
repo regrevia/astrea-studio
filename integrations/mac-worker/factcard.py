@@ -1,0 +1,394 @@
+"""factcard.py — 「干货卡」竖屏版式：出图 + spec 组装（worker 与 CLI 共用一份实现）。
+
+形态对标抖音「大模型面试题」类干货号：9:16、一问三答、逐屏大字卡、逐句字幕、
+剪映音色配音；画面动效交给剪映原生资源（转场/画面特效/VIP 字体/文字动画）。
+
+平台侧只要提交
+    {"engine": "jianying", "template": "factcard",
+     "topic": "…", "hook": "…", "points": ["标题::说明", …], "cta": "…", "voice": "…"}
+worker 就会在这里出卡面并展开成完整 scenes，无需本地跑工具。
+"""
+from __future__ import annotations
+
+import math
+import os
+import re
+from pathlib import Path
+from typing import Any
+
+W, H = 1080, 1920
+TOP_SAFE, BOTTOM_SAFE = 240, 430  # 顶部账号栏 / 底部字幕与按钮区
+
+FONT_PATH = os.environ.get("FACTCARD_FONT", "/System/Library/Fonts/STHeiti Medium.ttc")
+DEFAULT_VOICE = "sami:BV405_streaming"
+DEFAULT_KICKER = "大模型面试题"
+DEFAULT_HOOK = "面试官问这句，八成在探你懂不懂推理优化"
+DEFAULT_CTA = "记住这三条，面试能答到点上。下一题想看什么，评论区说"
+TITLE_FONT = "SourceHanSansCN_Bold"       # 剪映会员字体，白名单内、可读性好
+CAPTION_FONT = "SourceHanSansCN_Medium"
+
+# 白名单里确认过的资源（见 jianying_engine._catalog），未知名字会被引擎丢掉
+TRANSITIONS = ["分割", "云朵", "倒影", "冰雪结晶", "画笔擦除"]
+TEXT_ANIMS = ["居中打字", "打字机_I", "向右滑动", "渐显", "弹入"]
+# 出场动画（/get_text_outro_types 97 项、/get_outro_animation_types 72 项里挑的稳重款）
+TEXT_OUTS = ["向上溶解", "渐隐", "向下滑动", "向右擦除", "缩小消失"]
+# 必须是 /get_video_scene_effect_types 里真实存在的名字（912 项）
+SCENE_EFFECTS = ["哈苏胶片", "画质清晰", "法式暖调", "电影感", "秋日暖阳"]
+
+PALETTES = [
+    ((14, 18, 38), (36, 30, 78), (122, 143, 255)),    # 深蓝紫
+    ((10, 26, 30), (22, 52, 58), (86, 226, 189)),     # 深青
+    ((32, 14, 26), (60, 26, 52), (255, 138, 176)),    # 深玫
+    ((30, 22, 10), (56, 40, 18), (255, 196, 87)),     # 深琥珀
+    ((16, 16, 20), (34, 34, 42), (160, 170, 200)),    # 中性收尾
+]
+
+# 画布：抖音竖屏
+W, H = 1080, 1920
+TOP_SAFE, BOTTOM_SAFE = 240, 430  # 顶部账号栏 / 底部字幕与按钮区
+
+FONT_PATH = "/System/Library/Fonts/STHeiti Medium.ttc"
+DEFAULT_VOICE = "sami:BV405_streaming"
+TITLE_FONT = "SourceHanSansCN_Bold"       # 剪映会员字体，白名单内、可读性好
+CAPTION_FONT = "SourceHanSansCN_Medium"
+
+# 白名单里确认过的资源（见 jianying_engine._catalog），未知名字会被引擎丢掉
+TRANSITIONS = ["分割", "云朵", "倒影", "冰雪结晶", "画笔擦除"]
+TEXT_ANIMS = ["居中打字", "打字机_I", "向右滑动", "渐显", "弹入"]
+# 出场动画（/get_text_outro_types 97 项、/get_outro_animation_types 72 项里挑的稳重款）
+TEXT_OUTS = ["向上溶解", "渐隐", "向下滑动", "向右擦除", "缩小消失"]
+# 必须是 /get_video_scene_effect_types 里真实存在的名字（912 项）
+SCENE_EFFECTS = ["哈苏胶片", "画质清晰", "法式暖调", "电影感", "秋日暖阳"]
+
+PALETTES = [
+    ((14, 18, 38), (36, 30, 78), (122, 143, 255)),    # 深蓝紫
+    ((10, 26, 30), (22, 52, 58), (86, 226, 189)),     # 深青
+    ((32, 14, 26), (60, 26, 52), (255, 138, 176)),    # 深玫
+    ((30, 22, 10), (56, 40, 18), (255, 196, 87)),     # 深琥珀
+    ((16, 16, 20), (34, 34, 42), (160, 170, 200)),    # 中性收尾
+]
+
+
+# ---------------------------------------------------------------- 出图
+def _font(size: int):
+    from PIL import ImageFont
+
+    return ImageFont.truetype(FONT_PATH, size)
+
+
+def _vgrad(size, top, bottom):
+    from PIL import Image
+
+    w, h = size
+    img = Image.new("RGB", (1, h))
+    px = img.load()
+    for y in range(h):
+        t = y / max(1, h - 1)
+        px[0, y] = tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3))
+    return img.resize((w, h))
+
+
+def _seed(slug: str) -> int:
+    return abs(hash(slug)) % 9973
+
+
+
+def _wrap_text(draw, text: str, font, max_w: float) -> list[str]:
+    """中文逐字断行；
+ 保留为硬换行。"""
+    out: list[str] = []
+    for para in text.split("\n"):
+        if not para:
+            out.append("")
+            continue
+        buf = ""
+        for ch in para:
+            probe = buf + ch
+            if draw.textlength(probe, font=font) > max_w and buf:
+                out.append(buf)
+                buf = ch
+            else:
+                buf = probe
+        if buf:
+            out.append(buf)
+    return out
+
+
+def _draw_block(page, text: str, size: int, top: int, left: int, max_w: float,
+                fill=(255, 255, 255, 240), spacing: float = 1.45) -> int:
+    """在出图阶段排版正文：剪映字号是相对量，精排只能自己算像素。返回结束 y。"""
+    from PIL import ImageDraw
+
+    if not text:
+        return top
+    draw = ImageDraw.Draw(page)
+    font = _font(size)
+    y = top
+    for ln in _wrap_text(draw, text, font, max_w):
+        if ln:
+            draw.text((left, y), ln, font=font, fill=fill)
+        y += int(size * spacing)
+    return y
+
+def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
+                progress: int, total: int, slug: str, hook: bool = False,
+                body: str = "", body_top: int = 640) -> Path:
+    """卡面底图：渐变 + 网格点 + 圆角描边卡 + 编号幽灵字 + 进度点。文字交给剪映。"""
+    from PIL import Image, ImageDraw, ImageFilter
+
+    top, bottom, accent = PALETTES[palette_idx % len(PALETTES)]
+    img = _vgrad((W, H), top, bottom).convert("RGBA")
+    draw = ImageDraw.Draw(img, "RGBA")
+
+    # 光斑：制造纵深，避免"纯色 PPT 味"
+    rnd = _seed(slug)
+    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow, "RGBA")
+    for i in range(3):
+        cx = int((0.2 + 0.6 * ((rnd + i * 37) % 100) / 100) * W)
+        cy = int((0.15 + 0.5 * ((rnd + i * 61) % 100) / 100) * H)
+        r = int(220 + 160 * ((rnd + i * 17) % 100) / 100)
+        gd.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(*accent, 30))
+    img = Image.alpha_composite(img, glow.filter(ImageFilter.GaussianBlur(120)))
+    # 半透明元素必须画在独立图层再合成：直接在 RGBA 上 draw 会把 alpha 覆盖掉，
+    # convert("RGB") 后就变成一坨纯白（卡片曾经整个糊成白板）。
+    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay, "RGBA")
+
+    # 网格点
+    for y in range(TOP_SAFE, H - BOTTOM_SAFE, 60):
+        for x in range(80, W - 80, 60):
+            draw.ellipse((x - 1, y - 1, x + 1, y + 1), fill=(255, 255, 255, 18))
+
+    if not hook:
+        # 卡片高度跟着正文走，避免大片空白（"PPT 味"最主要的来源）
+        measure = ImageDraw.Draw(overlay)
+        body_lines = _wrap_text(measure, body, _font(46), W - 248) if body else []
+        card_bottom = max(1080, body_top + int(len(body_lines) * 46 * 1.45) + 110)
+        draw.rounded_rectangle((76, 500, 1004, card_bottom), radius=56,
+                               fill=(255, 255, 255, 14),
+                               outline=(255, 255, 255, 70), width=2)
+        # 左侧强调条：标题到正文结束
+        draw.rounded_rectangle((100, 560, 112, card_bottom - 90), radius=6,
+                               fill=(*accent, 235))
+        # 编号做成右上角小徽章：幽灵大字会和标题抢视线
+        if index:
+            bf = _font(46)
+            bw = draw.textlength(index, font=bf)
+            draw.rounded_rectangle((950 - bw - 34, 528, 966, 600), radius=36,
+                                   fill=(*accent, 40), outline=(*accent, 150), width=2)
+            draw.text((958 - bw - 17, 564), index, font=bf, fill=(*accent, 245), anchor="mm")
+    else:
+        # 开场：大引号 + 斜切色块
+        draw.polygon([(0, 1200), (W, 980), (W, 1320), (0, 1540)], fill=(*accent, 26))
+        draw.rounded_rectangle((76, 500, 180, 512), radius=6, fill=(*accent, 240))
+
+    # 顶部 kicker
+    draw.text((76, TOP_SAFE + 44), kicker, font=_font(40), fill=(255, 255, 255, 205))
+
+    # 进度点
+    dot_y = H - 470
+    gap, r = 26, 6
+    start = W // 2 - int((total - 1) * gap / 2)
+    for i in range(total):
+        cx = start + i * gap
+        draw.ellipse((cx - r, dot_y - r, cx + r, dot_y + r),
+                     fill=(*accent, 255) if i == progress else (255, 255, 255, 60))
+
+    # 正文要点：出图阶段精排（字号/行距/安全区都是像素级控制）
+    if body:
+        _draw_block(overlay, body, 46 if not hook else 44, body_top, 124, W - 248,
+                    fill=(255, 255, 255, 236))
+    if hook:
+        # 开场卡没有边框，给钩子句一条细分隔线做锚
+        draw.rounded_rectangle((124, body_top - 44, 220, body_top - 38), radius=3,
+                               fill=(*accent, 200))
+
+    # 品牌角标
+    draw.text((W - 76, H - 64), "Astrea Studio", font=_font(30),
+              fill=(255, 255, 255, 120), anchor="ra")
+    draw.text((76, H - 64), "AI 指挥台 · 自动生成", font=_font(30),
+              fill=(255, 255, 255, 120))
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.alpha_composite(img, overlay).convert("RGB").save(path, "PNG")
+    return path
+
+
+
+# ---------------------------------------------------------------- 预演
+def _draw_centered(page, text, font, cx, cy, fill, max_w, spacing=1.3):
+    """按剪映的字号换算规则在卡面上画字，用于出片前自查版式（不用打开剪映）。"""
+    from PIL import ImageDraw
+
+    draw = ImageDraw.Draw(page)
+    lines: list[str] = []
+    for para in text.split("\n"):
+        if not para:
+            lines.append("")
+            continue
+        buf = ""
+        for ch in para:
+            probe = buf + ch
+            if draw.textlength(probe, font=font) > max_w and buf:
+                lines.append(buf)
+                buf = ch
+            else:
+                buf = probe
+        if buf:
+            lines.append(buf)
+    heights = [draw.textbbox((0, 0), ln or " ", font=font)[3] for ln in lines]
+    total_h = sum(heights) + spacing * font.size * max(0, len(lines) - 1)
+    y = cy - total_h / 2
+    for ln, h in zip(lines, heights):
+        if ln:
+            draw.text((cx, y), ln, font=font, fill=fill, anchor="ma")
+        y += h + spacing * font.size
+
+
+def render_previews(spec: dict, out_dir: Path) -> list[Path]:
+    from PIL import Image
+
+    h, w = spec["height"], spec["width"]
+    folder = out_dir / "preview"
+    folder.mkdir(parents=True, exist_ok=True)
+    made: list[Path] = []
+    for i, scene in enumerate(spec["scenes"]):
+        native = scene.get("native") or {}
+        page = Image.open(scene["image"]).convert("RGB")
+        # 字号换算是相对量：以「1080 宽画布 size=8 ≈ 44px 字幕」为锚点
+        title_px = max(24, int(float(native.get("font_size") or 12) * w / 195))
+        cy = h / 2 - float(native.get("transform_y", -0.45)) * h / 2
+        _draw_centered(page, scene.get("text") or "", _font(title_px), w / 2, cy,
+                       (255, 255, 255), w * 0.72)
+        cap = scene.get("caption") or ""
+        if cap:
+            cap_px = max(20, int(float(native.get("caption_size") or 9) * w / 195))
+            cy2 = h / 2 - float(native.get("caption_y", -0.86)) * h / 2
+            _draw_centered(page, cap, _font(cap_px), w / 2, cy2,
+                           (255, 255, 255), w * 0.86, spacing=1.15)
+        out = folder / f"p{i:02d}.png"
+        page.save(out, "PNG")
+        made.append(out)
+    return made
+
+# ---------------------------------------------------------------- spec
+
+def _title_size(text: str) -> int:
+    """标题字号随字数自适应，保证最多两行、且不压正文。"""
+    n = len(re.sub(r"\s+", "", text))
+    if n <= 8:
+        return 18
+    if n <= 12:
+        return 16
+    return 14
+
+def _unwrap(text: str, limit: int = 17) -> str:
+    """中文按字数硬折行，剪映不会自动折得好看。"""
+    text = re.sub(r"\s+", "", text)
+    return "\n".join(text[i:i + limit] for i in range(0, len(text), limit))
+
+
+def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
+               voice: str, kicker: str, out_dir: Path) -> dict:
+    """选题/要点 → 完整 scenes spec（含 5 张卡面 PNG）。"""
+    points = [str(p).strip() for p in (points_raw or []) if str(p).strip()]
+    if len(points) < 1:
+        raise ValueError("factcard 至少需要一个要点（标题::说明）")
+    total = 2 + len(points)  # 开场 + 要点 + 收尾
+    slug = re.sub(r"[^0-9a-zA-Z\u4e00-\u9fa5]+", "", topic)[:24] or "episode"
+    scenes = []
+
+    # 1) 开场钩子
+    hook_img = render_card(out_dir / "s00.png", kicker=kicker, index="00",
+                           palette_idx=0, progress=0, total=total, slug=slug, hook=True,
+                           body=hook, body_top=880)
+    scenes.append({
+        "image": str(hook_img),
+        "say": f"{topic}。{hook}",
+        "text": _unwrap(topic, 10),
+        "caption": f"{topic}？{hook}"[:30],
+        "voice": voice,
+        "native": {
+            "font": TITLE_FONT, "font_size": _title_size(topic),
+            "transform_y": 0.354, "caption_size": 8, "caption_y": -0.78,
+            "text_anim_in": "居中打字",
+            "text_anim_out": "向上溶解",
+            "transition_in": TRANSITIONS[0], "transition_duration": 0.7,
+            "kenburns": True,
+        },
+    })
+
+    # 2) 要点逐屏
+    for i, raw in enumerate(points, start=1):
+        title, _, body = raw.partition("::")
+        title, body = title.strip(), body.strip()
+        img = render_card(out_dir / f"s{i:02d}.png", kicker=kicker, index=f"0{i}",
+                          palette_idx=i, progress=i, total=total, slug=slug,
+                          body=body, body_top=760)
+        scenes.append({
+            "image": str(img),
+            "say": f"{title}。{body}",
+            "text": _unwrap(title, 11),
+            "caption": (body or title)[:30],
+            "voice": voice,
+            "native": {
+                "font": TITLE_FONT, "font_size": _title_size(title),
+                "transform_y": 0.375, "caption_size": 8, "caption_y": -0.78,
+                "text_anim_in": TEXT_ANIMS[i % len(TEXT_ANIMS)],
+                "text_anim_out": TEXT_OUTS[i % len(TEXT_OUTS)],
+                "transition_in": TRANSITIONS[i % len(TRANSITIONS)],
+                "transition_duration": 0.6,
+                # 氛围层：每屏都给一个轻特效，静态卡最怕"没质感"
+                "effect": [SCENE_EFFECTS[(i - 1) % len(SCENE_EFFECTS)]],
+                "kenburns": True,
+            },
+        })
+
+    # 3) 收尾
+    cta_img = render_card(out_dir / f"s{total - 1:02d}.png", kicker=kicker,
+                          index="", palette_idx=len(PALETTES) - 1, progress=total - 1,
+                          total=total, slug=slug)
+    scenes.append({
+        "image": str(cta_img),
+        "say": cta,
+        "text": _unwrap(cta, 11),
+        "caption": cta[:30],
+        "voice": voice,
+        "native": {
+            "font": TITLE_FONT, "font_size": _title_size(cta),
+            "transform_y": 0.10, "caption_size": 8, "caption_y": -0.78,
+            "text_anim_in": "渐显",
+            "text_anim_out": "渐隐",
+            "transition_in": "倒影", "transition_duration": 0.7,
+            "kenburns": True,
+        },
+    })
+
+    return {
+        "width": W, "height": H, "fps": 30,
+        "voice": voice,
+        "scenes": scenes,
+        "meta": {"series": kicker, "topic": topic},
+    }
+
+def expand(spec: dict[str, Any], job_dir: Path) -> dict[str, Any]:
+    """平台 spec（template=factcard）→ 完整 scenes spec，卡面写进 job_dir。"""
+    topic = str(spec.get("topic") or spec.get("title") or "").strip()
+    if not topic:
+        raise ValueError("factcard 缺少 topic")
+    full = build_spec(
+        topic=topic,
+        hook=str(spec.get("hook") or DEFAULT_HOOK),
+        points_raw=spec.get("points") or [],
+        cta=str(spec.get("cta") or DEFAULT_CTA),
+        voice=str(spec.get("voice") or DEFAULT_VOICE),
+        kicker=str(spec.get("kicker") or DEFAULT_KICKER),
+        out_dir=Path(job_dir),
+    )
+    full["engine"] = str(spec.get("engine") or "jianying")
+    full["template"] = "factcard"
+    if spec.get("fps"):
+        full["fps"] = int(spec["fps"])
+    full["meta"] = {**(full.get("meta") or {}), **(spec.get("meta") or {})}
+    return full

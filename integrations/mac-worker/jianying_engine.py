@@ -466,6 +466,12 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
     全部走剪映原生资源（转场、画面特效、VIP 字体、文字入场动画、音色），
     自研渲染器追不上这部分，也正是会员的价值所在。
     """
+    if spec.get("template") == "factcard" and not spec.get("scenes"):
+        # 平台只提交选题与要点，卡面在 worker 本地出图（版式实现只维护一份）
+        from factcard import expand as _expand_factcard
+
+        spec = _expand_factcard(spec, job_dir)
+        say(8, "干货卡版式已展开")
     scenes = spec.get("scenes") or []
     if not scenes:
         raise JianyingError("jianying spec has no scenes")
@@ -494,7 +500,8 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
 
     total = 0.0
     stats = {"images": 0, "texts": 0, "effects": 0, "audios": 0,
-             "transitions": 0, "text_anims": 0, "fonts": 0, "skipped": []}
+             "transitions": 0, "text_anims": 0, "fonts": 0, "keyframes": 0,
+             "skipped": []}
     for idx, item in enumerate(plan):
         scene, native = item["scene"], item["native"]
         dur = item["duration"]
@@ -532,6 +539,29 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                         native.get("image_anim_out_duration") or 0.5)
                 _post("/add_image", clip)
                 stats["images"] += 1
+
+                # 缓慢推/拉（Ken Burns）：静态卡最容易显得"PPT"，
+                # 关键帧在 VectCutAPI 里按绝对时间命中片段，所以这里用本屏的起止。
+                kb = native.get("kenburns")
+                if kb is None:
+                    kb = spec.get("template") == "factcard"
+                if kb:
+                    zoom_in = idx % 2 == 0
+                    frm = float(native.get("kenburns_from") or (1.0 if zoom_in else 1.06))
+                    to = float(native.get("kenburns_to") or (1.06 if zoom_in else 1.0))
+                    t0 = total + 0.1
+                    t1 = max(t0 + 0.4, total + dur - 0.1)
+                    try:
+                        _post("/add_video_keyframe", {
+                            "draft_id": draft_id,
+                            "track_name": str(clip.get("track_name") or "image_main"),
+                            "property_types": ["uniform_scale", "uniform_scale"],
+                            "times": [round(t0, 3), round(t1, 3)],
+                            "values": [f"{frm:.3f}", f"{to:.3f}"],
+                        })
+                        stats["keyframes"] += 1
+                    except Exception as exc:  # noqa: BLE001 - 关键帧失败不该毁掉整条片
+                        stats["skipped"].append(f"keyframe: {exc}")
 
         # ---- 2) 文字轨：主文案（VIP 字体 + 入场/出场动画）+ 可选逐句字幕
         text = _scene_text(scene)
@@ -590,6 +620,8 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
         for eff in _as_list(native.get("effect")):
             effect_type = _pick(eff, "video_scene_effects")
             if not effect_type:
+                # 静默丢弃最坑：目录里没有的名字要能在 stats 里看见
+                stats["skipped"].append(f"effect: {eff}")
                 continue
             _post("/add_effect", {
                 "draft_id": draft_id,
@@ -631,6 +663,13 @@ def render_jianying(payload: dict[str, Any], job_dir: Path,
             if isinstance(inner, dict) and inner.get("scenes"):
                 spec = {**inner, "engine": spec.get("engine", "jianying")}
                 break
+    if not spec.get("scenes") and spec.get("template") == "factcard":
+        # 干货卡模板：选题 + 要点 → worker 本地出卡面 → 展开成 scenes
+        job_dir.mkdir(parents=True, exist_ok=True)
+        from factcard import expand as _expand_factcard
+
+        spec = _expand_factcard(spec, job_dir)
+        say(8, "factcard:expanded")
     if not spec.get("scenes"):
         raise JianyingError("jianying spec has no scenes")
 
