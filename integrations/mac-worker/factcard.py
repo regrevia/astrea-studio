@@ -32,7 +32,8 @@ CAPTION_FONT = "SourceHanSansCN_Medium"
 # 白名单里确认过的资源（见 jianying_engine._catalog），未知名字会被引擎丢掉
 # 只用缩放/渐显：满屏图一滑动就露底边，卡面文字也跟着甩
 IMAGE_ANIMS = ["轻微放大", "轻微缩小", "渐显"]
-TRANSITIONS = ["叠化", "推近", "竖向模糊", "拉远", "闪白"]
+# 不要闪白：卡面是深底，白闪一下像故障。只用叠化/推拉/模糊这类低对比转场
+TRANSITIONS = ["叠化", "推近", "拉远", "竖向模糊", "叠化"]
 TEXT_ANIMS = ["居中打字", "打字机_I", "向右滑动", "渐显", "弹入"]
 # 出场动画（/get_text_outro_types 97 项、/get_outro_animation_types 72 项里挑的稳重款）
 TEXT_OUTS = ["向上溶解", "渐隐", "向下滑动", "向右擦除", "缩小消失"]
