@@ -82,6 +82,26 @@
     "outputOptions": {
       "mp4": "直接出 mp4",
       "draft": "剪映草稿"
+    },
+    "copyCheck": {
+      "template_phrase": "「{{phrase}}」像模板词",
+      "explainer_tone": "「{{phrase}}」是替读者解释，删掉更利落",
+      "flat_rhythm": "句子都在 {{min}}-{{max}} 字，没有长短交替",
+      "no_short_line": "没有一句 10 字以内的短句",
+      "long_line": "{{count}} 句超过 26 字：「{{first}}…」",
+      "long_spoken": "{{count}} 字，字幕会被切成三段以上",
+      "point_body_long": "卡面正文 {{count}} 字，超过一行半",
+      "card_echoes_voice": "卡面和口播是同一句，读到就听完了",
+      "scope": {
+        "all": "全文",
+        "hook": "开场",
+        "topic": "选题",
+        "cta": "收尾",
+        "points": "要点",
+        "voice": "口播",
+        "point": "要点 {{index}}",
+        "spoken": "口播第 {{index}} 句"
+      }
     }
   }
 }

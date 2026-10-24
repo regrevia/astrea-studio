@@ -82,6 +82,26 @@
     "outputOptions": {
       "mp4": "MP4 directly",
       "draft": "Jianying draft"
+    },
+    "copyCheck": {
+      "template_phrase": "“{{phrase}}” reads like a template",
+      "explainer_tone": "“{{phrase}}” explains for the reader; cut it",
+      "flat_rhythm": "Every sentence runs {{min}}–{{max}} characters, no rhythm",
+      "no_short_line": "No sentence under 10 characters",
+      "long_line": "{{count}} sentences over 26 characters: “{{first}}…”",
+      "long_spoken": "{{count}} characters, subtitles split three ways",
+      "point_body_long": "Card body runs {{count}} characters, over one and a half lines",
+      "card_echoes_voice": "Card body repeats the voiceover",
+      "scope": {
+        "all": "Whole copy",
+        "hook": "Hook",
+        "topic": "Topic",
+        "cta": "Ending",
+        "points": "Points",
+        "voice": "Voiceover",
+        "point": "Point {{index}}",
+        "spoken": "Voiceover line {{index}}"
+      }
     }
   }
 }
