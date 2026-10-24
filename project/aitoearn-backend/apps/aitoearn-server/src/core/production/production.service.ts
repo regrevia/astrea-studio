@@ -23,6 +23,7 @@ import {
 } from '@yikart/mongodb'
 import { MaterialGroupService } from '../content/material-group.service'
 import { MaterialService } from '../content/material.service'
+import { buildTimelineSpec } from './timeline-spec'
 
 export const LEASE_MS = 60_000
 export const RENDER_LANE = 'render'
@@ -34,6 +35,64 @@ export interface CreateRunInput {
   brief: string
   spec?: Record<string, unknown>
   facts?: Record<string, unknown>
+}
+
+/**
+ * 把 worker 回传的 result 归一成 run.output，前端只读 output，不再自己解析 deliveries。
+ *
+ * 没有产物的完成（例如 publish_sau 只回传发布证据）返回 null，调用方保持原 output，
+ * 否则会把渲染阶段写进去的 videoPath/materialId 清空。
+ */
+function normalizeRunOutput(
+  existing: Record<string, unknown>,
+  result: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const deliveries = Array.isArray(result['deliveries']) ? result['deliveries'] : []
+  const platforms: Record<string, Record<string, unknown>> = {}
+  for (const row of deliveries) {
+    if (row === null || typeof row !== 'object') {
+      continue
+    }
+    const delivery = row as Record<string, unknown>
+    const platform = typeof delivery['platform'] === 'string' ? delivery['platform'] : ''
+    const key = typeof delivery['key'] === 'string' ? delivery['key'] : ''
+    // 平台行上传失败时只有 uploadError、没有 key，不能算成可发布产物
+    if (!platform || !key) {
+      continue
+    }
+    const probe = delivery['probe'] !== null && typeof delivery['probe'] === 'object'
+      ? delivery['probe'] as Record<string, unknown>
+      : {}
+    platforms[platform] = {
+      key,
+      url: typeof delivery['url'] === 'string' ? delivery['url'] : '',
+      width: Number(probe['width']) || 0,
+      height: Number(probe['height']) || 0,
+      bytes: Number(delivery['bytes']) || 0,
+    }
+  }
+
+  const videoKey = typeof result['videoKey'] === 'string' ? result['videoKey'] : ''
+  if (!videoKey && !Object.keys(platforms).length) {
+    return null
+  }
+  const output: Record<string, unknown> = { ...existing }
+  if (videoKey) {
+    output['videoPath'] = videoKey
+  }
+  if (typeof result['videoUrl'] === 'string' && result['videoUrl']) {
+    output['videoUrl'] = result['videoUrl']
+  }
+  if (typeof result['duration'] === 'number' && result['duration'] > 0) {
+    output['duration'] = result['duration']
+  }
+  if (result['canvas'] !== null && typeof result['canvas'] === 'object') {
+    output['canvas'] = result['canvas']
+  }
+  if (Object.keys(platforms).length) {
+    output['platforms'] = platforms
+  }
+  return output
 }
 
 /**
@@ -103,7 +162,8 @@ export class ProductionService {
       brief: input.brief,
       revision: 1,
       facts: input.facts ?? {},
-      spec: input.spec ?? {},
+      // 友好输入在入库前就展开成渲染器规格，worker 拿到的 job payload 永远是可渲染的
+      spec: buildTimelineSpec(input.spec ?? {}),
       status: ProductionRunStatus.QUEUED,
       currentStage: 'queued',
       checkpoints: [{ at: new Date(), stage: 'queued', note: 'run created' }],
@@ -129,10 +189,15 @@ export class ProductionService {
       throw new AppException(ResponseCode.ProductionInvalidState, 'Run is still rendering; wait or cancel first')
     }
     const revision = run.revision + 1
+    const patchSpec = patch.spec ?? {}
+    // 改 spec 时以友好输入的底稿为基线重新展开，避免把上一次的展开结果再展开一遍
+    const baseSpec = patchSpec['timeline'] === undefined && run.spec['input']
+      ? run.spec['input'] as Record<string, unknown>
+      : run.spec
     const updated = await this.runRepo.updateById(run.id, {
       revision,
       brief: patch.brief ?? run.brief,
-      spec: { ...run.spec, ...(patch.spec ?? {}) },
+      spec: buildTimelineSpec({ ...baseSpec, ...patchSpec }),
       status: ProductionRunStatus.QUEUED,
       currentStage: 'queued',
       lastError: '',
@@ -326,11 +391,17 @@ export class ProductionService {
     if (!done) {
       return { ok: false, reason: 'stale-lease' }
     }
-    await this.runRepo.updateById(job.runId, {
+    const update: Record<string, unknown> = {
       status: ProductionRunStatus.SUCCEEDED,
       currentStage: 'done',
       ...runPatch,
-    } as never)
+    }
+    const run = await this.runRepo.getById(job.runId)
+    const output = run ? normalizeRunOutput(run.output ?? {}, result) : null
+    if (output) {
+      update['output'] = output
+    }
+    await this.runRepo.updateById(job.runId, update as never)
     await this.appendEvent(job.runId, {
       kind: 'job.succeeded',
       jobId,
@@ -376,28 +447,74 @@ export class ProductionService {
     return { ok: true }
   }
 
-  /** Requeue jobs whose worker stopped heart-beating. */
+  /**
+   * 回收心跳超时的渲染任务，返回真正重新排队的 run 数量。
+   *
+   * worker 被 kill -9 之后不会再续约，也没有人替它把 job 从 running 里拿出来。
+   * 之前这里只把 run 标成 waiting_user，等于把 run 永久挂起：job 永远 running、
+   * run 永远进行中，前端就一直显示一条僵尸任务。
+   *
+   * 现在按「过期租约 = 这一次尝试作废」处理：job 判 failed、run 回到 queued，
+   * 并且补一条新的队列 job，否则 queued 的 run 没有 job 可 claim，仍然是僵尸。
+   * 连续 3 次丢租约就判 run 失败，避免必然崩溃的渲染被每分钟无限重启。
+   */
   async reapExpiredLeases() {
     const expired = await this.jobRepo.findExpired(new Date())
+    let requeued = 0
     for (const job of expired) {
-      await this.jobRepo.updateById(job.id, {
-        status: ProductionJobStatus.INTERRUPTED,
+      // 用租约版本做守卫，而不是普通 updateById：扫描与写入之间 worker 可能刚续约，
+      // 直接覆盖会把一个健康任务的租约改坏
+      const failed = await this.jobRepo.finish(job.id, job.leaseOwner, job.leaseVersion, {
+        status: ProductionJobStatus.FAILED,
         message: 'lease expired',
-        finishedAt: new Date(),
-      } as never)
-      await this.runRepo.updateById(job.runId, {
-        status: ProductionRunStatus.WAITING_USER,
-        currentStage: 'interrupted',
-        lastError: 'worker lease expired; render can be retried safely',
-      } as never)
-      await this.appendEvent(job.runId, {
-        kind: 'job.interrupted',
-        jobId: job.id,
-        stage: 'interrupted',
-        message: 'lease expired, no side effects assumed',
+        lastError: 'worker stopped heart-beating',
       })
+      if (!failed) {
+        continue
+      }
+      await this.appendEvent(job.runId, {
+        kind: 'job.failed',
+        jobId: job.id,
+        stage: 'failed',
+        message: 'lease expired',
+      })
+      const run = await this.runRepo.getById(job.runId)
+      // run 已经结束（另一条路径完成或用户取消）就不要把它拉回 queued
+      if (!run || run.status === ProductionRunStatus.SUCCEEDED || run.status === ProductionRunStatus.CANCELLED) {
+        continue
+      }
+      // 同一条 run 已经有后续 job 在排队/执行（例如用户手动重试过），不要重复补任务
+      const jobs = await this.jobRepo.listByRun(job.runId)
+      const pending = jobs.some(item =>
+        item.id !== job.id
+        && (item.status === ProductionJobStatus.QUEUED || item.status === ProductionJobStatus.RUNNING),
+      )
+      if (pending) {
+        continue
+      }
+      if (job.attempt >= 3) {
+        await this.runRepo.updateById(job.runId, {
+          status: ProductionRunStatus.FAILED,
+          currentStage: 'failed',
+          lastError: 'worker 连续 3 次心跳超时，已停止自动重试',
+        } as never)
+        continue
+      }
+      await this.runRepo.updateById(job.runId, {
+        status: ProductionRunStatus.QUEUED,
+        currentStage: 'queued',
+        lastError: 'worker 心跳超时，已自动重新排队',
+      } as never)
+      await this.enqueueRender(run.userId, run, await this.jobRepo.nextAttempt(job.runId, job.kind))
+      await this.appendEvent(job.runId, {
+        kind: 'job.requeued',
+        jobId: job.id,
+        stage: 'queued',
+        message: 'lease expired, render requeued',
+      })
+      requeued += 1
     }
-    return expired.length
+    return requeued
   }
 
   // --------------------------------------------------------------- material
@@ -567,8 +684,12 @@ export class ProductionService {
     },
   ) {
     const run = await this.getRun(userId, input.runId)
-    if (run.status !== ProductionRunStatus.SUCCEEDED || !(run.output as Record<string, unknown> | undefined)?.['videoPath']) {
-      throw new AppException(ResponseCode.ProductionInvalidState, 'Run has no verified output yet')
+    const output = (run.output ?? {}) as Record<string, unknown>
+    const platforms = (output['platforms'] ?? {}) as Record<string, { key?: string }>
+    // 发布投递哪个文件：该平台重新交付过的成片优先，否则退回母版 key
+    const assetKey = platforms[input.platform]?.key || (typeof output['videoPath'] === 'string' ? output['videoPath'] : '')
+    if (run.status !== ProductionRunStatus.SUCCEEDED || !assetKey) {
+      throw new AppException(ResponseCode.ProductionInvalidState, '运行还没有可发布的成片产物')
     }
     const slot = input.plannedAt ?? 'now'
     const key = ProductionService.idempotencyKey({
@@ -594,7 +715,8 @@ export class ProductionService {
       idempotencyKey: key,
       plannedAt: input.plannedAt ? new Date(input.plannedAt) : null,
       status: PublicationStatus.PLANNED,
-      content: input.content ?? {},
+      // 记下这次计划实际投递的文件，事后能回答「发出去的是哪个平台的成片」
+      content: { ...(input.content ?? {}), assetKey },
       evidence: [],
     } as unknown as Partial<PublicationAttempt>)
     await this.appendEvent(run.id, {
@@ -707,6 +829,17 @@ export class ProductionService {
       lastSeenAt: new Date(),
     } as never)
     return { workerId: worker.id, token }
+  }
+
+  /**
+   * worker 启动时把本进程真实支持的能力推回服务端。
+   * claim 的过滤条件读的是库里的 worker 记录而不是进程配置，以前新增 job kind
+   * 必须手改数据库，漏改的表现是任务永远排队、worker 却看起来完全健康。
+   */
+  async refreshWorkerCapabilities(workerId: string, capabilities: string[]) {
+    const normalized = [...new Set(capabilities.map(item => item.trim()).filter(item => item.length > 0))]
+    const updated = await this.workerRepo.updateById(workerId, { capabilities: normalized })
+    return { ok: true, capabilities: updated?.capabilities ?? normalized }
   }
 
   async resolveWorker(token: string) {

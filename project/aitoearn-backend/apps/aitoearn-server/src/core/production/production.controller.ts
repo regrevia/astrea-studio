@@ -105,6 +105,11 @@ const ClaimSchema = z.object({
 })
 class ClaimDto extends createZodDto(ClaimSchema, 'WorkerClaimDto') {}
 
+const CapabilitiesSchema = z.object({
+  capabilities: z.array(z.string().min(1)).describe('本进程实际支持的作业类型'),
+})
+class CapabilitiesDto extends createZodDto(CapabilitiesSchema, 'WorkerCapabilitiesDto') {}
+
 const HeartbeatSchema = z.object({
   leaseVersion: z.number().int().describe('租约版本'),
   progress: z.number().min(0).max(100).optional(),
@@ -400,6 +405,18 @@ export class ProductionWorkerController {
       duration: body.duration,
       groupId: body.groupId,
     })
+  }
+
+  @Public()
+  @HttpCode(200)
+  @ApiDoc({ summary: 'worker 自刷新能力清单' })
+  @Post('capabilities')
+  async refreshCapabilities(
+    @Headers('x-worker-token') token: string | undefined,
+    @Body() body: CapabilitiesDto,
+  ) {
+    const worker = await this.auth(token)
+    return await this.production.refreshWorkerCapabilities(worker.id, body.capabilities)
   }
 
   @Public()
