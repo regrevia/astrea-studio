@@ -1,12 +1,8 @@
 name: Build Backend Images
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'project/aitoearn-backend/**'
-      - '.github/workflows/backend-build.yml'
+  # 上游的发版流水线依赖 Docker Hub / 内网 registry 凭据，开源仓库里只在手动触发时跑；
+  # 每次 push 的自动校验见 astrea-check.yml（渲染引擎单测）。
   workflow_dispatch:
     inputs:
       build_aitoearn_ai:
