@@ -141,11 +141,13 @@ def draw_body(d, pose="idle"):
         d.ellipse([lx - 34 * S, GROUND - 56 * S, lx + 34 * S, GROUND + 2 * S],
                   fill=NAVY, outline=OUTLINE, width=LW2)
 
-    poses = {"idle": (12, 12), "wave": (-118, 12), "point": (74, 14),
-             "think": (-34, 16), "happy": (-132, 132), "shrug": (-92, 92)}
-    la, ra = poses.get(pose, poses["idle"])
-    _arm(d, -1, la)
-    _arm(d, +1, ra)
+    # (左臂角度, 右臂角度, 手臂长度系数)
+    poses = {"idle": (14, 14, 1.0), "wave": (-146, 14, 1.08), "point": (96, 16, 1.10),
+             "think": (-58, 10, 0.72), "happy": (-152, 152, 1.06),
+             "shrug": (-108, 108, 0.92)}
+    la, ra, scale = poses.get(pose, poses["idle"])
+    _arm(d, -1, la, length=138 * S * scale)
+    _arm(d, +1, ra, length=138 * S * scale)
 
 
 def draw_head(d, pose="idle", mouth="closed", eyes="open"):
@@ -233,12 +235,21 @@ def draw_head(d, pose="idle", mouth="closed", eyes="open"):
                   fill=(126, 44, 64, 255))
 
 
-def render(pose="idle", mouth="closed", eyes="open", sway=0.0) -> Image.Image:
+_TILT = {"idle": 0.0, "wave": -6.0, "point": 4.0, "think": -5.0,
+         "happy": 6.0, "shrug": 1.5}
+
+
+def render(pose="idle", mouth="closed", eyes="open", sway=0.0, tilt=None) -> Image.Image:
     img = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
     draw_tail(img, sway)
     d = ImageDraw.Draw(img)
     draw_body(d, pose)
-    draw_head(d, pose, mouth, eyes)
+    head = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
+    draw_head(ImageDraw.Draw(head), pose, mouth, eyes)
+    ang = _TILT.get(pose, 0.0) if tilt is None else tilt
+    if ang:
+        head = head.rotate(ang, resample=Image.BICUBIC, center=HEAD_C)
+    img.alpha_composite(head)
     return img.resize((DES, DES), Image.LANCZOS)
 
 

@@ -763,19 +763,21 @@ def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
     import character
 
     pose = str(cfg.get("pose") or _character_pose(cfg, idx, total))
-    mouth = "half" if speaking else "closed"
+    # 口型按镜头轮换：全片一个 "half" 会让嘴像被冻住
+    _MOUTHS = ("open", "half", "open", "round")
+    mouth = _MOUTHS[idx % len(_MOUTHS)] if speaking else "closed"
     key = (pose, mouth)
     figure = _CHAR_FRAME_CACHE.get(key)
     if figure is None:
         figure = character.render(pose=pose, mouth=mouth)
         _CHAR_FRAME_CACHE[key] = figure
-    w = int(float(cfg.get("width") or 460) * width / 1080)
+    w = int(float(cfg.get("width") or 560) * width / 1080)
     fig = figure.resize((w, w), Image.LANCZOS)
     # 立绘四周有透明留白：按内容框对齐，否则右边缘会把鲸尾切掉
     bb = fig.getbbox() or (0, 0, w, w)
     cw, chh = bb[2] - bb[0], bb[3] - bb[1]
-    x = int(float(cfg.get("x") or 700) * width / 1080)
-    y = int(float(cfg.get("y") or 1150) * height / 1920)
+    x = int(float(cfg.get("x") or 650) * width / 1080)
+    y = int(float(cfg.get("y") or 1070) * height / 1920)
     x = max(0, min(x, width - 32 - cw))
     y = max(0, min(y, height - chh))
     canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
