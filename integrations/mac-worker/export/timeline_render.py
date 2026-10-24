@@ -50,6 +50,12 @@ FONT_CANDIDATES = (
 
 VIDEO_FITS = ("cover", "contain")
 
+# 叠加层（虚拟主播/贴纸/页面卡片）：图片或带 alpha 的视频，贴在成片上面。
+# 只负责「贴上去 + 进/出场 + 呼吸动效」，不承担转场合成——那属于剪映/后期。
+OVERLAY_MOTIONS = ("bob", "sway", "none")
+OVERLAY_SIDES = ("left", "right", "top", "bottom")
+OVERLAY_VIDEO_SUFFIXES = (".webm", ".mov", ".mp4", ".m4v", ".mkv", ".gif", ".avi")
+
 
 class SpecError(ValueError):
     """spec 本身有问题（缺字段、时间轴越界、素材不存在）。"""
@@ -77,6 +83,20 @@ def _color(value, default: str) -> tuple:
     if len(s) != 8:
         raise SpecError(f"颜色格式应为 #rrggbb 或 #rrggbbaa，得到 {value!r}")
     return tuple(int(s[i:i + 2], 16) for i in (0, 2, 4, 6))
+
+
+def _overlay_edge(raw, key: str, idx: int):
+    """解析 overlay 的入场/出场（{"from"/"to": 边, "duration": 秒}）。"""
+    if not raw:
+        return None
+    side = str(raw.get(key) or ("right" if key == "from" else "left"))
+    if side not in OVERLAY_SIDES:
+        raise SpecError(
+            f"overlay[{idx}] {key} 只能是 {OVERLAY_SIDES}，得到 {side!r}")
+    dur = float(raw.get("duration") if raw.get("duration") is not None else 0.45)
+    if dur <= 0:
+        raise SpecError(f"overlay[{idx}] {key} duration 必须大于 0，得到 {dur}")
+    return {"side": side, "duration": dur}
 
 
 def load_spec(path, base: Path | None = None) -> dict:
@@ -166,12 +186,54 @@ def load_spec(path, base: Path | None = None) -> dict:
             "role": str(a.get("role") or ""),
         })
 
+    overlays = []
+    for i, o in enumerate(raw.get("overlay") or []):
+        src = Path(os.path.expanduser(str(o.get("src") or "")))
+        if not src.is_absolute():
+            src = (here / src).resolve()
+        if not src.is_file():
+            raise SpecError(f"overlay[{i}] 素材不存在: {src}")
+        start = float(o.get("start") or 0.0)
+        end = float(o.get("end") if o.get("end") is not None else total)
+        if end <= start:
+            raise SpecError(f"overlay[{i}] end({end}) 必须大于 start({start})")
+        if start >= total - 1e-6:
+            raise SpecError(f"overlay[{i}] start({start}) 超出总时长({total:.2f}s)")
+        ov_width = o.get("width")
+        ov_width = None if ov_width in (None, 0) else int(ov_width)
+        if ov_width is not None and (ov_width <= 0 or ov_width % 2):
+            raise SpecError(f"overlay[{i}] width 必须是正偶数，得到 {ov_width}")
+        motion = dict(o.get("motion") or {})
+        mtype = str(motion.get("type") or "none")
+        if mtype not in OVERLAY_MOTIONS:
+            raise SpecError(
+                f"overlay[{i}] motion.type 只能是 {OVERLAY_MOTIONS}，得到 {mtype!r}")
+        overlays.append({
+            "src": src,
+            "kind": "video" if src.suffix.lower() in OVERLAY_VIDEO_SUFFIXES else "image",
+            "start": start,
+            "end": min(end, total),
+            "x": float(o.get("x") or 0.0),
+            "y": float(o.get("y") or 0.0),
+            "width": ov_width,
+            "opacity": float(o.get("opacity") if o.get("opacity") is not None else 1.0),
+            "fade": float(o.get("fade") or 0.0),
+            "enter": _overlay_edge(o.get("enter"), "from", i),
+            "exit": _overlay_edge(o.get("exit"), "to", i),
+            "motion": {
+                "type": mtype,
+                "amplitude": float(motion.get("amplitude") or 8.0),
+                "period": float(motion.get("period") or 2.2),
+            },
+        })
+
     return {
         "raw": raw,
         "canvas": {"width": width, "height": height, "fps": fps},
         "duration": round(total, 6),
         "video": clips,
         "text": texts,
+        "overlay": overlays,
         "audio": audios,
         "font": str(raw.get("font") or find_font()),
     }
@@ -239,6 +301,51 @@ def _text_position(item: dict, canvas: dict, img_w: int, img_h: int) -> tuple:
     return x, y
 
 
+# ------------------------------------------------------------- 叠加层表达式
+def _overlay_axis_expr(item: dict, axis: str, canvas: dict) -> str:
+    """生成 overlay 的 x 或 y 表达式：进/出场位移 + 呼吸动效，全部用绝对时间 t。
+
+    基座是画布像素坐标；slide 从画布外滑入，bob/sway 用正弦让人物"活着"。
+    """
+    W, H = canvas["width"], canvas["height"]
+    base = item["x"] if axis == "x" else item["y"]
+    span = item["width"] or W
+    ov_w = item["width"] or W
+    expr = f"{base:.3f}"
+
+    enter = item.get("enter")
+    if enter and enter["side"] in (("left", "right") if axis == "x" else ("top", "bottom")):
+        d = enter["duration"]
+        start = item["start"]
+        if axis == "x":
+            off = -ov_w if enter["side"] == "left" else W
+        else:
+            off = -span if enter["side"] == "top" else H
+        expr = (f"if(lt(t,{start + d:.3f}),{off:.3f}+({base:.3f}-({off:.3f}))"
+                f"*(t-{start:.3f})/{d:.3f},{expr})")
+
+    leave = item.get("exit")
+    if leave and leave["side"] in (("left", "right") if axis == "x" else ("top", "bottom")):
+        d = leave["duration"]
+        t0 = max(item["start"], item["end"] - d)
+        if axis == "x":
+            off = -ov_w if leave["side"] == "left" else W
+        else:
+            off = -span if leave["side"] == "top" else H
+        expr = (f"if(gt(t,{t0:.3f}),{base:.3f}+({off:.3f}-({base:.3f}))"
+                f"*(t-{t0:.3f})/{d:.3f},{expr})")
+
+    motion = item.get("motion") or {}
+    mtype = motion.get("type") or "none"
+    amp = motion.get("amplitude") or 0.0
+    period = motion.get("period") or 2.2
+    if amp and mtype in ("bob", "sway") and (
+            (mtype == "bob" and axis == "y") or (mtype == "sway" and axis == "x")):
+        expr = f"({expr})+{amp:.3f}*sin(2*PI*(t-{item['start']:.3f})/{period:.3f})"
+
+    return expr
+
+
 # --------------------------------------------------------------- 组装命令
 @dataclass
 class RenderPlan:
@@ -269,8 +376,17 @@ class RenderPlan:
         for i, (png, w, h, item) in enumerate(self.text_pngs):
             cmd += ["-loop", "1", "-framerate", f"{FPS:g}",
                     "-t", f"{total:g}", "-i", str(png)]
-        # 3) 音频
-        audio_base = base + len(self.text_pngs)
+        # 3) 叠加层：图片 loop 成整段；视频循环播放（alpha 需要显式 vp9 解码器）
+        overlay_base = base + len(self.text_pngs)
+        for o in self.spec["overlay"]:
+            if o["kind"] == "video":
+                dec = ["-c:v", "libvpx-vp9"] if o["src"].suffix.lower() == ".webm" else []
+                cmd += ["-stream_loop", "-1"] + dec + ["-i", str(o["src"])]
+            else:
+                cmd += ["-loop", "1", "-framerate", f"{FPS:g}",
+                        "-t", f"{total:g}", "-i", str(o["src"])]
+        # 4) 音频
+        audio_base = overlay_base + len(self.spec["overlay"])
         if self.spec["audio"]:
             for a in self.spec["audio"]:
                 dur = max(0.0, total - a["start"])
@@ -320,6 +436,32 @@ class RenderPlan:
                 f"{last}[t{k}]overlay={x}:{y}:enable='between(t,"
                 f"{item['start']:g},{item['end']:g})'{nxt}")
             last = nxt
+
+        # 叠加层：先 scale/alpha 处理，再按表达式定位；in/out 之外整体不显示
+        for k, o in enumerate(self.spec["overlay"]):
+            idx = overlay_base + k
+            chain = f"[{idx}:v]"
+            if o["kind"] == "video":
+                chain += f"setpts=PTS+{o['start']:.3f}/TB,"
+            if o["width"]:
+                chain += f"scale={o['width']}:-2,"
+            chain += "format=rgba"
+            if o["opacity"] < 1.0:
+                chain += f",colorchannelmixer=aa={o['opacity']:g}"
+            if o["fade"] > 0:
+                f = o["fade"]
+                chain += (f",fade=t=in:st={o['start']:.3f}:d={f:g}:alpha=1"
+                          f",fade=t=out:st={max(o['start'], o['end'] - f):.3f}"
+                          f":d={f:g}:alpha=1")
+            parts.append(f"{chain}[o{k}]")
+            nxt = f"[vo{k}]"
+            x = _overlay_axis_expr(o, "x", c)
+            y = _overlay_axis_expr(o, "y", c)
+            parts.append(
+                f"{last}[o{k}]overlay=x='{x}':y='{y}':eof_action=pass:"
+                f"enable='between(t,{o['start']:.3f},{o['end']:.3f})'{nxt}")
+            last = nxt
+
         parts.append(f"{last}null[vout]")
 
         # 音频链

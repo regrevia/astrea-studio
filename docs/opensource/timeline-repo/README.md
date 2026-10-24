@@ -58,7 +58,7 @@ python3 deliver.py --master /tmp/master.mp4 --platform all --dry-run
 
 ## spec 格式
 
-一个 JSON 文件，四个顶层字段：`canvas` / `video` / `text` / `audio`。
+一个 JSON 文件，五个顶层字段：`canvas` / `video` / `text` / `overlay` / `audio`。
 相对路径的 `src` **相对 spec 文件所在目录**解析，所以整包（spec + 素材）可以整体搬走。
 
 ```json
@@ -72,6 +72,13 @@ python3 deliver.py --master /tmp/master.mp4 --platform all --dry-run
     { "text": "第一行", "start": 0.4, "end": 2.8, "y": 0.16, "size": 0.05 },
     { "text": "第二行\n第二段", "start": 3.4, "end": 5.6, "y": 0.5,
       "size": 0.06, "box": "#00000099", "radius": 0.35, "fade": 0.2 }
+  ],
+  "overlay": [
+    { "src": "assets/card01.png", "start": 0, "end": 4.2, "x": 76, "y": 168,
+      "enter": { "from": "right", "duration": 0.42 },
+      "exit": { "to": "left", "duration": 0.42 } },
+    { "src": "assets/character.webm", "start": 0, "end": 8.4, "x": 1046, "y": 470,
+      "width": 872, "fade": 0.3, "motion": { "type": "bob", "amplitude": 9, "period": 2.6 } }
   ],
   "audio": [
     { "src": "assets/bgm.m4a", "start": 0, "volume": 0.3, "loop": true, "fade": 0.6 }
@@ -125,6 +132,26 @@ python3 deliver.py --master /tmp/master.mp4 --platform all --dry-run
 | `fade` | 0 | 淡入淡出秒数（两端各一次） |
 | `role` | `""` | 仅作标记，不参与计算 |
 
+### overlay[]（可选，贴片 / 画中画 / 透明人物）
+
+`overlay` 比 `text` 更"重"，但换来了**完全可控的排版**：卡片、字幕条、透明人物通道都走这里。
+`x` / `y` 是**左上角像素坐标**（`text` 用的是归一化中心点，两者刻意不同）。
+
+| 字段 | 默认 | 说明 |
+| --- | --- | --- |
+| `src` | 必填 | 图片（png/jpg/webp…）或视频（mp4/mov/webm…），按扩展名自动判 `kind` |
+| `start` / `end` | 0 / 总时长 | 秒；`end` 夹到总时长内 |
+| `x` / `y` | 0 / 0 | 左上角像素，不缩放 |
+| `width` | 原图宽度 | 输出宽度（像素，**正偶数**）；高度等比。给透明人物素材时这里要**远大于**肉眼看到的角色——透明留白也算宽度 |
+| `opacity` | 1.0 | 整体不透明度（`colorchannelmixer=aa`） |
+| `fade` | 0 | 透明度淡入淡出秒数（两端各一次） |
+| `enter` | 无 | `{"from": "left|right|top|bottom", "duration": 秒}` 滑动入场 |
+| `exit` | 无 | `{"to": "left|right|top|bottom", "duration": 秒}` 滑动出场 |
+| `motion` | `none` | `{"type": "bob|sway|none", "amplitude": 像素, "period": 秒}` 呼吸/摇摆，叠加在 `x`/`y` 上 |
+
+带 alpha 通道的 VP9 webm（如 dsh-pet 的人物动作）直接叠，**不需要抠像**——但必须用
+`-c:v libvpx-vp9` 解码，别的解码器会把 alpha 丢掉换成黑底。
+
 混音后统一走 `loudnorm=I=-16:TP=-1.5:LRA=11`，避免不同素材拼在一起忽大忽小。
 画面切片自带的音轨**不参与**混音——想要原声就把它单独写进 `audio[]`。
 
@@ -176,7 +203,7 @@ python3 deliver.py --list-platforms
 ## 测试
 
 ```bash
-python3 -m unittest discover -p 'test_*.py' -v   # 48 项：渲染 + 交付
+python3 -m unittest discover -p 'test_*.py' -v   # 73 项：渲染 + 叠加 + 交付 + 风格层
 python3 test_platform_profiles.py                # 34 项（pytest 风格，自带 __main__）
 ```
 

@@ -107,6 +107,77 @@ class TestSpecValidation(unittest.TestCase):
         self.assertAlmostEqual(spec["duration"], 0.5, places=3)
 
 
+    def test_overlay_missing_src_rejected(self):
+        with self.assertRaises(T.SpecError) as cm:
+            T.load_spec(self._write(self._ok(
+                overlay=[{"src": "nope.png", "start": 0, "end": 1}])))
+        self.assertIn("overlay[0]", str(cm.exception))
+
+    def test_overlay_window_rejected(self):
+        with self.assertRaises(T.SpecError):
+            T.load_spec(self._write(self._ok(
+                overlay=[{"src": "c.mp4", "start": 1, "end": 1}])))
+
+    def test_overlay_motion_rejected(self):
+        with self.assertRaises(T.SpecError):
+            T.load_spec(self._write(self._ok(
+                overlay=[{"src": "c.mp4", "start": 0, "end": 1,
+                          "motion": {"type": "spin"}}])))
+
+    def test_overlay_width_must_be_even(self):
+        with self.assertRaises(T.SpecError):
+            T.load_spec(self._write(self._ok(
+                overlay=[{"src": "c.mp4", "start": 0, "end": 1, "width": 101}])))
+
+    def test_overlay_enter_side_rejected(self):
+        with self.assertRaises(T.SpecError):
+            T.load_spec(self._write(self._ok(
+                overlay=[{"src": "c.mp4", "start": 0, "end": 1,
+                          "enter": {"from": "diagonal"}}])))
+
+    def test_overlay_defaults(self):
+        spec = T.load_spec(self._write(self._ok(
+            overlay=[{"src": "c.mp4", "start": 0.25, "end": 0.75}])))
+        o = spec["overlay"][0]
+        self.assertEqual(o["kind"], "video")
+        self.assertEqual(o["opacity"], 1.0)
+        self.assertEqual(o["motion"]["type"], "none")
+        self.assertIsNone(o["enter"])
+
+
+class TestOverlayExpr(unittest.TestCase):
+    canvas = {"width": 1920, "height": 1080}
+
+    def _item(self, **over):
+        item = {"x": 1240.0, "y": 690.0, "width": 620,
+                "start": 3.0, "end": 9.0,
+                "enter": None, "exit": None,
+                "motion": {"type": "none", "amplitude": 8.0, "period": 2.2}}
+        item.update(over)
+        return item
+
+    def test_bob_only_touches_y(self):
+        it = self._item(motion={"type": "bob", "amplitude": 9.0, "period": 2.2})
+        self.assertIn("sin(", T._overlay_axis_expr(it, "y", self.canvas))
+        self.assertNotIn("sin(", T._overlay_axis_expr(it, "x", self.canvas))
+
+    def test_slide_from_right_uses_canvas_width(self):
+        it = self._item(enter={"side": "right", "duration": 0.45})
+        expr = T._overlay_axis_expr(it, "x", self.canvas)
+        self.assertIn("1920", expr)
+        self.assertIn("0.450", expr)
+
+    def test_exit_to_left_uses_overlay_width(self):
+        it = self._item(exit={"side": "left", "duration": 0.3})
+        expr = T._overlay_axis_expr(it, "x", self.canvas)
+        self.assertIn("-620", expr)
+
+    def test_enter_on_x_ignored_for_y_axis(self):
+        it = self._item(enter={"side": "right", "duration": 0.4})
+        self.assertNotIn("if(", T._overlay_axis_expr(it, "y", self.canvas))
+
+
+
 class TestTextPng(unittest.TestCase):
     def setUp(self):
         try:
@@ -273,3 +344,71 @@ class TestRender(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+@unittest.skipUnless(HAS_FFMPEG, "需要 ffmpeg")
+class TestOverlayRender(unittest.TestCase):
+    """叠加层必须只在时间窗内出现，并且不吃掉原画面的其它区域。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp(prefix="tl-overlay-"))
+        a = cls.tmp / "asset"
+        a.mkdir()
+        subprocess.run(
+            [T.FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+             "-f", "lavfi", "-i", "color=c=white:s=320x180:d=2:r=30",
+             "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+             str(a / "bg.mp4")], check=True)
+        subprocess.run(
+            [T.FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+             "-f", "lavfi", "-i", "color=c=black:s=80x80:d=1",
+             "-frames:v", "1", str(a / "dot.png")], check=True)
+        # 带 alpha 的 vp9（模拟 dsh-pet 的 webm 素材）
+        subprocess.run(
+            [T.FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+             "-f", "lavfi", "-i", "color=c=black:s=80x80:d=2:r=30",
+             "-vf", "format=yuva420p", "-c:v", "libvpx-vp9",
+             "-pix_fmt", "yuva420p", str(a / "dot.webm")], check=True)
+
+        cls.spec_obj = {
+            "canvas": {"width": 320, "height": 180, "fps": 30},
+            "video": [{"src": "asset/bg.mp4", "in": 0, "out": 2}],
+            "overlay": [
+                {"src": "asset/dot.png", "start": 0.5, "end": 1.5,
+                 "x": 120, "y": 50, "width": 80,
+                 "enter": {"from": "right", "duration": 0.3},
+                 "motion": {"type": "bob", "amplitude": 4, "period": 1.0}},
+                {"src": "asset/dot.webm", "start": 1.6, "end": 2.0,
+                 "x": 20, "y": 20, "width": 60, "kind": "video"},
+            ],
+        }
+        sp = cls.tmp / "spec.json"
+        sp.write_text(json.dumps(cls.spec_obj), encoding="utf-8")
+        cls.spec = T.load_spec(sp)
+        T.render(cls.spec, cls.tmp / "out.mp4")
+        cls.out = cls.tmp / "out.mp4"
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_image_overlay_inside_window_only(self):
+        before = mean_luma(self.out, 0.2, crop="100:100:110:40")
+        inside = mean_luma(self.out, 1.0, crop="100:100:110:40")
+        after = mean_luma(self.out, 1.7, crop="100:100:110:40")
+        self.assertGreater(before, 180, f"窗口前应干净，实测 {before:.0f}")
+        self.assertLess(inside, before - 40,
+                        f"PNG 叠加没出现（{before:.0f}→{inside:.0f}）")
+        self.assertGreater(after, 180, f"窗口后没消失，实测 {after:.0f}")
+
+    def test_opaque_video_overlay_appears(self):
+        # 第二段 webm 在左下角，黑色不透明 → 该区域亮度下降
+        before = mean_luma(self.out, 1.3, crop="70:70:10:10")
+        inside = mean_luma(self.out, 1.9, crop="70:70:10:10")
+        self.assertGreater(before, 180)
+        self.assertLess(inside, 120, f"webm 叠加没出现，实测 {inside:.0f}")
+
+    def test_area_outside_overlay_untouched(self):
+        corner = mean_luma(self.out, 1.0, crop="60:60:0:0")
+        self.assertGreater(corner, 180, f"叠加层不该污染别处，实测 {corner:.0f}")
