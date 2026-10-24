@@ -2,8 +2,8 @@
  * Studio 总览面板。
  *
  * 只做一件事：让用户在一屏内看清「任务现在到哪一步、成片进了哪个草稿箱、
- * 发布台账有没有说不清的状态」。故意不做成第二套管理台——新建任务走生产
- * 任务的 createRun，成片编辑走既有草稿箱页面。
+ * 发布台账有没有说不清的状态」。新建任务用本页的时间轴任务表单（免手写 JSON），
+ * 成片编辑走既有草稿箱页面。
  *
  * 状态语义（与后端台账一致）：
  *   queued/running  进行中，可取消
@@ -15,14 +15,16 @@
 'use client'
 
 import type { Inventory, ProductionRun, ProductionWorker, PublicationAttempt } from '@/api/production/production.types'
-import { AlertCircle, CheckCircle2, Clock, Loader2, Mic, QrCode, RotateCw, Send, Video } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Clock, Loader2, Mic, Plus, QrCode, RotateCw, Send, Video } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { getHealth, getInventory, getProjects, getPublications, getRuns } from '@/api/production/production.api'
+import { getHealth, getInventory, getProjects, getPublications, getRun, getRuns } from '@/api/production/production.api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/utils/className'
+import NewRunForm from './components/NewRunForm'
+import { formatKib, PLATFORM_LABELS } from './studioConstants'
 
 /** 每 3 秒刷新一次；渲染本身就是分钟级，再快只是浪费请求。 */
 const POLL_MS = 3000
@@ -46,6 +48,8 @@ function RunRow({ run, projectName }: { run: ProductionRun, projectName?: string
   const meta = statusMeta(run.status)
   const Icon = meta.icon
   const busy = run.status === 'queued' || run.status === 'running'
+  // 各平台成片：后端按平台重新交付后写进 run.output.platforms，没有就是还没出片。
+  const outputPlatforms = Object.entries(run.output?.platforms ?? {})
 
   return (
     <div className="flex items-start gap-3 rounded-lg border p-3">
@@ -81,6 +85,51 @@ function RunRow({ run, projectName }: { run: ProductionRun, projectName?: string
 
         {run.lastError && (
           <p className="mt-1 line-clamp-2 text-xs text-red-600">{run.lastError}</p>
+        )}
+
+        {outputPlatforms.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {run.output?.videoUrl && (
+              <a
+                href={run.output.videoUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-[11px] hover:border-foreground/40"
+              >
+                <span className="font-medium">母版</span>
+                <span className="text-muted-foreground">打开</span>
+              </a>
+            )}
+            {outputPlatforms.map(([platform, video]) => {
+              // 平台名 + 画幅 + 体积，点开就是该平台成片，省得再去草稿箱里翻。
+              const label = (
+                <>
+                  <span className="font-medium">{PLATFORM_LABELS[platform] ?? platform}</span>
+                  <span className="text-muted-foreground">
+                    {video.width}
+                    ×
+                    {video.height}
+                  </span>
+                  <span className="text-muted-foreground">{formatKib(video.bytes)}</span>
+                </>
+              )
+              const chipClass = 'inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-[11px]'
+
+              return video.url
+                ? (
+                    <a
+                      key={platform}
+                      href={video.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={cn(chipClass, 'hover:border-foreground/40')}
+                    >
+                      {label}
+                    </a>
+                  )
+                : <span key={platform} className={chipClass}>{label}</span>
+            })}
+          </div>
         )}
       </div>
     </div>
@@ -281,6 +330,9 @@ export default function StudioOverview() {
   const [inventory, setInventory] = useState<Inventory | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  /** 新建任务后需要单独追详情：列表接口只回概览，成片产物在 getRun 的 run 里。 */
+  const [trackedIds, setTrackedIds] = useState<string[]>([])
+  const [runDetails, setRunDetails] = useState<Record<string, ProductionRun>>({})
 
   const refresh = useCallback(async () => {
     try {
@@ -325,13 +377,63 @@ export default function StudioOverview() {
     return () => clearInterval(timer)
   }, [refresh])
 
+  /**
+   * 单独追「新建的任务」详情。列表接口只有概览，run.output.platforms 必须读 getRun；
+   * 任务进入终态后停止追，产物留在 runDetails 里继续展示。
+   */
+  useEffect(() => {
+    if (trackedIds.length === 0)
+      return
+    let cancelled = false
+
+    const tick = async () => {
+      const settled: string[] = []
+      for (const id of trackedIds) {
+        const res = await getRun(id)
+        const detail = res?.data?.run
+        if (!detail || cancelled)
+          continue
+        setRunDetails(prev => ({ ...prev, [id]: detail }))
+        if (detail.status !== 'queued' && detail.status !== 'running')
+          settled.push(id)
+      }
+      if (!cancelled && settled.length > 0)
+        setTrackedIds(prev => prev.filter(id => !settled.includes(id)))
+    }
+
+    tick()
+    const timer = setInterval(tick, POLL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [trackedIds])
+
+  /** 新建任务成功：接入详情轮询，并立刻刷新一次列表让其它卡片同步。 */
+  const handleCreated = useCallback((runId: string) => {
+    setTrackedIds(prev => (prev.includes(runId) ? prev : [...prev, runId]))
+    void refresh()
+  }, [refresh])
+
+  /** 列表数据 + 详情数据合并：成片产物只存在于详情里，列表轮询不能把它冲掉。 */
+  const mergedRuns = useMemo(() => {
+    const list = runs.map((run) => {
+      const detail = runDetails[run.id]
+      return detail ? { ...run, ...detail } : run
+    })
+    const listed = new Set(runs.map(run => run.id))
+    const fresh = Object.values(runDetails).filter(detail => !listed.has(detail.id))
+    // 新任务排在列表最前：列表接口还没收录它时也能立刻看到。
+    return [...fresh, ...list]
+  }, [runs, runDetails])
+
   const active = useMemo(
-    () => runs.filter(r => r.status === 'queued' || r.status === 'running'),
-    [runs],
+    () => mergedRuns.filter(r => r.status === 'queued' || r.status === 'running'),
+    [mergedRuns],
   )
   const finished = useMemo(
-    () => runs.filter(r => r.status !== 'queued' && r.status !== 'running'),
-    [runs],
+    () => mergedRuns.filter(r => r.status !== 'queued' && r.status !== 'running'),
+    [mergedRuns],
   )
   const onlineWorkers = workers.filter(w => w.online)
   const unknownCount = publications.filter(p => p.status === 'submission_unknown').length
@@ -401,6 +503,18 @@ export default function StudioOverview() {
         </CardHeader>
         <CardContent>
           <VoicePanel inventory={inventory} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Plus className="h-4 w-4" />
+            新建时间轴任务
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <NewRunForm projects={projects} onCreated={handleCreated} />
         </CardContent>
       </Card>
 

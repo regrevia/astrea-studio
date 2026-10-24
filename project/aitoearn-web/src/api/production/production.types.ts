@@ -23,6 +23,35 @@ export interface ProductionProject {
   updatedAt?: string
 }
 
+/** 单个平台的成片产物。canvas 是母版画幅，这里是按平台重新交付后的成片。 */
+export interface ProductionPlatformVideo {
+  /** 对象存储里的产物 key，发布阶段直接拿它投递。 */
+  key: string
+  url: string
+  width: number
+  height: number
+  bytes: number
+}
+
+/**
+ * 任务产物。后端 completeJob 会把 worker 回传的 deliveries 归一化到这里：
+ * 母版走 videoUrl/videoPath，各平台成片走 platforms[platform]。
+ */
+/** 母版画幅。后端存的是对象而不是 'portrait' 之类的预设名，展示时要能直接读宽高。 */
+export interface ProductionCanvas {
+  width: number
+  height: number
+  fps?: number
+}
+
+export interface ProductionRunOutput {
+  videoPath?: string
+  videoUrl?: string
+  duration?: number
+  canvas?: ProductionCanvas
+  platforms?: Record<string, ProductionPlatformVideo>
+}
+
 /** 制作任务。 */
 export interface ProductionRun {
   id: string
@@ -36,6 +65,8 @@ export interface ProductionRun {
   materialId?: string
   videoUrl?: string
   duration?: number
+  /** 渲染完成后的产物；排队/渲染中为 undefined。 */
+  output?: ProductionRunOutput
   lastError?: string
   createdAt?: string
   updatedAt?: string
@@ -90,12 +121,54 @@ export interface ProductionWorker {
   lastHeartbeatAt?: string
 }
 
+/**
+ * 渲染作业。失败重试会新增一条；result 里是 worker 回传的原始产物
+ * （videoKey/videoUrl/duration/canvas/deliveries），与 run.output 的归一化结果对应。
+ */
+export interface ProductionJob {
+  id?: string
+  runId?: string
+  kind?: string
+  status?: string
+  attempt?: number
+  stage?: string
+  result?: Record<string, unknown>
+  createdAt?: string
+  updatedAt?: string
+  [key: string]: unknown
+}
+
 /** 任务详情：任务本体在 run 里，其余是附带的时间线。 */
 export interface RunDetail {
   run: ProductionRun
-  jobs: Array<Record<string, unknown>>
+  jobs: ProductionJob[]
   attempts: PublicationAttempt[]
   events: ProductionEvent[]
+}
+
+/* ------------------------------------------------------------------ 时间轴输入
+ * POST production/runs 的 spec 用「友好输入」，前端不拼 timeline 内部细节：
+ * 画布、切片、字幕时序、BGM 轨道都由后端 timeline-spec builder 展开。
+ */
+
+/** 画幅。portrait=1080x1920，landscape=1920x1080，square=1080x1080。 */
+export type TimelineCanvas = 'portrait' | 'landscape' | 'square'
+
+/** 时间轴任务的友好输入 spec。script 每项一句，materials 是相对 assetBase 的文件名。 */
+export interface TimelineSpecInput {
+  engine: 'timeline'
+  mode: 'script'
+  /** worker 本机可读的素材根目录（绝对路径）。 */
+  assetBase: string
+  materials: string[]
+  script: string[]
+  canvas: TimelineCanvas
+  /** 每句文案的时长（秒）。 */
+  clipSeconds?: number
+  platforms: string[]
+  /** 素材与画布的适配方式，默认 blur。 */
+  fit?: string
+  bgm?: { src: string, volume?: number }
 }
 
 /* ------------------------------------------------------------------ 能力清单
