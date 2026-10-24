@@ -174,7 +174,7 @@ def _draw_block(page, text: str, size: int, top: int, left: int, max_w: float,
 _BODY_CANDIDATES = (72, 66, 60, 54, 48)
 
 
-BODY_PAD = 96      # 卡底到正文末行的留白
+BODY_PAD = 72      # 卡底到正文末行的留白：比顶部留白还大，卡内看着就往下坠
 CARD_CAP = 1010    # 卡底上限：立绘头顶 1014，再长就把角色闷进卡片
 
 
@@ -214,7 +214,8 @@ def body_layout(text: str, measure=None, max_w: float = W - 264,
         chosen = (size, rows, _geom(size, rows)[0])
     size, rows, start = chosen
     _, need = _geom(size, rows)
-    floor = 1000 if len(rows) > 1 else 900
+    # 卡底下限：两行正文也压到 968，和立绘头顶（1014）留出 46 的清白
+    floor = 968 if len(rows) > 1 else 880
     return size, rows, start, min(CARD_CAP, max(floor, need))
 
 
