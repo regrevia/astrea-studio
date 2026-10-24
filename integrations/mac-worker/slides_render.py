@@ -10,9 +10,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import html as _html
 import json
 import os
+import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -230,6 +233,16 @@ def _shot(page: Path, png: Path) -> None:
         )
 
 
+TTS_CACHE = Path(os.path.expanduser("~/CreatorStudio/cache/tts"))
+
+
+def _tts_cache(text: str, voice: str) -> Path | None:
+    """配音缓存键：音色 + 原文。稿子改一个字就重新合成，不改就复用。"""
+    key = hashlib.sha1(f"{voice}\x00{text}".encode()).hexdigest()[:20]
+    slug = re.sub(r"[^0-9A-Za-z]+", "-", voice).strip("-") or "voice"
+    return TTS_CACHE / slug / f"{key}.mp3"
+
+
 def _tts(text: str, mp3: Path, voice: str) -> None:
     """调 SAMI 配音。
 
@@ -251,6 +264,13 @@ def _tts(text: str, mp3: Path, voice: str) -> None:
     env = dict(os.environ)
     env["MPT_HOME"] = str(MPT_HOME)
     env["PYTHONPATH"] = str(MPT_HOME)
+    # 同音色同文本只合成一次：SAMI 流式音色每次采样的停顿、尾音都有细微差别，
+    # 不缓存的话同一份稿子两次出片口型与时长两样，批量出片没法比母版。
+    cached = _tts_cache(text, voice)
+    if cached is not None:
+        if cached.exists() and cached.stat().st_size >= 1000:
+            shutil.copyfile(cached, mp3)
+            return
     r = subprocess.run(
         [str(python), "-c", code, text, voice, str(mp3)],
         capture_output=True, text=True, cwd=str(MPT_HOME), env=env, timeout=180,
@@ -259,6 +279,12 @@ def _tts(text: str, mp3: Path, voice: str) -> None:
         raise SlidesError(
             f"tts failed for {voice}: {(r.stderr or r.stdout or 'no output').strip()[-400:]}"
         )
+    if cached is not None:
+        try:
+            cached.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(mp3, cached)
+        except OSError:
+            pass
 
 
 def _dur(p: Path) -> float:
