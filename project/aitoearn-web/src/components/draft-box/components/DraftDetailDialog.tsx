@@ -142,9 +142,9 @@ const MediaPreview = memo(({ material }: { material: PromotionMaterial }) => {
                   <video
                     src={media.url}
                     controls
-                    autoPlay
                     loop
                     playsInline
+                    preload="metadata"
                     className="w-full h-full object-contain bg-white"
                     poster={material.coverUrl ? getOssThumbnailUrl(material.coverUrl, { width: 960, quality: 75 }) : undefined}
                   />
