@@ -297,7 +297,9 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                                         fill=(255, 255, 255, 236))
         layer_sets.append(layers)
     char_cfg = script.get("character")
-    if char_cfg is False:
+    if char_cfg is True:
+        char_cfg = {}
+    elif char_cfg is False:
         char_cfg = None
     elif char_cfg is None:
         char_cfg = {}

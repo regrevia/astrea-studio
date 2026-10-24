@@ -881,6 +881,8 @@ def _character_config(spec: dict[str, Any]) -> dict[str, Any] | None:
         if spec.get("template") != "factcard":
             return None
         cfg = {}
+    if cfg is True:
+        return {}
     if not isinstance(cfg, dict) or cfg.get("enabled") is False:
         return None
     return cfg
