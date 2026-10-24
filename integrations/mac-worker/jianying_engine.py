@@ -114,8 +114,38 @@ def _deploy(draft_dir: Path, project_name: str) -> Path:
         meta["draft_fold_path"] = str(dest)
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     _normalize_draft(dest, project_name)
+    _write_export_sidecar(dest, project_name)
     os.utime(dest, None)
     return dest
+
+
+def _write_export_sidecar(dest: Path, project_name: str) -> dict[str, Any]:
+    """把"这次草稿是什么规格"写到草稿目录，给导出环节当唯一可信来源。
+
+    为什么需要：剪映 11.6 **保存后会把 draft_info.json 加密**（实测 draft_info.json
+    首字节变成 `GGHbtvxhfjg...` 这种密文），所以导出时读不到画布尺寸/时长。
+    我们自己的规格必须在写明文的那一刻就落盘。
+    """
+    side: dict[str, Any] = {"project": project_name, "engine": "jianying",
+                            "written_at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    info = dest / "draft_info.json"
+    data = {}
+    if info.exists():
+        try:
+            data = json.loads(info.read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+    cc = data.get("canvas_config") or {}
+    side["canvas"] = {"width": cc.get("width"), "height": cc.get("height"),
+                      "ratio": cc.get("ratio")}
+    side["fps"] = data.get("fps") or data.get("frame_rate")
+    side["duration_us"] = data.get("duration") or 0
+    side["tracks"] = len(data.get("tracks") or [])
+    side["materials"] = {k: len(v) for k, v in (data.get("materials") or {}).items()
+                         if isinstance(v, list) and v}
+    (dest / "studio_export_meta.json").write_text(
+        json.dumps(side, ensure_ascii=False, indent=2), encoding="utf-8")
+    return side
 
 
 def _write_plain_json(path: Path, payload: str) -> bool:

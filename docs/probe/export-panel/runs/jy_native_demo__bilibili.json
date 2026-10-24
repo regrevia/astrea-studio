@@ -1,0 +1,108 @@
+{
+  "draft": "jy_native_demo",
+  "platform": "bilibili",
+  "profile": {
+    "platform": "bilibili",
+    "label": "B站",
+    "aspect": "16:9",
+    "width": 1920,
+    "height": 1080,
+    "fps": "30",
+    "container": "mp4",
+    "bitrate_preset": "更高",
+    "notes": "主站横版投稿；竖版要走「竖屏/Story」分区且不吃主站推荐流，两条产品线不能混。码率给「更高」因为 B 站会按上传码率再转码。无仓库旁证。",
+    "source": "assumed",
+    "resolution": "1080P",
+    "expect_dims": [
+      1920,
+      1080
+    ],
+    "format": "MP4"
+  },
+  "panel": "导出-jy_native_demo",
+  "params": [
+    {
+      "param": "分辨率",
+      "target": "1080P",
+      "ok": true,
+      "ax_id": "ExportSharpnessInput",
+      "before": "1080P",
+      "after": "1080P",
+      "note": "已是目标值"
+    },
+    {
+      "param": "格式",
+      "target": "MP4",
+      "ok": true,
+      "ax_id": "ExportFormatInput",
+      "before": "MOV",
+      "options": [
+        "MOV",
+        "MP4",
+        "MXF"
+      ],
+      "popup_closed": true,
+      "after": "MP4"
+    },
+    {
+      "param": "帧率",
+      "target": "30",
+      "ok": true,
+      "ax_id": "FrameRateInput",
+      "before": "30",
+      "after": "30",
+      "note": "已是目标值"
+    },
+    {
+      "param": "视频码率",
+      "target": "更高",
+      "ok": true,
+      "ax_id": "ExportbitRateInput",
+      "before": "推荐",
+      "options": [
+        "更低",
+        "推荐",
+        "更高",
+        "自定义"
+      ],
+      "popup_closed": true,
+      "after": "更高"
+    }
+  ],
+  "probe": {
+    "path": "/Users/apple/Movies/jy_native_demo(1).mp4",
+    "format": "mov,mp4,m4a,3gp,3g2,mj2",
+    "duration": 19.0,
+    "size": 423112,
+    "width": 1920,
+    "height": 1080,
+    "codec": "h264",
+    "pix_fmt": "yuv420p",
+    "fps": 30.0,
+    "audio_codec": "aac",
+    "audio_rate": "44100",
+    "audio_channels": 2
+  },
+  "expect": {
+    "duration": 19.0,
+    "width": 1920,
+    "height": 1080,
+    "fps": 30.0
+  },
+  "checks": {
+    "duration": {
+      "ok": true,
+      "detail": "19.00s vs 期望 19.00s (±0.40)"
+    },
+    "resolution": {
+      "ok": true,
+      "detail": "1920x1080 vs 期望 1920x1080"
+    },
+    "fps": {
+      "ok": true,
+      "detail": "30.000 vs 期望 30.000"
+    }
+  },
+  "final": "/Users/apple/CreatorStudio/out/jy_native_demo__bilibili__1920x1080.mp4",
+  "at": "2026-10-24T13:27:57"
+}

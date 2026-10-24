@@ -1,0 +1,166 @@
+{
+  "app": "VideoFusion-macOS",
+  "panel_size": [
+    640,
+    720
+  ],
+  "captured_at": "2026-10-24T13:21:40",
+  "params": [
+    {
+      "name": "名称",
+      "ax_id": "ExportFileNameInput",
+      "label": "标題",
+      "value": "jy_native_demo",
+      "hidden": false,
+      "rel": {
+        "rx": 0.7,
+        "ry": 0.125,
+        "rw": 0.275,
+        "rh": 0.03056
+      }
+    },
+    {
+      "name": "导出至",
+      "ax_id": "ExportPathInput",
+      "label": "导出至",
+      "value": "/Users/apple/Movies/i... 口",
+      "hidden": false,
+      "rel": {
+        "rx": 0.7,
+        "ry": 0.17639,
+        "rw": 0.22812,
+        "rh": 0.03056
+      }
+    },
+    {
+      "name": "分辨率",
+      "ax_id": "ExportSharpnessInput",
+      "label": "分辦率",
+      "value": "1080P",
+      "hidden": false,
+      "rel": {
+        "rx": 0.7,
+        "ry": 0.35,
+        "rw": 0.275,
+        "rh": 0.03056
+      }
+    },
+    {
+      "name": "格式",
+      "ax_id": "ExportFormatInput",
+      "label": "格式",
+      "value": "MOV",
+      "hidden": false,
+      "rel": {
+        "rx": 0.7,
+        "ry": 0.40278,
+        "rw": 0.275,
+        "rh": 0.03056
+      }
+    },
+    {
+      "name": "帧率",
+      "ax_id": "FrameRateInput",
+      "label": "帧率",
+      "value": "30",
+      "hidden": false,
+      "rel": {
+        "rx": 0.7,
+        "ry": 0.45556,
+        "rw": 0.275,
+        "rh": 0.03056
+      }
+    },
+    {
+      "name": "视频码率",
+      "ax_id": "ExportbitRateInput",
+      "label": "视频码率",
+      "value": "推荐",
+      "hidden": false,
+      "rel": {
+        "rx": 0.7,
+        "ry": 0.50833,
+        "rw": 0.275,
+        "rh": 0.03056
+      }
+    },
+    {
+      "name": "编码",
+      "ax_id": "ExportEncoderInput",
+      "label": "视频编码",
+      "value": "H.264",
+      "hidden": false,
+      "rel": {
+        "rx": 0.7,
+        "ry": 0.56111,
+        "rw": 0.275,
+        "rh": 0.03056
+      }
+    },
+    {
+      "name": "音频质量",
+      "ax_id": "AudioQualityInput",
+      "label": "",
+      "value": "",
+      "hidden": true,
+      "rel": {
+        "rx": 0.7,
+        "ry": 0.61389,
+        "rw": 0.275,
+        "rh": 0.03056
+      }
+    },
+    {
+      "name": "采样率",
+      "ax_id": "AudioSamplingInput",
+      "label": "",
+      "value": "",
+      "hidden": true,
+      "rel": {
+        "rx": 0.7,
+        "ry": 0.66667,
+        "rw": 0.275,
+        "rh": 0.03056
+      }
+    },
+    {
+      "name": "音频格式",
+      "ax_id": "AudioFormatInput",
+      "label": "格式",
+      "value": "MP3",
+      "hidden": false,
+      "rel": {
+        "rx": 0.7,
+        "ry": 0.81944,
+        "rw": 0.275,
+        "rh": 0.03056
+      }
+    },
+    {
+      "name": "音频码率",
+      "ax_id": "AudioBitRateInput",
+      "label": "",
+      "value": "",
+      "hidden": true,
+      "rel": {
+        "rx": 0.7,
+        "ry": 0.87222,
+        "rw": 0.275,
+        "rh": 0.03056
+      }
+    },
+    {
+      "name": "音频采样",
+      "ax_id": "samplingInput",
+      "label": "",
+      "value": "",
+      "hidden": true,
+      "rel": {
+        "rx": 0.7,
+        "ry": 0.925,
+        "rw": 0.275,
+        "rh": 0.03056
+      }
+    }
+  ]
+}

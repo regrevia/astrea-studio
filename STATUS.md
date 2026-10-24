@@ -113,6 +113,64 @@ compose 是**两层**:仓库 `docker-compose.yml` 是模板 → `python3 deploy/
 
 ---
 
+## 5.5 P3 导出闭环 —— 已跑通（2026-10-24 13:27）
+
+一条命令从"草稿已打开"到"校验过的产物 + 证据 JSON"：
+
+```bash
+cd integrations/mac-worker/export
+python3 jianying_export.py --platform bilibili --canvas 1920x1080
+```
+
+实测结果（草稿 `jy_native_demo`，19s，1920x1080@30）：
+
+| 项 | 面板前 | 面板后 | 说明 |
+|---|---|---|---|
+| 分辨率 | 1080P | 1080P | 幂等，已是目标值就不动 |
+| 格式 | MOV | MP4 | 点行 → AX 读选项 → 点选项 → dismiss |
+| 帧率 | 30 | 30 | 幂等 |
+| 视频码率 | 推荐 | 更高 | B站档位 |
+
+产物 `~/CreatorStudio/out/jy_native_demo__bilibili__1920x1080.mp4`
+（h264+aac，1920×1080，30fps，**19.000s**，423KB），证据
+`docs/probe/export-panel/runs/jy_native_demo__bilibili.json`，
+`duration/resolution/fps` 三项校验全 OK，退出码 0。
+
+### 三条硬约束（都写过坑）
+
+1. **导出不能改比例**。面板原文「以草稿尺寸（1920x1080）导出，可前往草稿参数修改」，
+   下拉只有像素档没有比例项。所以 `--platform douyin` 配 16:9 草稿会**直接拒绝**（退出码 7），
+   不会静默导出个方形片。比例只能由建草稿时决定（`render_mpt.py` 的 `aspect`）。
+2. **档位按"短边"算，朝向跟草稿走**。`1080P` 在 16:9 草稿上出 1920×1080，在 9:16 上出 1080×1920。
+   校验必须用 `expected_dims(tier, canvas)`，不能拿平台档案的 width/height 直接比；
+   另外档位会**下调到不超过画布**（1280×720 草稿要 1080P → 实际 720P，不放大白占体积）。
+3. **剪映 11.6 保存后会把 `draft_info.json` 加密**（首字节变成 `GGHbtvxhfjg…` 密文），
+   所以导出时读不到画布/时长。为此 `jianying_engine.py` 部署草稿时额外写
+   `<草稿>/studio_export_meta.json`（画布/fps/时长/轨道数），导出端以它为唯一可信来源，
+   没有 sidecar 又没给 `--canvas` 就直接报错，不猜。
+
+### 面板探针的四个坑
+
+- **ESC 会连整个模态面板一起取消**：ESC 关下拉后，后面的点击落到编辑器里（曾把面板改成 480P/24/更低）。
+  现在一律点面板标题条 `dismiss()`，ESC 只用于关闭"导出成功"残留页。
+- **下拉选项必须从 AX 读**，不能 OCR 弹层：Qt 弹层有透明边距，OCR 会把底下几行一起读进来
+  （格式读出 `MOV, 30, 更低, H.264`）。现在 `options_from_ax()` 只取落在弹层矩形内的 `AXStaticText`。
+- **`dialog_rect()` 会被 195×20 的菜单浮层劫走**（subrole 同样是 `AXDialog`），
+  加了尺寸过滤 + 标题必须以「导出」开头。
+- **每次截图前必须 `ensure_front()`**：`set frontmost` 是异步的，实测要 2.2–3s，
+  否则 `-R` 截到的是 DSH 自己的窗口，所有值读空。窗口尺寸/位置每次都会变
+  （`696,301 1168x780` / `0,30 2560x1320` / 面板 `640x720` 或 `640x418` 收起态），
+  所以只存**窗口相对坐标**。
+
+### 平台档案
+
+`export/platform_profiles.py`：17 个平台（与 `platform_registry.py` 一一对应），
+`profile_for/resolution_option/fps_option/as_dict`，测试 34/34。
+**全部 17 个 source=`assumed`** —— 无官方原文可核，别当事实用；
+矩阵与"怎么翻成 documented"见 `docs/probe/export-panel/platform-matrix.md`。
+跑测试用 `python3 integrations/mac-worker/export/test_platform_profiles.py`
+（本机 pytest 不可用：3.9 的 anyio/typing_extensions 错位）。
+
 ## 6. 常用命令
 
 ```bash
