@@ -682,6 +682,7 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                 beats = [("", total, total + dur)]
 
             clips = 0
+            switched = False
             for k, (mouth, cstart, cend) in enumerate(beats):
                 try:
                     use_pose = pose
@@ -705,6 +706,14 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                     "track_name": track,
                     "relative_index": 1,
                 }
+                # 换手势那一拍给个短促放大：硬切容易被看成卡帧，给一点动作起势。
+                # 只在切换那一拍加，后面持续同姿态还加就是每 0.4 秒抖一下。
+                if use_pose != pose and not switched:
+                    pop = _pick("轻微放大", "video_intro_animations")
+                    if pop:
+                        cclip["intro_animation"] = pop
+                        cclip["intro_animation_duration"] = 0.3
+                        switched = True
                 # 只在全片第一次出场时渐显。每屏都渐显 = 六次闪现，
                 # 角色像贴纸一样反复贴上取下；跨屏连续在场才像"人一直在"。
                 if k == 0 and idx == 0:
