@@ -30,10 +30,16 @@ from render_mpt import RenderError, render as render_mpt
 from slides_render import SlidesError, render_from_payload as render_slides
 from motion_render_engine import render_motion, MotionError
 from jianying_engine import render_jianying, JianyingError
+from export import timeline_render as timeline
+from export import deliver as delivery
 
 LOG_FORMAT = "%(asctime)s %(levelname)-7s %(message)s"
 
 log = logging.getLogger("studio.worker")
+
+
+class TimelineError(RuntimeError):
+    """C 路线（自有 spec 渲染 + 平台交付）失败。独立成类，便于出可读的失败原因。"""
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -171,6 +177,23 @@ class Worker:
                 self.client.complete(job_id, lease, result)
                 log.info("job %s motion: %s frames -> %s",
                          job_id, result.get("frames"), result.get("videoKey"))
+            elif kind == "render_timeline":
+                result = self.do_timeline(job_id, payload, progress)
+                # 母版已经能直接发平台；draft 只是把它登记进素材库。
+                # 登记失败不能把渲染判死，否则「片已经渲好了」这个事实会丢。
+                if payload.get("attachDraft", True):
+                    try:
+                        draft = self.do_attach_draft(job_id, payload, result, progress)
+                        result["materialId"] = draft.get("materialId")
+                        result["materialGroupId"] = draft.get("groupId")
+                        result["draftDeduped"] = bool(draft.get("deduped"))
+                    except RenderError as exc:
+                        log.warning("job %s timeline rendered but draft attach failed: %s", job_id, exc)
+                        result["draftError"] = str(exc)[:500]
+                self.client.complete(job_id, lease, result)
+                log.info("job %s timeline: %s'd -> %s (+%s platform file(s))",
+                         job_id, result.get("duration"), result.get("videoKey"),
+                         len(result.get("deliveries") or []))
             elif kind == "jianying_draft":
                 result = self.do_jianying(job_id, payload, progress)
                 self.client.complete(job_id, lease, result)
@@ -207,7 +230,7 @@ class Worker:
                 )
             else:
                 self.client.fail(job_id, lease, f"unsupported job kind: {kind}", "failed")
-        except (CaptureError, RenderError, PublishError, SlidesError, MotionError) as exc:
+        except (CaptureError, RenderError, PublishError, SlidesError, MotionError, TimelineError) as exc:
             log.error("job %s failed: %s", job_id, exc)
             self.client.fail(job_id, lease, str(exc)[:1500], "failed")
         except ApiError as exc:
@@ -327,6 +350,130 @@ class Worker:
         )
         result["videoKey"] = object_key
         result["videoUrl"] = f"/oss/{object_key}"
+        return result
+
+    def do_timeline(self, job_id: str, payload: dict[str, Any],
+                    progress: Any) -> dict[str, Any]:
+        """C 路线主入口：自有 timeline spec → 母版 mp4（可选各平台规格）。
+
+        全程纯 ffmpeg/Pillow，不起剪映、不抢前台、不动鼠标——这是它相对
+        「剪映导出面板」的唯一重要差别：可以在后台排队跑，也能整段搬进容器。
+        spec 由 payload.spec 直接给（前端产出），也可用 specPath 指本机文件。
+        """
+        run_id = payload.get("runId") or ""
+        revision = int(payload.get("revision") or 1)
+        spec_obj = payload.get("spec")
+        spec_path_hint = payload.get("specPath")
+        workdir = STUDIO_HOME / "timeline" / job_id
+        workdir.mkdir(parents=True, exist_ok=True)
+
+        # 平台侧的 run.spec 是「引擎 + 参数」的外壳，timeline 本体可能在 timeline 键下
+        if isinstance(spec_obj, dict) and not spec_obj.get("canvas") \
+                and isinstance(spec_obj.get("timeline"), dict):
+            inner = dict(spec_obj["timeline"])
+            for k in ("platforms", "fit"):
+                if k in spec_obj and k not in inner:
+                    inner[k] = spec_obj[k]
+            spec_obj = inner
+
+        if isinstance(spec_obj, dict) and spec_obj.get("canvas"):
+            spec_path = workdir / "spec.json"
+            spec_path.write_text(json.dumps(spec_obj, ensure_ascii=False, indent=2),
+                                 encoding="utf-8")
+        elif spec_path_hint and Path(spec_path_hint).exists():
+            spec_path = Path(spec_path_hint)
+        else:
+            raise TimelineError("timeline job 需要 payload.spec（含 canvas）或存在的 specPath")
+
+        # 相对 src 的基准：显式 assetBase 优先，其次 spec 所在目录
+        base = Path(payload["assetBase"]) if payload.get("assetBase") else spec_path.parent
+        if not base.exists():
+            raise TimelineError(f"assetBase 不存在: {base}")
+
+        # worker 的 PATH 里可能没有 homebrew；用配置里的绝对路径覆盖模块常量
+        for ff in (self.cfg.ffmpeg, self.cfg.ffprobe):
+            if Path(ff).exists():
+                timeline.FFMPEG = delivery.FFMPEG = self.cfg.ffmpeg
+                timeline.FFPROBE = delivery.FFPROBE = self.cfg.ffprobe
+
+        progress(5, "timeline:spec")
+        try:
+            spec = timeline.load_spec(spec_path, base=base)
+        except Exception as exc:  # SpecError / OSError 都算「spec 不合法」
+            raise TimelineError(f"timeline spec 不合法: {exc}") from None
+
+        progress(10, "timeline:rendering")
+        try:
+            ev = timeline.render(spec, workdir / "master.mp4")
+        except RuntimeError as exc:
+            raise TimelineError(f"母版渲染失败: {exc}") from None
+
+        result: dict[str, Any] = {
+            "engine": "timeline",
+            "videoPath": ev["output"],
+            "duration": ev["duration"],
+            "canvas": ev["canvas"],
+            "clips": ev["clips"],
+            "texts": ev["texts"],
+            "audios": ev["audios"],
+            "renderSeconds": ev["seconds"],
+            "deliveries": [],
+        }
+
+        # load_spec 只保留它认识的键，platforms/fit 得从原始 spec 里取
+        src_spec = spec_obj if isinstance(spec_obj, dict) else {}
+        platforms = (payload.get("platforms") or src_spec.get("platforms")
+                     or spec.get("platforms") or [])
+        fit = payload.get("fit") or src_spec.get("fit") or "blur"
+        if platforms:
+            progress(60, "timeline:delivering")
+            try:
+                dev = delivery.deliver(
+                    ev["output"], list(platforms), workdir / "platforms",
+                    fit=fit, quiet=True,
+                )
+            except Exception as exc:  # 交付阶段失败要连母版一起交还，别整单判死
+                log.warning("job %s timeline delivered master but delivery failed: %s", job_id, exc)
+                result["deliveryError"] = str(exc)[:800]
+            else:
+                result["deliveries"] = []
+                for row in dev.get("platforms") or []:
+                    item = {k: row.get(k) for k in
+                            ("platform", "label", "aspect", "target", "status",
+                             "output", "bytes", "probe", "fit", "notes",
+                             "errors", "warnings")}
+                    item["ok"] = row.get("status") == "ok"
+                    result["deliveries"].append(item)
+                result["deliveryFailed"] = dev.get("failed", 0)
+
+        if not run_id:
+            # 没有 runId 就是本地试跑：不传 S3，路径直接交回调用方
+            return result
+
+        s3 = load_s3_creds()
+        if not (s3["access"] and s3["secret"]):
+            raise TimelineError("S3 credentials are missing from config/compose.env")
+        from s3 import upload_file
+
+        progress(90, "timeline:uploading")
+        prefix = f"studio/runs/{run_id}/r{revision}"
+        key = upload_file(s3["endpoint"], s3["access"], s3["secret"],
+                          f"{prefix}/{Path(ev['output']).name}", Path(ev["output"]))
+        result["videoKey"] = key
+        result["videoUrl"] = f"/oss/{key}"
+        for item in result["deliveries"]:
+            if not item.get("ok") or not item.get("output"):
+                continue
+            try:
+                pkey = upload_file(
+                    s3["endpoint"], s3["access"], s3["secret"],
+                    f"{prefix}/platforms/{item['platform']}/{Path(item['output']).name}",
+                    Path(item["output"]),
+                )
+                item["key"] = pkey
+                item["url"] = f"/oss/{pkey}"
+            except Exception as exc:  # 单个平台传不上去，不影响其它平台
+                item["uploadError"] = str(exc)[:300]
         return result
 
     def do_publish(self, job_id: str, payload: dict[str, Any],

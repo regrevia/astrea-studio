@@ -259,8 +259,35 @@ v1 **不做转场/花字/贴纸**：硬切等于剪映"无转场"，`xfade` 需�
 测试：`python3 test_timeline_render.py`（18）+ `python3 test_deliver.py`（26）
 + `python3 test_platform_profiles.py`（34）= **78 全绿，约 6 秒**。
 
+#### 接进平台（代码已就绪，服务未重启）
+
+新增 job kind `render_timeline`，三处改动：
+
+| 位置 | 改动 |
+|---|---|
+| `libs/mongodb/.../production.schema.ts` | `ProductionJobKind.TIMELINE_RENDER = 'render_timeline'` |
+| `apps/aitoearn-server/.../production.service.ts` | `engine === 'timeline'` → 该 kind；并加进 claim 的默认能力数组 |
+| `integrations/mac-worker/worker.py` | `do_timeline()` + 分派；`config.py` 能力表 |
+
+平台侧只要提交 run 时 `spec.engine = 'timeline'`（spec 本体放 `spec.timeline`，
+或直接就是带 `canvas` 的对象），worker 自己会：
+渲染母版 →（`platforms` 非空时）出各平台规格 → 母版必传 S3、平台件逐个传
+（单个平台传失败不带走整批）→ 登记素材库草稿。
+**草稿登记失败只记 `draftError`，不把整单判死**——片已经渲好了这个事实不能丢。
+payload 不带 `runId` 就是本地试跑：不传 S3、不发草稿，只回本地路径。
+每次 job 的 spec 都落盘到 `~/CreatorStudio/timeline/<jobId>/spec.json`，出问题能原样复现。
+
+激活还需要两步（没动你正在跑的服务）：
+```bash
+launchctl kickstart -k gui/$(id -u)/local.creatorstudio.worker     # 重启 worker
+cd project/aitoearn-backend && pnpm nx build aitoearn-server        # 再重建 server 容器
+```
+
+测试：`integrations/mac-worker/test_worker_timeline.py`（7，离线跑，不带 runId 不联网）。
+
 已知限制：① 无转场/动画模板，这类需求要 Remotion/剪映；② 平台矩阵 17 个仍全是
-`assumed`；③ 还没接进 worker 的 job kind（现在是 CLI，worker 只是没接线）。
+`assumed`；③ 前端还不会构造 timeline spec（现在只能手写 JSON 提交）；
+④ 交付阶段目前只落到本地/S3，没有回写平台发布草稿的 `platformFiles`。
 
 ### 平台档案
 

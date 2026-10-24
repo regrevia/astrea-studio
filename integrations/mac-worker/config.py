@@ -42,7 +42,7 @@ class WorkerConfig:
     poll_interval_sec: float = 3.0
     heartbeat_sec: float = 10.0
     capabilities: list[str] = field(
-        default_factory=lambda: ["render_mpt", "render_ffmpeg", "slides_render", "motion_render", "probe", "publish_sau", "capture_web", "inventory"]
+        default_factory=lambda: ["render_mpt", "render_ffmpeg", "slides_render", "motion_render", "render_timeline", "probe", "publish_sau", "capture_web", "inventory"]
     )
     ffmpeg: str = "/opt/homebrew/bin/ffmpeg"
     ffprobe: str = "/opt/homebrew/bin/ffprobe"

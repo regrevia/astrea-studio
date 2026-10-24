@@ -219,6 +219,8 @@ export class ProductionService {
     //   engine=motion   → GSAP 时间轴逐帧渲染，有真正的动效语言；
     //   engine=jianying → 只出剪映草稿，把转场/特效/文字动画交给剪映原生资源
     //                     （macOS 无自动导出，交付物是草稿目录）；
+    //   engine=timeline → 我们自己的 timeline spec 直接渲染母版，纯 ffmpeg、
+    //                     不启剪映、不抢前台，可后台排队也可搬进容器；
     //   默认            → MoneyPrinterTurbo 素材拼贴。
     // 队列、租约、草稿投递完全复用，只有 worker 侧的分派不同。
     const spec = (run.spec ?? {}) as Record<string, unknown>
@@ -229,6 +231,8 @@ export class ProductionService {
       ? ProductionJobKind.SLIDES_RENDER
       : engine === 'jianying'
       ? ProductionJobKind.JIANYING_DRAFT
+      : engine === 'timeline'
+      ? ProductionJobKind.TIMELINE_RENDER
       : ProductionJobKind.RENDER_MPT
     const job = await this.jobRepo.create({
       userId,
@@ -247,7 +251,7 @@ export class ProductionService {
   async claimJob(
     workerId: string,
     lane: string,
-    capabilities: string[] = [ProductionJobKind.RENDER_MPT, ProductionJobKind.RENDER_FFMPEG, ProductionJobKind.SLIDES_RENDER, ProductionJobKind.MOTION_RENDER, ProductionJobKind.JIANYING_DRAFT, ProductionJobKind.PROBE],
+    capabilities: string[] = [ProductionJobKind.RENDER_MPT, ProductionJobKind.RENDER_FFMPEG, ProductionJobKind.SLIDES_RENDER, ProductionJobKind.MOTION_RENDER, ProductionJobKind.TIMELINE_RENDER, ProductionJobKind.JIANYING_DRAFT, ProductionJobKind.PROBE],
   ) {
     if (lane === PUBLISH_LANE) {
       // one browser at a time, always

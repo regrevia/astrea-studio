@@ -14,6 +14,8 @@ export enum ProductionJobKind {
   RENDER_FFMPEG = 'render_ffmpeg',
   SLIDES_RENDER = 'slides_render',
   MOTION_RENDER = 'motion_render',
+  /** 自有 timeline spec 直接渲染母版（纯 ffmpeg，无 GUI） */
+  TIMELINE_RENDER = 'render_timeline',
   JIANYING_DRAFT = 'jianying_draft',
   PUBLISH_SAU = 'publish_sau',
   PROBE = 'probe',
