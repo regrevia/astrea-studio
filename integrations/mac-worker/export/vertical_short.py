@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import re
+import zlib
 import subprocess
 import sys
 from pathlib import Path
@@ -196,7 +197,8 @@ def _blink_times(dur: float, cfg: dict, idx: int) -> list[float]:
     """每 2.6~3.8 秒眨一次眼，相位跟场景序号错开，免得整片动作像节拍器。"""
     if cfg.get("blink") is False or dur < 1.2:
         return []
-    seed = abs(hash(f"blink{idx}")) % 1000 / 1000.0
+    # 同上：内置 hash 按进程加盐，换成 crc32 才能「同一份稿子重跑字节一致」
+    seed = zlib.crc32(f"blink{idx}".encode()) % 1000 / 1000.0
     out: list[float] = []
     at = 0.9 + seed * 0.9
     while at < dur - 0.35:

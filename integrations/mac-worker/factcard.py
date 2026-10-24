@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 import os
 import re
+import zlib
 from pathlib import Path
 from typing import Any
 
@@ -75,7 +76,8 @@ def _vgrad(size, top, bottom):
 
 
 def _seed(slug: str) -> int:
-    return abs(hash(slug)) % 9973
+    # 用 crc32 而不是内置 hash：hash 每个进程随机加盐，worker 重启后同一份稿子会位移
+    return zlib.crc32(slug.encode("utf-8")) % 9973
 
 
 

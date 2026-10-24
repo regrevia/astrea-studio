@@ -17,6 +17,11 @@ const EXPLAINER_PHRASES = [
   '可以说', '某种程度上', '某种意义上', '换言之', '通俗地讲', '打个比方',
 ]
 
+const VOICE_MARKS = [
+  '你', '我', '咱', '别', '真的', '其实', '根本', '没人', '谁',
+  '说白了', '不编', '？', '！', '?',
+]
+
 export type CopyWarnCode =
   | 'template_phrase'
   | 'explainer_tone'
@@ -26,6 +31,8 @@ export type CopyWarnCode =
   | 'long_spoken'
   | 'point_body_long'
   | 'card_echoes_voice'
+  | 'flat_voice'
+  | 'parallel_points'
 
 export type CopyScope = 'all' | 'hook' | 'topic' | 'cta' | 'points' | 'voice' | 'point' | 'spoken'
 
@@ -158,6 +165,32 @@ export function checkCopy(input: {
         add({ code: 'card_echoes_voice', scope: 'point', index: i + 1, params: {} })
     }
   })
+
+  const full = [hook, topic, cta, ...bodies, ...spoken].join(' ')
+  if (full && !VOICE_MARKS.some(mark => full.includes(mark)))
+    add({ code: 'flat_voice', scope: 'all', params: {} })
+
+  const flatBodies = bodies.filter(b => b.length >= 4)
+  if (flatBodies.length >= 3) {
+    const heads = new Set(flatBodies.map(b => b.slice(0, 4)))
+    const tails = new Set(flatBodies.map(b => b.slice(-2)))
+    const pairs: number[] = []
+    for (let i = 0; i < flatBodies.length; i++) {
+      for (let j = i + 1; j < flatBodies.length; j++)
+        pairs.push(textSimilarity(flatBodies[i], flatBodies[j]))
+    }
+    const mean = pairs.reduce((a, b) => a + b, 0) / (pairs.length || 1)
+    const sameHead = heads.size === 1
+    const sameTail = tails.size === 1
+    if (sameHead || sameTail || mean >= 0.5) {
+      const stamp = sameHead ? [...heads][0] : sameTail ? [...tails][0] : ''
+      add({
+        code: 'parallel_points',
+        scope: 'points',
+        params: stamp ? { stamp } : { ratio: mean.toFixed(2) },
+      })
+    }
+  }
 
   return warns
 }

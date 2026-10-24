@@ -30,6 +30,10 @@ EXPLAINER_PHRASES = (
     "可以说", "某种程度上", "某种意义上", "换言之", "通俗地讲", "打个比方",
 )
 
+# 人写稿会露出手：称呼读者、自嘲、下判断、反问。通篇一个都没有，读起来就是说明书。
+VOICE_MARKS = ("你", "我", "咱", "别", "真的", "其实", "根本", "没人", "谁",
+               "说白了", "不编", "？", "！", "?")
+
 # 说了等于没说的名词，通常可以换成具体动作。
 EMPTY_NOUNS = ("价值", "能力", "体系", "方法论", "认知", "维度", "层面", "颗粒度")
 
@@ -125,6 +129,26 @@ def check_copy(*, hook: str = "", points: Iterable[str] = (), cta: str = "",
     longs = [s for s in sents if len(s) > 26]
     if longs:
         add("long_line", "warn", "全文", f"{len(longs)} 句超过 26 字，一口气念不完：「{longs[0][:16]}…」")
+
+    if not any(mark in full for mark in VOICE_MARKS):
+        add("flat_voice", "warn", "全文",
+            "没有一个称呼、反问或判断，读起来像说明书")
+
+    # 三张卡同前缀/同结尾＝排比腔，观众第三张就知道句式，后面全在等结束
+    flat_bodies = [_squash(b) for b in bodies if len(_squash(b)) >= 4]
+    if len(flat_bodies) >= 3:
+        heads = {b[:4] for b in flat_bodies}
+        tails = {b[-2:] for b in flat_bodies}
+        pairs = [
+            SequenceMatcher(None, a, b).ratio()
+            for i, a in enumerate(flat_bodies) for b in flat_bodies[i + 1:]
+        ]
+        mean_ratio = sum(pairs) / len(pairs) if pairs else 0.0
+        if len(heads) == 1 or len(tails) == 1 or mean_ratio >= 0.5:
+            stamp = next(iter(heads if len(heads) == 1 else tails)) if (len(heads) == 1 or len(tails) == 1) else ""
+            why = f"都带「{stamp}」" if stamp else f"字面相似度 {mean_ratio:.2f}"
+            add("parallel_points", "warn", "要点",
+                f"三张卡句式同构（{why}），换一种说法")
 
     for i, s in enumerate(spoken, start=1):
         if len(s) > 28:

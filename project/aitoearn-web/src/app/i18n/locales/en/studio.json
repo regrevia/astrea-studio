@@ -101,7 +101,9 @@
         "voice": "Voiceover",
         "point": "Point {{index}}",
         "spoken": "Voiceover line {{index}}"
-      }
+      },
+      "flat_voice": "No address, question or judgment — add a line aimed at a person",
+      "parallel_points": "Three cards share one sentence shape — vary it"
     },
     "count": "Count",
     "batchSuccess": "{{count}} queued"
