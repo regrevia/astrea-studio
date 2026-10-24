@@ -130,9 +130,10 @@ def _stage(cfg: dict, idx: int, total: int) -> dict:
     if idx == 0:
         want = {"width": 780, "x": 452, "y": 792}
     elif idx == total - 1:
-        want = {"width": 730, "x": 460, "y": 930}
+        want = {"width": 730, "x": 460, "y": 1014}
     else:
-        want = {"width": 680, "x": 520, "y": 985}
+        # 卡底压在 1000：人物头顶再往上就穿进卡框，看着像贴纸压边
+        want = {"width": 680, "x": 520, "y": 1014}
     for k, v in want.items():
         if not out.get(k):
             out[k] = v
@@ -533,11 +534,11 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 label = "轮到你了"
             # 收尾卡是整条的落点：栏目名退成一行小字，那句话当标题居中，
             # 两句同一字号会互相抢，读起来像没排完。
-            layers = (_block_layers(str(label), 48, 556, workdir, f"l{i:02d}",
+            layers = (_block_layers(str(label), 48, 592, workdir, f"l{i:02d}",
                                     align="center", left=124, max_w=center_w,
                                     fill=(255, 255, 255, 168)) if str(label).strip() else [])
             cta_size = 84 if len(cta_text) <= 13 else 72
-            layers += _block_layers(cta_text, cta_size, 662, workdir, f"h{i:02d}",
+            layers += _block_layers(cta_text, cta_size, 700, workdir, f"h{i:02d}",
                                     align="center", left=124, max_w=center_w,
                                     fill=(255, 255, 255, 236))
         else:
