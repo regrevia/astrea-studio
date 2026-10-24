@@ -26,6 +26,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -353,9 +354,118 @@ def _scene_duration(scene: dict[str, Any]) -> float:
     return max(2.0, min(8.0, chars / 4.2))
 
 
+MPT_HOME = Path(os.environ.get(
+    "STUDIO_MPT_HOME",
+    str(HOME / "CreatorStudio/runtime/integrations/vendor/MoneyPrinterTurbo"),
+))
+DEFAULT_VOICE = "sami:BV411_streaming"  # 剪映「解说小帅」，会员音色不经会员也能用
+
+
+def _tts(text: str, out: Path, voice: str) -> None:
+    """剪映音色配音（SAMI 内部接口）。
+
+    worker 跑系统 python3，没有 MPT venv 的依赖（loguru/websockets），
+    所以只能子进程交给 MPT 的解释器跑 sami_tts —— 与 slides_render 同一条桥。
+    """
+    python = MPT_HOME / ".venv/bin/python"
+    script = MPT_HOME / "app/services/sami_tts.py"
+    if not python.exists() or not script.exists():
+        raise JianyingError(f"sami tts unavailable: {python} / {script}")
+    code = (
+        "import sys\n"
+        "from app.services.sami_tts import sami_tts\n"
+        "sami_tts(sys.argv[1], sys.argv[2], 1.0, sys.argv[3])\n"
+    )
+    env = dict(os.environ)
+    env["MPT_HOME"] = str(MPT_HOME)
+    env["PYTHONPATH"] = str(MPT_HOME)
+    r = subprocess.run(
+        [str(python), "-c", code, text, voice, str(out)],
+        capture_output=True, text=True, cwd=str(MPT_HOME), env=env, timeout=240,
+    )
+    if not out.exists() or out.stat().st_size < 1000:
+        tail = (r.stderr or r.stdout or "no output").strip()[-300:]
+        raise JianyingError(f"tts failed ({voice}): {tail}")
+
+
+def _dur(path: Path) -> float:
+    r = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True, timeout=60,
+    )
+    try:
+        return float(r.stdout.strip())
+    except ValueError:
+        return 0.0
+
+
+_CAT_ENDPOINT = {
+    "transitions": "get_transition_types",
+    "text_anim_in": "get_text_intro_types",
+    "text_anim_out": "get_text_outro_types",
+    "video_intro_animations": "get_intro_animation_types",
+    "video_outro_animations": "get_outro_animation_types",
+    "fonts": "get_font_types",
+    "video_scene_effects": "get_video_scene_effect_types",
+    "video_character_effects": "get_video_character_effect_types",
+}
+_CAT_CACHE: dict[str, list[str]] = {}
+
+
+def _catalog(category: str) -> list[str]:
+    """服务端的资源白名单（真值来源，不是本地 CSV）。
+
+    踩过的坑：本地 asset_search 的 CSV 里有「黑板擦除」，而 VectCutAPI 内部的
+    pyJianYingDraft 枚举只有「画笔擦除」，传中文名进去只会得到
+    ``Warning: Unsupported transition type`` 然后被静默忽略。
+    """
+    if category in _CAT_CACHE:
+        return _CAT_CACHE[category]
+    endpoint = _CAT_ENDPOINT.get(category)
+    names: list[str] = []
+    if endpoint:
+        try:
+            with urllib.request.urlopen(f"{VCUT_BASE}/{endpoint}", timeout=60) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+            names = [str(x.get("name")) for x in (body.get("output") or []) if x.get("name")]
+        except Exception:  # noqa: BLE001 - 服务异常时退化为透传，不阻断整条渲染
+            names = []
+    _CAT_CACHE[category] = names
+    return names
+
+
+def _pick(name: Any, category: str) -> str | None:
+    """资源名 → 服务端认的标识。精确 → 模糊 → 放弃（绝不硬塞中文名）。"""
+    if not name:
+        return None
+    raw = str(name).strip()
+    if not raw:
+        return None
+    names = _catalog(category)
+    if not names:
+        return raw  # 拿不到白名单，只能透传交给服务端判定
+    if raw in names:
+        return raw
+    contains = [n for n in names if raw in n or n in raw]
+    if contains:
+        return min(contains, key=len)
+    return None
+
+
+def _as_list(value: Any) -> list[Any]:
+    if not value:
+        return []
+    return list(value) if isinstance(value, (list, tuple)) else [value]
+
+
 def build_timeline(spec: dict[str, Any], job_dir: Path,
                    say: Callable[[int, str], None]) -> dict[str, Any]:
-    """spec → draft_id（VectCutAPI 内存对象）。"""
+    """spec → {draft_id, duration, stats}。四层轨道：画面 / 文字 / 特效 / 配音。
+
+    全部走剪映原生资源（转场、画面特效、VIP 字体、文字入场动画、音色），
+    自研渲染器追不上这部分，也正是会员的价值所在。
+    """
     scenes = spec.get("scenes") or []
     if not scenes:
         raise JianyingError("jianying spec has no scenes")
@@ -365,37 +475,147 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
     created = _post("/create_draft", {"width": width, "height": height})
     draft_id = created["draft_id"]
 
-    total = 0.0
+    # 第一遍：先拿到配音，才知道每屏真实时长（按口播字数估的和实际差很多）
+    plan: list[dict[str, Any]] = []
     for idx, scene in enumerate(scenes):
-        dur = _scene_duration(scene)
-        text = _scene_text(scene)
-        say(10 + int(60 * idx / max(1, len(scenes))), f"jianying:scene{idx + 1}/{len(scenes)}")
-        if not text:
-            total += dur
-            continue
-
         native = scene.get("native") or {}
-        payload: dict[str, Any] = {
-            "draft_id": draft_id,
-            "text": text,
-            "start": total,
-            "end": total + dur,
-            "font_size": int(scene.get("font_size") or 12),
-        }
-        font = native.get("font")
-        if font:
-            fid = _asset_lookup(font, "fonts")
-            if fid:
-                payload["font"] = fid
-        anim = native.get("text_anim_in")
-        if anim:
-            aid = _asset_lookup(anim, "text_animations") or anim
-            # VectCutAPI 的参数名是 intro_animation（不是 text_animation）
-            payload["intro_animation"] = aid
-        _post("/add_text", payload)
+        dur = _scene_duration(scene)
+        voice = scene.get("voice") or native.get("voice")
+        audio: Path | None = None
+        if voice:
+            text_for_tts = str(scene.get("say") or "").strip() or _scene_text(scene)
+            if text_for_tts:
+                say(5 + int(30 * idx / max(1, len(scenes))),
+                    f"jianying:tts{idx + 1}/{len(scenes)}")
+                audio = job_dir / f"tts_{idx:02d}.mp3"
+                _tts(text_for_tts, audio, str(voice))
+                dur = max(dur, _dur(audio) + 0.25)
+        plan.append({"scene": scene, "native": native, "duration": dur, "audio": audio})
+
+    total = 0.0
+    stats = {"images": 0, "texts": 0, "effects": 0, "audios": 0,
+             "transitions": 0, "text_anims": 0, "fonts": 0, "skipped": []}
+    for idx, item in enumerate(plan):
+        scene, native = item["scene"], item["native"]
+        dur = item["duration"]
+        say(35 + int(55 * idx / max(1, len(plan))),
+            f"jianying:scene{idx + 1}/{len(plan)}")
+
+        # ---- 1) 画面轨：图片片段（转场只能挂在片段上，挂不到文字上）
+        image = scene.get("image") or native.get("image")
+        if image:
+            img = Path(str(image)).expanduser()
+            if img.exists():
+                clip: dict[str, Any] = {
+                    "draft_id": draft_id,
+                    "image_url": str(img),
+                    "width": width,
+                    "height": height,
+                    "start": total,
+                    "end": total + dur,
+                }
+                transition = _pick(native.get("transition_in"), "transitions")
+                if transition:
+                    clip["transition"] = transition
+                    clip["transition_duration"] = float(
+                        native.get("transition_duration") or 0.6)
+                    stats["transitions"] += 1
+                anim_in = _pick(native.get("image_anim_in"), "video_intro_animations")
+                if anim_in:
+                    clip["intro_animation"] = anim_in
+                    clip["intro_animation_duration"] = float(
+                        native.get("image_anim_in_duration") or 0.6)
+                anim_out = _pick(native.get("image_anim_out"), "video_outro_animations")
+                if anim_out:
+                    clip["outro_animation"] = anim_out
+                    clip["outro_animation_duration"] = float(
+                        native.get("image_anim_out_duration") or 0.5)
+                _post("/add_image", clip)
+                stats["images"] += 1
+
+        # ---- 2) 文字轨：主文案（VIP 字体 + 入场/出场动画）+ 可选逐句字幕
+        text = _scene_text(scene)
+        caption = str(scene.get("caption") or native.get("subtitle") or "").strip()
+        blocks: list[dict[str, Any]] = []
+        if text:
+            body: dict[str, Any] = {
+                "text": text,
+                "font_size": int(native.get("font_size") or scene.get("font_size") or 12),
+                "transform_y": float(native.get("transform_y", scene.get("transform_y", -0.45))),
+                "transform_x": float(native.get("transform_x", 0.0)),
+            }
+            font = _pick(native.get("font"), "fonts")
+            if font:
+                body["font"] = font
+                stats["fonts"] += 1
+            intro = _pick(native.get("text_anim_in"), "text_anim_in")
+            if intro:
+                # 注意：VectCutAPI 的参数名是 intro_animation，不是 text_animation
+                body["intro_animation"] = intro
+                body["intro_duration"] = float(native.get("text_anim_in_duration") or 0.5)
+                stats["text_anims"] += 1
+            outro = _pick(native.get("text_anim_out"), "text_anim_out")
+            if outro:
+                body["outro_animation"] = outro
+                body["outro_duration"] = float(native.get("text_anim_out_duration") or 0.5)
+                stats["text_anims"] += 1
+            if native.get("color"):
+                body["font_color"] = str(native["color"])
+            if native.get("bold"):
+                body["bold"] = True
+            if native.get("width"):
+                body["width"] = float(native["width"])
+            body["track_name"] = str(native.get("text_track") or "text_main")
+            blocks.append(body)
+        if caption and caption != text:
+            # 竖屏字幕必须落进底部安全带：half-canvas 单位，y=-0.86 ≈ 画面 93% 处
+            blocks.append({
+                "text": caption,
+                "font_size": int(native.get("caption_size") or 7),
+                "font_color": str(native.get("caption_color") or "#FFFFFF"),
+                "transform_y": float(native.get("caption_y", -0.86)),
+                "width": float(native.get("caption_width", 0.88)),
+                # 不加这句会落到 pyJianYingDraft 默认的「文轩体」，字幕观感太软
+                "font": str(native.get("caption_font") or "SourceHanSansCN_Medium"),
+                "bold": True,
+                # 同轨同时长的片段会被 pyJianYingDraft 判为 overlap，字幕必须独立轨
+                "track_name": str(native.get("caption_track") or "text_sub"),
+            })
+        for body in blocks:
+            payload = {"draft_id": draft_id, "start": total, "end": total + dur, **body}
+            _post("/add_text", payload)
+            stats["texts"] += 1
+
+        # ---- 3) 画面特效轨（转场之外的氛围层）
+        for eff in _as_list(native.get("effect")):
+            effect_type = _pick(eff, "video_scene_effects")
+            if not effect_type:
+                continue
+            _post("/add_effect", {
+                "draft_id": draft_id,
+                "effect_type": effect_type,
+                "effect_category": str(native.get("effect_category") or "scene"),
+                "start": total,
+                "end": total + dur,
+                "width": width,
+                "height": height,
+            })
+            stats["effects"] += 1
+
+        # ---- 4) 配音轨（剪映音色）
+        audio = item["audio"]
+        if audio:
+            _post("/add_audio", {
+                "draft_id": draft_id,
+                "audio_url": str(audio),
+                "target_start": total,
+                "volume": float(native.get("volume") or 1.0),
+            })
+            stats["audios"] += 1
+
         total += dur
 
-    return {"draft_id": draft_id, "duration": total}
+    return {"draft_id": draft_id, "duration": total, "stats": stats}
 
 
 def render_jianying(payload: dict[str, Any], job_dir: Path,
@@ -443,6 +663,7 @@ def render_jianying(payload: dict[str, Any], job_dir: Path,
         "draftPath": str(dest),
         "draftName": name,
         "duration": built["duration"],
+        "stats": built.get("stats") or {},
         "output": {"videoPath": None, "requiresManualExport": True},
         "note": "草稿已就绪。macOS 无法自动导出，请在剪映打开草稿并点导出。",
     }
