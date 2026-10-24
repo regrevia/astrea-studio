@@ -940,6 +940,14 @@ def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
     sd.ellipse((cx - cw * 0.40, cy - chh * 0.055, cx + cw * 0.40, cy + chh * 0.045),
                fill=(0, 0, 0, 90))
     canvas.alpha_composite(shade.filter(ImageFilter.GaussianBlur(max(6, cw // 22))))
+    # 深色卡面上蓝发立绘会和背景糊在一起：沿轮廓扩一圈柔光把她从底上摘出来
+    gw = int(w * 1.10)
+    ga = fig.split()[-1].resize((gw, gw), Image.LANCZOS)
+    ga = ga.filter(ImageFilter.GaussianBlur(max(8, gw // 26)))
+    halo = Image.new("RGBA", (gw, gw), (255, 255, 255, 255))
+    halo.putalpha(ga.point(lambda v: int(v * 0.30)))
+    canvas.alpha_composite(halo, (int(x + cw * 0.5 - gw * 0.5),
+                                 int(y + chh * 0.5 - gw * 0.5)))
     canvas.alpha_composite(fig, (x - bb[0], y - bb[1]))
     # 文件名必须带口型/姿态：同一屏要贴好几段不同口型，同名会把前一张覆盖掉
     out = job_dir / f"char_{idx:02d}_{pose}_{mouth}.png"

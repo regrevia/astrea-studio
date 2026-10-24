@@ -93,8 +93,19 @@ def _wrap_text(draw, text: str, font, max_w: float) -> list[str]:
         for tok in _TOKEN_RE.findall(para):
             probe = buf + tok
             if draw.textlength(probe, font=font) > max_w and buf:
-                out.append(buf)
-                buf = tok
+                # 优先在标点后断行："来自"被劈开成 "…句话来 / 自哪一秒" 最刺眼
+                cut = -1
+                for j in range(len(buf) - 1, 0, -1):
+                    if buf[j] in _ORPHAN_PUNCT:
+                        cut = j + 1
+                        break
+                far_enough = cut > 0 and draw.textlength(buf[:cut], font=font) >= max_w * 0.88
+                if far_enough and len(buf) - cut <= 3:
+                    out.append(buf[:cut])
+                    buf = buf[cut:] + tok
+                else:
+                    out.append(buf)
+                    buf = tok
             else:
                 buf = probe
         if buf:
@@ -104,6 +115,10 @@ def _wrap_text(draw, text: str, font, max_w: float) -> list[str]:
         while out[i] and out[i][0] in _ORPHAN_PUNCT:
             out[i - 1] += out[i][0]
             out[i] = out[i][1:]
+    # 末行只剩一个字（"…真的读 / 过"）比换行错位更难看：从上一行借一个字回来
+    if len(out) >= 2 and len(out[-1]) == 1 and len(out[-2]) > 2:
+        out[-1] = out[-2][-1] + out[-1]
+        out[-2] = out[-2][:-1]
     return [ln for ln in out if ln or True]
 
 
@@ -179,7 +194,9 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
     else:
         # 开场：大引号 + 斜切色块
         draw.polygon([(0, 1200), (W, 980), (W, 1320), (0, 1540)], fill=(*accent, 26))
-        draw.rounded_rectangle((76, 500, 180, 512), radius=6, fill=(*accent, 240))
+        # 短强调条只在正文区靠下时才画，否则会和下面的钩子分隔线叠成两道杠
+        if body_top - 44 > 600:
+            draw.rounded_rectangle((76, 500, 180, 512), radius=6, fill=(*accent, 240))
 
     # 顶部 kicker
     draw.text((76, TOP_SAFE + 16), kicker, font=_font(40), fill=(255, 255, 255, 205))
