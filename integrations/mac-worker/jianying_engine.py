@@ -1004,12 +1004,32 @@ def render_jianying(payload: dict[str, Any], job_dir: Path,
 
     say(90, "jianying:deploy")
     dest = _deploy(src, name)
+    say(96, "jianying:copy-check")
+    # 文案体检：只提示不改稿，让写稿的人自己决定要不要动。
+    copy_report = None
+    try:
+        from copy_check import check_copy
+
+        raw = payload.get("spec") or {}
+        narr = raw.get("narration") or {}
+        copy_report = check_copy(
+            topic=str(raw.get("topic") or ""),
+            hook=str(raw.get("hook") or ""),
+            points=[str(x) for x in (raw.get("points") or [])],
+            cta=str(raw.get("cta") or ""),
+            narration=[str(narr.get(k) or "") for k in ("intro", "cta")]
+            + [str(x) for x in (narr.get("points") or [])],
+        )
+    except Exception as exc:  # noqa: BLE001 - 体检失败不影响出片
+        copy_report = {"findings": [], "metrics": {}, "ok": True, "error": str(exc)[:160]}
+
     say(100, "jianying:done")
     return {
         "draftPath": str(dest),
         "draftName": name,
         "duration": built["duration"],
         "stats": built.get("stats") or {},
+        "copyCheck": copy_report,
         "output": {"videoPath": None, "requiresManualExport": True},
         "note": "草稿已就绪。macOS 无法自动导出，请在剪映打开草稿并点导出。",
     }
