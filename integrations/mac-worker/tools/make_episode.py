@@ -176,6 +176,16 @@ def main(argv: list[str]) -> int:
             # 兼容两种写法：{"topic":…,"points":[…]} 或 {"title":…,"spec":{…}}
             raw = item.get("spec") if isinstance(item.get("spec"), dict) else item
             merged = {"kicker": args.kicker, "voice": args.voice, **raw}
+            # 清单里 narration 可以写文件路径：批量出片不该因为没走 --narration 就丢掉口播稿
+            narr = merged.get("narration")
+            if isinstance(narr, str) and narr:
+                lines = Path(narr).read_text(encoding="utf-8").splitlines()
+                merged["points"], parsed = apply_narration(
+                    [str(x) for x in (merged.get("points") or [])], lines)
+                if parsed:
+                    merged["narration"] = parsed
+                else:
+                    merged.pop("narration", None)
             if item.get("title"):
                 merged.setdefault("title", item["title"])
             if args.dry_run:

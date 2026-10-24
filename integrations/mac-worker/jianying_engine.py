@@ -1065,7 +1065,8 @@ def render_jianying(payload: dict[str, Any], job_dir: Path,
         from copy_check import check_copy
 
         raw = payload.get("spec") or {}
-        narr = raw.get("narration") or {}
+        narr = raw.get("narration")
+        narr = narr if isinstance(narr, dict) else {}
         pts = [str(x) for x in (raw.get("points") or [])]
         # 口播稿可能写在要点第三段（标题::卡面正文::口播稿），体检要按讲述顺序读
         says = [x.split("::")[2] if x.count("::") >= 2 else "" for x in pts]
