@@ -28,6 +28,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any, Callable
 
@@ -112,8 +113,117 @@ def _deploy(draft_dir: Path, project_name: str) -> Path:
         meta["draft_name"] = project_name
         meta["draft_fold_path"] = str(dest)
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    _normalize_draft(dest, project_name)
     os.utime(dest, None)
     return dest
+
+
+def _write_plain_json(path: Path, payload: str) -> bool:
+    """写明文 JSON；若目标已是剪映自己写的密文则**拒绝覆盖**，返回 False。"""
+    if path.exists():
+        head = path.read_text(encoding="utf-8", errors="ignore")[:1]
+        if head != "{":
+            return False
+    path.write_text(payload, encoding="utf-8")
+    return True
+
+
+def _normalize_draft(dest: Path, project_name: str) -> dict[str, Any]:
+    """给草稿换一套独有 id，并把 meta 补成剪映列表能正确显示的样子。
+
+    实测到的三个坑（2026-10-24，接管后排查）：
+      0. **决定性**：剪映 11.6 的草稿注册表
+         `<draft_root>/root_meta_info.json` 里每条记录的 `draft_json_file`
+         **一律指向 `draft_info.json`**。11.6 只读这个文件；我们此前只写
+         `draft_content.json`（历史文件名），所以时间线永远是空的。
+         → 必须同时输出 `draft_info.json`（明文 JSON，与 10月24日 那个
+         web 来源草稿同法，剪映读明文不吃加密）。
+      1. 模板模式下 content["id"] 直接沿用模板草稿的 id，于是
+         `studio_6adc23ad…` / `studio_6adc2526…` / `jy_native_demo` 三个草稿
+         **共用同一个 timeline UUID `91E08AC5-…`**，
+         `Timelines/<id>/`、`project.json`、`timeline_layout.json` 全部撞车。
+      2. `draft_meta_info.json` 的 `tm_duration` / `draft_timeline_materials_size_`
+         恒为 0，草稿列表里显示 0 秒。
+
+    这里只在**部署之后**改落地文件，不依赖 VectCutAPI 内部实现。
+    """
+    content_path = dest / "draft_content.json"
+    if not content_path.exists():
+        return {"skipped": "no draft_content.json"}
+
+    content = json.loads(content_path.read_text(encoding="utf-8"))
+    old_id = content.get("id") or ""
+    new_id = str(uuid.uuid4()).upper()
+    duration = int(content.get("duration") or 0)
+
+    # 1) content 本体 + draft_info.json（11.6 真正读取的文件）
+    content["id"] = new_id
+    payload = json.dumps(content, ensure_ascii=False, indent=2)
+    content_path.write_text(payload, encoding="utf-8")
+    wrote_info = _write_plain_json(dest / "draft_info.json", payload)
+
+    # 2) Timelines/<id> 目录改名 + 里头的 content 副本
+    timelines = dest / "Timelines"
+    renamed: list[str] = []
+    if timelines.is_dir():
+        dirs = [p for p in timelines.iterdir() if p.is_dir()]
+        target = timelines / new_id
+        for td in dirs:
+            if td == target:
+                continue
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)
+            td.rename(target)
+            renamed.append(f"{td.name} -> {target.name}")
+            break
+        inner = target / "draft_content.json"
+        if inner.exists():
+            inner.write_text(payload, encoding="utf-8")
+        _write_plain_json(target / "draft_info.json", payload)
+
+        # 3) project.json / project.json.bak
+        for name in ("project.json", "project.json.bak"):
+            p = timelines / name
+            if not p.exists():
+                continue
+            try:
+                proj = json.loads(p.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            proj["id"] = new_id
+            proj["main_timeline_id"] = new_id
+            for tl in proj.get("timelines") or []:
+                tl["id"] = new_id
+            p.write_text(json.dumps(proj, ensure_ascii=False, separators=(",", ":")),
+                         encoding="utf-8")
+
+    # 4) timeline_layout.json
+    layout_path = dest / "timeline_layout.json"
+    if layout_path.exists():
+        try:
+            layout = json.loads(layout_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            layout = None
+        if layout:
+            for item in layout.get("dockItems") or []:
+                item["timelineIds"] = [new_id]
+                item["timelineNames"] = ["时间线01"]
+            layout_path.write_text(
+                json.dumps(layout, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+
+    # 5) meta 补全
+    meta_path = dest / "draft_meta_info.json"
+    if meta_path.exists():
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["draft_name"] = project_name
+        meta["draft_fold_path"] = str(dest)
+        meta["draft_id"] = new_id
+        meta["tm_duration"] = duration
+        meta["draft_timeline_materials_size_"] = os.path.getsize(content_path)
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    return {"old_id": old_id, "new_id": new_id, "duration": duration,
+            "draft_info_written": wrote_info, "timeline_renamed": renamed}
 
 
 # ---------------------------------------------------------------- spec 适配
