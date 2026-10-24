@@ -23,7 +23,7 @@
       "name": "导出至",
       "ax_id": "ExportPathInput",
       "label": "导出至",
-      "value": "/Users/apple/Movies/i... 口",
+      "value": "~/Movies/i... 口",
       "hidden": false,
       "rel": {
         "rx": 0.7,

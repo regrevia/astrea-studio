@@ -50,3 +50,6 @@ project/web/.cursor/
 integrations/vendor/
 __pycache__/
 *.pyc
+
+# 剪映导出面板的一次性抓包证据：含本机路径与专有客户端信息，只留本机参考，不发布
+docs/probe/export-panel/runs/

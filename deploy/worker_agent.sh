@@ -36,7 +36,9 @@ case "${1:-install}" in
       echo "stopped a hand-started worker"
       sleep 2
     }
-    cp "$PLIST_SRC" "$PLIST_DST"
+    # 仓库里的 plist 是模板（${HOME} 写成 __HOME__），安装时再渲染成本机绝对路径，
+    # 这样仓库里不会出现某个人的用户名，而 launchd 仍然拿到真实路径。
+    sed "s|__HOME__|$HOME|g" "$PLIST_SRC" > "$PLIST_DST"
     launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
     launchctl bootstrap "gui/$(id -u)" "$PLIST_DST"
     echo "installed $LABEL"

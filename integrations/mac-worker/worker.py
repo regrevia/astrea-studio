@@ -75,6 +75,7 @@ class Worker:
         self.client = StudioClient(cfg.api_base, cfg.worker_token)
         self.running = True
         self.backoff = 2.0
+        self._caps_synced_at = 0.0
 
     # ------------------------------------------------------------- lifecycle
 
@@ -98,6 +99,7 @@ class Worker:
             return 2
 
         log.info("worker up: api=%s capabilities=%s", self.cfg.api_base, ",".join(self.cfg.capabilities))
+        self.sync_capabilities()
         while self.running:
             if not self.client.alive():
                 log.warning("api unreachable; retrying in %.0fs", self.backoff)
@@ -116,11 +118,32 @@ class Worker:
                     log.error("claim failed on %s: %s", lane, exc)
                     time.sleep(self.backoff)
             if not did_work:
+                # 空闲时定期重对齐：服务端换版本、或本机配置加了新能力，
+                # 都不该等到人工去改数据库才生效。
+                if time.time() - self._caps_synced_at > 600:
+                    self.sync_capabilities()
                 time.sleep(self.cfg.poll_interval_sec)
         log.info("worker stopped")
         return 0
 
     # ------------------------------------------------------------------ jobs
+
+    def sync_capabilities(self) -> None:
+        """把配置里的 capabilities 推给服务端；失败只降级成告警。"""
+        self._caps_synced_at = time.time()
+        try:
+            resp = self.client.refresh_capabilities(self.cfg.capabilities)
+        except ApiError as exc:
+            if exc.status in (404, 405):
+                log.warning(
+                    "server 尚无 capabilities 自刷新端点（旧镜像）；"
+                    "claim 过滤仍按注册时的能力列表，新增 kind 需要手改库",
+                )
+            else:
+                log.warning("capability refresh failed: %s", exc)
+            return
+        got = (resp or {}).get("capabilities") if isinstance(resp, dict) else None
+        log.info("capabilities synced: %s", ",".join(got or self.cfg.capabilities))
 
     def poll_lane(self, lane: str) -> bool:
         resp = self.client.claim(lane)

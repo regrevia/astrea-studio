@@ -109,6 +109,19 @@ class StudioClient:
             body["duration"] = duration
         return self._call("POST", f"/api/production/worker/runs/{run_id}/material", body)
 
+    def refresh_capabilities(self, capabilities: list[str]) -> Any:
+        """把本进程实际支持的 job kind 推回服务端。
+
+        claim 的过滤条件读的是数据库里的 worker 记录，不是这个进程的配置。
+        以前加一个新 kind 必须手改数据库，忘了改的现象是任务永远排队、
+        worker 看起来却完全健康 —— 所以启动时主动对齐一次。
+        """
+        return self._call(
+            "POST",
+            "/api/production/worker/capabilities",
+            {"capabilities": list(capabilities)},
+        )
+
     def alive(self) -> bool:
         try:
             self._call("POST", "/api/production/worker/workers/heartbeat", {})

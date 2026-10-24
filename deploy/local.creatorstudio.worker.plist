@@ -8,19 +8,19 @@
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/python3</string>
-        <string>/Users/apple/CreatorStudio/runtime/integrations/mac-worker/worker.py</string>
+        <string>__HOME__/CreatorStudio/runtime/integrations/mac-worker/worker.py</string>
         <string>--verbose</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/apple/CreatorStudio/runtime/integrations/mac-worker</string>
+    <string>__HOME__/CreatorStudio/runtime/integrations/mac-worker</string>
 
     <!-- Logs land in the same place the manual runs wrote to, so `make logs`
          and `tail -f` keep working after the switch to launchd. -->
     <key>StandardOutPath</key>
-    <string>/Users/apple/CreatorStudio/logs/worker-stdout.log</string>
+    <string>__HOME__/CreatorStudio/logs/worker-stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/apple/CreatorStudio/logs/worker-stderr.log</string>
+    <string>__HOME__/CreatorStudio/logs/worker-stderr.log</string>
 
     <!-- Start with the login session; restart on crash. A render takes minutes,
          so throttle restarts instead of hammering the API while the stack boots. -->
@@ -39,7 +39,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>HOME</key>
-        <string>/Users/apple</string>
+        <string>__HOME__</string>
         <key>PYTHONUNBUFFERED</key>
         <string>1</string>
         <key>PATH</key>

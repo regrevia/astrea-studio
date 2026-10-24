@@ -152,7 +152,7 @@
 ## 复现
 
 ```bash
-cd /Users/apple/Desktop/work/Studio/creator-studio
+cd <repo>
 # 仓库没装 pytest，用自带 __main__（34 个用例）
 python3.11 integrations/mac-worker/export/test_platform_profiles.py
 ```

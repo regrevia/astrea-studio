@@ -66,12 +66,42 @@ def user_token() -> str:
     return out.stdout.strip()
 
 
-def build_spec(assets: Path, platforms: list[str]) -> dict[str, Any]:
+SUBS = ["这是自有时间轴渲染的母版", "不启动剪映，也不抢占前台", "一条 spec 出全部平台规格"]
+
+
+def clips_under(assets: Path) -> list[str]:
     clips = [p for p in ("a.mp4", "b.mp4", "c.mp4") if (assets / p).is_file()]
     if not clips:
         raise SystemExit(f"no clips under {assets} (expected a.mp4/b.mp4/c.mp4)")
+    return clips
+
+
+def build_friendly_spec(assets: Path, platforms: list[str]) -> dict[str, Any]:
+    """友好输入：只给文案/素材/画幅，具体时间轴由服务端展开。
+
+    这条路径是「用户不手写 JSON」的验收口径 —— 前端表单发的就是它。
+    """
+    spec: dict[str, Any] = {
+        "engine": "timeline",
+        "mode": "script",
+        "assetBase": str(assets),
+        "materials": clips_under(assets),
+        "script": SUBS,
+        "canvas": "portrait",
+        "clipSeconds": 3,
+        "platforms": platforms,
+        "fit": "blur",
+        "attachDraft": True,
+    }
+    if (assets / "bgm.m4a").is_file():
+        spec["bgm"] = {"src": "bgm.m4a", "volume": 0.35}
+    return spec
+
+
+def build_spec(assets: Path, platforms: list[str]) -> dict[str, Any]:
+    clips = clips_under(assets)
     video = [{"src": str(assets / name), "in": 0, "out": 3} for name in clips]
-    subs = ["这是自有时间轴渲染的母版", "不启动剪映，也不抢占前台", "一条 spec 出全部平台规格"]
+    subs = SUBS
     texts = [{
         "text": subs[i % len(subs)],
         "start": 3.0 * i + 0.2,
@@ -107,14 +137,21 @@ def main() -> int:
     ap.add_argument("--platforms", default="douyin,bilibili")
     ap.add_argument("--timeout", type=int, default=900)
     ap.add_argument("--no-draft", action="store_true", help="skip draft attach")
+    ap.add_argument("--mode", choices=("advanced", "friendly"), default="advanced",
+                    help="advanced=自己写完整时间轴；friendly=只给文案/素材/画幅，服务端展开")
     args = ap.parse_args()
 
     assets = Path(args.assets).expanduser().resolve()
     platforms = [p.strip() for p in args.platforms.split(",") if p.strip()]
-    spec = build_spec(assets, platforms)
+    if args.mode == "friendly":
+        spec = build_friendly_spec(assets, platforms)
+        shape = f"{len(spec['materials'])} clips -> 服务端展开"
+    else:
+        spec = build_spec(assets, platforms)
+        shape = f"{len(spec['timeline']['video'])} clips"
     if args.no_draft:
         spec["attachDraft"] = False
-    print(f"assets: {assets}  platforms: {platforms}  clips: {len(spec['timeline']['video'])}")
+    print(f"mode: {args.mode}  assets: {assets}  platforms: {platforms}  {shape}")
 
     tok = user_token()
     if not tok:
@@ -193,6 +230,14 @@ def main() -> int:
         problems.append(f"{len(bad)} platform(s) failed")
     if result.get("deliveryError"):
         problems.append(f"deliveryError: {result['deliveryError']}")
+    run_spec = (run_obj.get("spec") or {}) if isinstance(run_obj, dict) else {}
+    if args.mode == "friendly":
+        built = run_spec.get("timeline") or {}
+        if not (built.get("video") and built.get("text")):
+            problems.append("friendly spec 没有被服务端展开成 timeline")
+        expected = float(len(spec["materials"]) * spec["clipSeconds"])
+        if abs(float(result.get("duration") or 0) - expected) > 0.2:
+            problems.append(f"duration {result.get('duration')} != {expected}")
 
     if problems:
         print("\nFAIL: " + "; ".join(problems))

@@ -12,7 +12,7 @@
 用法（Codex config.toml）：
   [mcp_servers.creator_studio]
   command = "python3"
-  args = ["/Users/apple/CreatorStudio/bin/studio_mcp_bridge.py"]
+  args = ["$HOME/CreatorStudio/bin/studio_mcp_bridge.py"]  # 换成自己的路径
   startup_timeout_sec = 60
 
 token 从 ~/CreatorStudio/config/user.token 读；也可以用环境变量
