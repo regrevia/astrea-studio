@@ -65,7 +65,7 @@ def _scene_duration(audio: float, last: bool) -> float:
     return max(1.6, min(9.0, audio + pad))
 
 
-def _fit_title(text: str, max_w: int, sizes=(66, 60, 54, 48)) -> tuple[int, list[str]]:
+def _fit_title(text: str, max_w: int, sizes=(92, 84, 76, 66, 60)) -> tuple[int, list[str]]:
     """标题挑一个能排进版心的字号，最多两行；排不下就换小一号。"""
     from PIL import Image, ImageDraw
 
@@ -145,7 +145,7 @@ def _title_layers(text: str, workdir: Path, idx: int) -> list[dict]:
     if not text:
         return []
     size, lines = _fit_title(text, 1004 - 140 - 24)
-    top = 512 if len(lines) > 1 else 542
+    top = 500 if len(lines) > 1 else 528
     out: list[dict] = []
     for n, ln in enumerate(lines):
         (w, _h), png = _text_layer(ln, size, workdir, f"t{idx:02d}_{n}.png",

@@ -170,7 +170,8 @@ def _draw_block(page, text: str, size: int, top: int, left: int, max_w: float,
     return y
 
 # 两行排不下就往下试，直到 60：长句宁可小一号，也不要撑破卡片边框
-_BODY_CANDIDATES = (96, 88, BODY_SIZE, 72, 66, 60)
+# 正文比标题还大，一眼就看不出谁是要点：候选从 72 起，让层级正过来
+_BODY_CANDIDATES = (72, 66, 60, 54, 48)
 
 
 BODY_PAD = 96      # 卡底到正文末行的留白
