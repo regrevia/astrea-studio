@@ -141,7 +141,8 @@
     "xhsCreatorQuickLoginLabel": "一键登录说明",
     "xhsCreatorQuickLoginTip": "登录小红书主页后创作者中心可以一键登录",
     "viewGuide": "查看授权教程",
-    "viewInstallGuide": "不会安装？点击查看浏览器插件安装教程"
+    "viewInstallGuide": "不会安装？点击查看浏览器插件安装教程",
+    "localDownload": "平台内置下载（推荐）"
   },
   "mobile": {
     "title": "仅支持桌面端",

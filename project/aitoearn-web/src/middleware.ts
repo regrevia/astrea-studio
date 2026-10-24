@@ -28,6 +28,7 @@ export function middleware(req: NextRequest) {
       '/js/xhs_sign_inject.js',
       '/shortLink',
       '/downloads',
+      '/plugin',
     ].find(v => req.nextUrl.pathname.includes(v!))
   ) {
     return NextResponse.next()

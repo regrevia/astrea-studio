@@ -137,7 +137,8 @@
     "xhsCreatorQuickLoginLabel": "Astuce de connexion rapide",
     "xhsCreatorQuickLoginTip": "Après vous être connecté à la page d'accueil Xiaohongshu, vous pouvez vous connecter au Centre Créateur en un clic.",
     "viewGuide": "Voir le guide d'autorisation",
-    "viewInstallGuide": "Voir le guide d'installation du plugin navigateur (installation manuelle)"
+    "viewInstallGuide": "Voir le guide d'installation du plugin navigateur (installation manuelle)",
+    "localDownload": "Téléchargement intégré (recommandé)"
   },
   "mobile": {
     "title": "Bureau uniquement",

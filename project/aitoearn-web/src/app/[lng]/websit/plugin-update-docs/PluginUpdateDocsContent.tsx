@@ -297,9 +297,8 @@ export default function PluginUpdateDocsContent() {
             <div className="flex flex-wrap gap-3">
               <Button asChild className="gap-2 cursor-pointer">
                 <a
-                  href={PLUGIN_DOWNLOAD_LINKS.china}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href={PLUGIN_DOWNLOAD_LINKS.local}
+                  download="aitoearn-extension.crx"
                 >
                   <CloudDownload className="h-4 w-4" />
                   {t('actions.downloadChina')}

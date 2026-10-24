@@ -10,11 +10,9 @@ import { BookOpen, CloudDownload, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
 import React from 'react'
 import { useTransClient } from '@/app/i18n/client'
-import { isChineseLanguage } from '@/app/i18n/languageConfig'
 import { Button } from '@/components/ui/button'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import { PluginVersionLast } from '@/constant'
-import { useGetClientLng } from '@/hooks/useSystem'
 import { PLUGIN_DOWNLOAD_LINKS } from '@/store/plugin/constants'
 
 interface PluginUpdatePopoverProps {
@@ -38,10 +36,8 @@ export function PluginUpdatePopover({
   sideOffset = 8,
 }: PluginUpdatePopoverProps) {
   const { t } = useTransClient('plugin')
-  const lng = useGetClientLng()
-  const updateLink = isChineseLanguage(lng)
-    ? PLUGIN_DOWNLOAD_LINKS.china
-    : PLUGIN_DOWNLOAD_LINKS.github
+  // 平台自托管：更新包随 Web 镜像发布，不依赖外网 OSS / GitHub 是否可达。
+  const updateLink = PLUGIN_DOWNLOAD_LINKS.local
 
   return (
     <HoverCard openDelay={120} closeDelay={120}>

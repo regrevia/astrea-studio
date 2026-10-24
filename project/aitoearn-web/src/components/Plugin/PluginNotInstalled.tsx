@@ -91,6 +91,13 @@ export function PluginNotInstalled() {
       {/* 下载按钮 */}
       <div className="flex w-full max-w-xs flex-col space-y-3">
         <Button className="w-full gap-2" asChild>
+          <a href={PLUGIN_DOWNLOAD_LINKS.local} download="aitoearn-extension.crx">
+            <CloudDownload className="h-4 w-4" />
+            {t('header.localDownload')}
+          </a>
+        </Button>
+
+        <Button variant="outline" className="w-full gap-2" asChild>
           <a href={PLUGIN_DOWNLOAD_LINKS.chrome} target="_blank" rel="noopener noreferrer">
             <Chrome className="h-4 w-4" />
             {t('header.chromeWebStore')}

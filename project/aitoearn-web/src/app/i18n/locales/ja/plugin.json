@@ -137,7 +137,8 @@
     "xhsCreatorQuickLoginLabel": "ワンクリックログイン説明",
     "xhsCreatorQuickLoginTip": "小紅書ホームページにログインした後、クリエイターセンターにワンクリックでログインできます。",
     "viewGuide": "認証ガイドを見る",
-    "viewInstallGuide": "ブラウザプラグインのインストールガイドを見る（手動インストール）"
+    "viewInstallGuide": "ブラウザプラグインのインストールガイドを見る（手動インストール）",
+    "localDownload": "プラットフォーム同梱ダウンロード（推奨）"
   },
   "mobile": {
     "title": "デスクトップ専用",

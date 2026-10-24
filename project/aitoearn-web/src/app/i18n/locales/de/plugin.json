@@ -137,7 +137,8 @@
     "xhsCreatorQuickLoginLabel": "Hinweis zum Schnelllogin",
     "xhsCreatorQuickLoginTip": "Nachdem Sie sich auf der Xiaohongshu-Startseite angemeldet haben, können Sie sich mit einem Klick im Creator Center anmelden.",
     "viewGuide": "Autorisierungsanleitung ansehen",
-    "viewInstallGuide": "Anleitung zur Installation des Browser-Plugins ansehen (manuelle Installation)"
+    "viewInstallGuide": "Anleitung zur Installation des Browser-Plugins ansehen (manuelle Installation)",
+    "localDownload": "Integrierter Download (empfohlen)"
   },
   "mobile": {
     "title": "Nur für Desktop",

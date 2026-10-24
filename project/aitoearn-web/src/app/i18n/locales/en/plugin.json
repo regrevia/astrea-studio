@@ -141,7 +141,8 @@
     "xhsCreatorQuickLoginLabel": "Quick login tip",
     "xhsCreatorQuickLoginTip": "After logging in on the Xiaohongshu homepage, the Creator Center can be logged in with one click.",
     "viewGuide": "View Authorization Guide",
-    "viewInstallGuide": "View Browser Plugin Installation Guide (Manual Install)"
+    "viewInstallGuide": "View Browser Plugin Installation Guide (Manual Install)",
+    "localDownload": "Bundled Download (Recommended)"
   },
   "mobile": {
     "title": "Desktop Only",
