@@ -39,6 +39,7 @@ DEFAULT_VOICE = factcard.DEFAULT_VOICE
 # 收尾卡比正文多停一点：观众要时间读完那句结论再走
 TAIL_HOLD = 0.35
 FADE = 0.22
+XFADE = 0.40  # 相邻两屏叠化时长：整屏硬切是「PPT 翻页」最重的一笔
 
 
 class VerticalError(RuntimeError):
@@ -297,6 +298,16 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             "fade_in": FADE if i == 0 else 0.0,
             "fade_out": FADE if i == total - 1 else 0.0,
         })
+        # 上一屏末尾把下一张卡整幅叠化上来：两屏之间是融过去的，不是切过去的
+        if i > 0:
+            overlay.append({
+                "src": str(cards[i]),
+                "start": round(max(0.0, t - XFADE), 3),
+                "end": round(t, 3),
+                "x": 0.0, "y": 0.0, "width": 0, "opacity": 1.0,
+                "fade": XFADE, "fade_mode": "in",
+                "motion": {"type": "none", "amplitude": 0.0, "period": 1.0},
+            })
         # 一行一行落：每行 0.12s 间隔淡入，比整屏切过去更像有人在讲
         for n, layer in enumerate(text_layers):
             at = t + 0.10 + 0.12 * n

@@ -46,7 +46,9 @@
         <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     </dict>
 
+    <!-- 不要设成 Background：launchd 会按后台 QoS 限 CPU/IO，
+         x264 编码从 20 秒级掉到 3 分钟级（实测同一份 spec 9 倍差距）。 -->
     <key>ProcessType</key>
-    <string>Background</string>
+    <string>Standard</string>
 </dict>
 </plist>

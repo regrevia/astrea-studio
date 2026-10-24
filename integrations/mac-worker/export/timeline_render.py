@@ -250,6 +250,8 @@ def load_spec(path, base: Path | None = None) -> dict:
             "width": ov_width,
             "opacity": float(o.get("opacity") if o.get("opacity") is not None else 1.0),
             "fade": float(o.get("fade") or 0.0),
+            # 转场用的整卡叠化只需要淡入，淡出会把刚铺上的画面又拉回黑
+            "fade_mode": str(o.get("fade_mode") or "both"),
             "enter": _overlay_edge(o.get("enter"), "from", i),
             "exit": _overlay_edge(o.get("exit"), "to", i),
             "motion": {
@@ -509,10 +511,12 @@ class RenderPlan:
             if o["opacity"] < 1.0:
                 chain += f",colorchannelmixer=aa={o['opacity']:g}"
             if o["fade"] > 0:
-                f = o["fade"]
-                chain += (f",fade=t=in:st={o['start']:.3f}:d={f:g}:alpha=1"
-                          f",fade=t=out:st={max(o['start'], o['end'] - f):.3f}"
-                          f":d={f:g}:alpha=1")
+                f, mode = o["fade"], o.get("fade_mode") or "both"
+                if mode in ("both", "in"):
+                    chain += f",fade=t=in:st={o['start']:.3f}:d={f:g}:alpha=1"
+                if mode in ("both", "out"):
+                    chain += (f",fade=t=out:st={max(o['start'], o['end'] - f):.3f}"
+                              f":d={f:g}:alpha=1")
             parts.append(f"{chain}[o{k}]")
             nxt = f"[vo{k}]"
             x = _overlay_axis_expr(o, "x", c)
