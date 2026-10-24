@@ -30,9 +30,12 @@ jobs:
         with:
           python-version: '3.12'
 
-      # 只有带字幕的渲染才需要 Pillow，这里先装上，保证测试覆盖到 Pillow 分支。
-      - name: 安装依赖
-        run: python3 -m pip install --disable-pip-version-check pillow
+      # 单元测试会真的调 ffmpeg/ffprobe 与字体，缺了就是一片红。
+      - name: 安装 ffmpeg、中文字体与 Pillow
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk
+          python3 -m pip install --disable-pip-version-check pillow
 
       - name: 公开面门（个人路径/内网地址/凭证/禁发文件）
         run: ./scripts/check_public_surface.sh
@@ -134,7 +137,7 @@ jobs:
           print(f"交付 {len(rows)} 个平台，成功 {len(ok)}")
           assert len(ok) == 2, f"两个平台都应成功，实际 {len(ok)}: {rows}"
           for r in ok:
-              assert r.get("size", 0) > 0, f"产物为空: {r}"
+              assert r.get("bytes", 0) > 0, f"产物为空: {r}"
           names = {r["platform"] for r in ok}
           assert names == {"douyin", "bilibili"}, f"平台不匹配: {names}"
           PY

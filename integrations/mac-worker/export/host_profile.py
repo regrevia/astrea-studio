@@ -100,18 +100,38 @@ def _resolve_path(value: str, base: Path) -> Path:
     return p if p.is_absolute() else (base / p)
 
 
+def _asset_alpha(path: Path) -> bool:
+    """素材本身带不带透明通道。webm 按 VP9 alpha 惯例当有；png 真去看像素。"""
+    suffix = path.suffix.lower()
+    if suffix in (".webm", ".mov"):
+        return True
+    if suffix == ".png":
+        try:
+            from PIL import Image
+            with Image.open(path) as img:
+                if img.mode not in ("RGBA", "LA"):
+                    return False
+                return img.getchannel("A").getextrema()[0] < 255
+        except Exception:  # noqa: BLE001 - 读不到就按不透明处理，宁可加相框
+            return False
+    return False
+
+
 def _manifest_to_profile(manifest: dict, folder: Path, origin: str) -> HostProfile:
     kind = str(manifest.get("kind") or "avatar")
     if kind not in KINDS:
         raise HostError(f"{origin}: kind 只能是 {KINDS}，收到 {kind!r}")
     clips = [_resolve_path(c, folder) for c in (manifest.get("clips") or [])]
     clip = _resolve_path(manifest["clip"], folder) if manifest.get("clip") else None
+    poster = _resolve_path(manifest["poster"], folder) if manifest.get("poster") else None
+    if not clips and not clip and poster is not None:
+        # 只有一张静态图也能当主角：渲染时转成带 alpha 的静帧视频
+        clips = [poster]
     if not clips and not clip:
-        raise HostError(f"{origin}: manifest 至少要有 clip 或 clips")
+        raise HostError(f"{origin}: manifest 至少要有 clip、clips 或 poster")
     for p in clips + ([clip] if clip else []):
         if not p.is_file():
             raise HostError(f"{origin}: 素材不存在 {p}")
-    poster = _resolve_path(manifest["poster"], folder) if manifest.get("poster") else None
     placement = dict(DEFAULT_PLACEMENT)
     placement.update(manifest.get("placement") or {})
     motion = dict(DEFAULT_MOTION)
@@ -130,7 +150,8 @@ def _manifest_to_profile(manifest: dict, folder: Path, origin: str) -> HostProfi
         voice=str(manifest.get("voice") or DEFAULT_VOICE),
         dir=folder,
         clips=clips, clip=clip, poster=poster,
-        alpha=bool(manifest.get("alpha", kind != "person")),
+        # 没写 alpha 就按素材猜：透明 webm/png 直接贴，别的加圆角相框
+        alpha=bool(manifest.get("alpha", _asset_alpha(clips[0] if clips else clip))),
         placement=placement, motion=motion,
         outline=bool(manifest.get("outline", True)),
         source=origin,
