@@ -989,7 +989,9 @@ def render_jianying(payload: dict[str, Any], job_dir: Path,
     built = build_timeline(spec, job_dir, say)
 
     say(75, "jianying:save")
-    name = payload.get("draftName") or f"studio_{job_dir.name[:20]}"
+    # 别截断 job_id：并发提交的 runId 只有尾部几位不同，砍掉就撞名，
+    # 三份草稿会互相覆盖，最后谁后写谁的内容留在盘上。
+    name = payload.get("draftName") or f"studio_{job_dir.name}"
     saved = _post("/save_draft", {
         "draft_id": built["draft_id"],
         "project_name": name,

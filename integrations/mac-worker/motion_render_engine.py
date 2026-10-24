@@ -74,7 +74,7 @@ def render_motion(payload: dict[str, Any], job_dir: Path,
     if JY_PY.exists() and JY_BUILD.exists() and plan_file.exists():
         try:
             say(92, "motion:jianying-draft")
-            name = f"studio_{job_dir.name[:20]}"
+            name = f"studio_{job_dir.name}"
             jy_out = _run([str(JY_PY), str(JY_BUILD), str(plan_file), "--name", name],
                           cwd=MOTION_HOME, timeout=600)
             for line in reversed(jy_out.strip().splitlines()):
