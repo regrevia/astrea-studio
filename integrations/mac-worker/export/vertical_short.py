@@ -192,12 +192,84 @@ def _pose_motion(pose: str) -> dict:
     return dict(_POSE_MOTION.get(pose, _POSE_MOTION["idle"]))
 
 
-def _beats(say: str, dur: float, last: bool, cfg: dict) -> list[tuple[str, float]]:
+def _energy_states(mp3: Path, dur: float) -> list[tuple[float, float]]:
+    """解码成 16k 单声道，按 0.1 秒算音量，返回 (起点, 相对音量 0..1)。"""
+    import array
+    import subprocess
+    import wave
+
+    wav = mp3.with_suffix(".wav")
+    if not wav.exists():
+        subprocess.run([TR.FFMPEG, "-hide_banner", "-loglevel", "error",
+                        "-i", str(mp3), "-ac", "1", "-ar", "16000",
+                        "-y", str(wav)], check=True)
+    with wave.open(str(wav), "rb") as f:
+        rate = f.getframerate()
+        pcm = array.array("h", f.readframes(f.getnframes()))
+    step = max(1, int(rate * 0.1))
+    levels: list[tuple[float, float]] = []
+    for off in range(0, len(pcm) - step + 1, step):
+        chunk = pcm[off:off + step]
+        if not chunk:
+            continue
+        rms = (sum(v * v for v in chunk) / len(chunk)) ** 0.5
+        levels.append((off / rate, rms))
+    peak = max((v for _, v in levels), default=0.0) or 1.0
+    if not levels:
+        return [(0.0, 0.0)]
+    # 归一化后静音底噪也算「在说」：按峰值的一半做参考，宁可多动嘴
+    return [(a, min(1.0, v / peak)) for a, v in levels]
+
+
+def _audio_beats(mp3: Path, dur: float, cfg: dict) -> list[tuple[str, float]]:
+    """口型跟着实际音量走：静音闭口、轻读半开、重音张开，长短句节奏就不同了。"""
+    levels = _energy_states(mp3, dur)
+    if len(levels) < 3:
+        return []
+    # 三窗口中值平滑，避免单帧抖动把嘴抖成抽搐
+    smooth = [levels[0][1]]
+    for i in range(1, len(levels) - 1):
+        smooth.append(sorted(v for _, v in levels[i - 1:i + 2])[1])
+    smooth.append(levels[-1][1])
+    floor = max(0.06, sorted(smooth)[int(len(smooth) * 0.15)])
+    states: list[str] = []
+    for v in smooth:
+        if v < floor:
+            states.append("closed")
+        elif v < floor + (1.0 - floor) * 0.55:
+            states.append("half")
+        else:
+            states.append("open")
+    segs: list[tuple[str, float]] = []
+    min_seg = float(cfg.get("lip_min") or 0.18)
+    for i, st in enumerate(states):
+        at = levels[min(i, len(levels) - 1)][0]
+        if segs and segs[-1][0] == st:
+            segs[-1] = (st, segs[-1][1] + 0.1)
+        elif segs and segs[-1][1] < min_seg:
+            # 太短的一段口型看不出来，并进前一段，别让嘴在原地闪
+            segs[-1] = (segs[-1][0], segs[-1][1] + 0.1)
+        else:
+            segs.append((st, 0.1))
+    total = sum(sec for _, sec in segs) or 1.0
+    scale = dur / total
+    return [(st, sec * scale) for st, sec in segs if st]
+
+
+def _beats(say: str, dur: float, last: bool, cfg: dict,
+           mp3: Path | None = None) -> list[tuple[str, float]]:
     """把一屏切成若干口型段；不说话的屏给一段闭口静止。"""
     if not say:
         return [("", max(0.6, dur))]
     if not cfg.get("lip_flap", True):
         return [("half", dur)]
+    if mp3 is not None and cfg.get("lip_from_audio", True):
+        try:
+            heard = _audio_beats(mp3, dur, cfg)
+        except Exception:      # 解码失败就退回固定周期，别为口型把整片打掉
+            heard = []
+        if len(heard) >= 2:
+            return heard
     period = float(cfg.get("lip_period") or 0.42)
     count = max(2, min(8, int(round(dur / period)) or 2))
     seg = dur / count
@@ -359,7 +431,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 alt_pose = None
             motion = _pose_motion(pose)
             char_scene = _stage(char_cfg, i, total)
-            beats = _beats(say, dur, i == total - 1, char_cfg)
+            beats = _beats(say, dur, i == total - 1, char_cfg,
+                           mp3=mp3 if say else None)
             switch_at = 0.55
             elapsed = 0.0
             prev_ov = None      # 上一段口型：换姿态时要和它交叉，不能硬替换
