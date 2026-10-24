@@ -188,6 +188,9 @@ def main(argv: list[str]) -> int:
                     merged.pop("narration", None)
             if item.get("title"):
                 merged.setdefault("title", item["title"])
+            # 批量里没写 logo 也得上品牌标，否则一批片子里混着没牌子的
+            if args.logo:
+                merged.setdefault("logo", args.logo)
             if args.dry_run:
                 merged["_previewOnly"] = True
             results.append(one(merged, args))

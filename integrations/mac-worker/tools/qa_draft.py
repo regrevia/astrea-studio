@@ -23,7 +23,7 @@ JOB_ROOT = pathlib.Path.home() / "CreatorStudio/jianying"
 MAX_SUB_CHARS = 18
 MIN_SUB_CHARS = 2
 GAP_TOLERANCE = 0.02
-DURATION_RANGE = (15.0, 90.0)
+DURATION_RANGE = (10.0, 90.0)  # 三点稿压紧到 11~12 秒是正常的，下限只用来抓「配音全丢」
 ORPHAN_PUNCT = "，。、；：？！…）」』】》,.;:?!"
 
 
