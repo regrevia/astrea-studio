@@ -354,6 +354,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             beats = _beats(say, dur, i == total - 1, char_cfg)
             switch_at = 0.55
             elapsed = 0.0
+            prev_ov = None      # 上一段口型：换姿态时要和它交叉，不能硬替换
+            prev_pose = None
             for mouth, seg in beats:
                 use_pose = pose
                 if alt_pose and dur > 0 and (elapsed / dur) >= switch_at:
@@ -377,7 +379,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                     if head and i > 0:
                         fade_in = max(fade_in, 0.25)
                     fade_out = FADE if (i == total - 1 and end >= t + dur - 1e-6) else 0.0
-                    overlay.append({
+                    ov = {
                         "src": str(frame),
                         "start": round(start, 3),
                         "end": round(end, 3),
@@ -386,7 +388,20 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                         "fade": max(fade_in, fade_out),
                         # 相位对齐到绝对时间：口型分段不打断呼吸节奏
                         "motion": {**motion, "phase": round(start, 3)},
-                    })
+                    }
+                    if head and i == 0:
+                        # 首屏从画面下沿升上来，别一开片就杵在那儿
+                        ov["enter"] = {"from": "bottom", "duration": 0.55,
+                                       "ease": "out-cubic"}
+                    if prev_ov is not None and use_pose != prev_pose:
+                        # 换手势瞬间直接替换会「跳一下」，两头各淡 0.15s 叠过去
+                        start = max(0.0, start - 0.15)
+                        ov["start"] = round(start, 3)
+                        ov["fade"] = max(ov["fade"], 0.15)
+                        prev_ov["end"] = round(start + 0.15, 3)
+                        prev_ov["fade"] = max(prev_ov["fade"], 0.15)
+                    overlay.append(ov)
+                    prev_ov, prev_pose = ov, use_pose
                 elapsed += seg
         t += dur
 
