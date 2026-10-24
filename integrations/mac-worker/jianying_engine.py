@@ -665,6 +665,8 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
             track = str(char_cfg.get("track") or "character")
             scene = item.get("scene") or {}
             pose = str(char_cfg.get("pose") or _scene_pose(char_cfg, idx, len(plan), scene))
+            alt_pose = (None if char_cfg.get("pose") else
+                        _second_half_pose(char_cfg, idx, len(plan), scene))
             speaking = bool(item["audio"])
             # 说话就按拍点切成几段不同口型，一屏一个定格看着像贴图
             beats: list[tuple[str, float, float]] = []
@@ -682,8 +684,12 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
             clips = 0
             for k, (mouth, cstart, cend) in enumerate(beats):
                 try:
+                    use_pose = pose
+                    if (alt_pose and char_cfg.get("gesture_sync", True)
+                            and cstart >= total + dur * 0.55):
+                        use_pose = alt_pose
                     png = _character_frame(char_cfg, idx, len(plan), job_dir, width, height,
-                                           speaking, scene, pose, mouth)
+                                           speaking, scene, use_pose, mouth)
                 except Exception as exc:  # noqa: BLE001 - 角色贴不上不该毁掉整条片
                     stats["skipped"].append(f"character: {exc}")
                     continue
@@ -719,7 +725,8 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                 except Exception as exc:  # noqa: BLE001
                     stats["skipped"].append(f"character_clip: {exc}")
             stats["characters"] += clips
-            stats.setdefault("poses", []).append(f"{idx}:{pose}")
+            stats.setdefault("poses", []).append(
+                f"{idx}:{pose}" + (f"→{alt_pose}" if alt_pose else ""))
             if clips:
                 # 呼吸 + 轻微起伏：position_y 单位是半个画布高，0.008≈8px；
                 # 属性名必须用 pyJianYingDraft 的枚举名（transform_y 会被服务端拒绝）。
@@ -857,6 +864,33 @@ def _character_config(spec: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(cfg, dict) or cfg.get("enabled") is False:
         return None
     return cfg
+
+
+def _second_half_pose(cfg: dict[str, Any], idx: int, total: int,
+                      scene: dict[str, Any]) -> str | None:
+    """一句话里换了话题就换手势：前半句思考、后半句给结论，比整屏一个姿势像在演。
+
+    只在句读后还剩下实质内容时切换，短句硬切反而像卡顿。
+    """
+    say = str((scene or {}).get("say") or "").strip()
+    if len(say) < 12:      # 再短就只剩一个动作，切了像抖
+        return None
+    cut = -1
+    for j, ch in enumerate(say):
+        if ch in "，,；;。.！!？?" and 6 <= j + 1 <= len(say) - 6:
+            cut = j + 1
+    if cut < 0:
+        return None
+    tail = say[cut:]
+    pose = _scene_pose(cfg, idx, total, {"say": tail, "text": ""})
+    head = _scene_pose(cfg, idx, total, {"say": say[:cut], "text": ""})
+    if pose != head:
+        return pose
+    # 两半都没关键词时，默认姿态前后一模一样；给后半句一个对比姿态，
+    # 让"陈述→思考 / 思考→陈述"有落点，而不是整屏一个定格。
+    if head in ("point", "think"):
+        return "think" if head == "point" else "point"
+    return None
 
 
 # 讲述内容 → 姿态。角色得跟着这句话在做什么，而不是按屏号轮流摆姿势。
