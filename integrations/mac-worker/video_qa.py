@@ -137,6 +137,10 @@ def check(video: Path, spec: Path) -> dict:
                              "detail": f"全片只有一种手势（{poses[0]}），像贴图"})
         checked = int(gesture.get("checked") or 0)
         clash = int(gesture.get("mismatch") or 0)
+        late = [f for f in (gesture.get("switch") or []) if float(f) > 0.78]
+        if late:
+            findings.append({"code": "gesture_late", "level": "warn",
+                             "detail": f"{len(late)} 屏的手势换得太晚（{late[0]:.2f}），后半句没动作"})
         if checked >= 2 and clash * 2 >= checked:
             at = (gesture.get("clash_at") or [None])[0]
             findings.append({"code": "gesture_offtext", "level": "warn", "at": at,

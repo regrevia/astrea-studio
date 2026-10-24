@@ -224,7 +224,7 @@ def _blink_spans(start: float, seg: float, blinks: list[float]) -> list[tuple[fl
     return spans
 
 
-def _gesture_summary(audit: list[dict]) -> dict:
+def _gesture_summary(audit: list[dict], switches: list[float] | None = None) -> dict:
     """手势自检：这句话本身有明确动作线索时，演的姿势该跟它一致。
 
     没有线索的句子按奇偶兜底，不算错；线索和姿势打架才是「贴图」——
@@ -239,6 +239,8 @@ def _gesture_summary(audit: list[dict]) -> dict:
         "mismatch": len(clash),
         "poses": sorted({a["pose"] for a in audit}),
         "clash_at": [a["at"] for a in clash[:5]],
+        # 换势时机（占本屏比例）：太晚等于后半句没手势
+        "switch": list(switches or []),
     }
 
 
@@ -290,21 +292,35 @@ def _clause_switch(mp3: Path, dur: float, cfg: dict) -> float | None:
     floor = min(floor * 1.6, median * 0.6)
     lo = int(len(levels) * 0.18)
     hi = int(len(levels) * 0.86)
-    best, best_len, run, run_start = 0, 0.0, 0, None
+    runs: list[tuple[int, int]] = []      # (起点下标, 长度)
+    run, run_start = 0, None
     for i in range(lo, hi):
         if levels[i][1] <= floor:
             if run_start is None:
                 run_start = i
             run += 1
-            if run > best_len:
-                best, best_len = run_start, run
         else:
+            if run_start is not None:
+                runs.append((run_start, run))
             run, run_start = 0, None
-    if best_len < 2:
+    if run_start is not None:
+        runs.append((run_start, run))
+    if not runs:
         return None
-    mid = levels[min(best + best_len // 2, len(levels) - 1)][0]
-    frac = mid / max(0.4, dur)
-    return frac if 0.25 <= frac <= 0.9 else None
+    # 换在句中最舒服：太早像抽筋，太晚等于后半段没手势。
+    # 所以不挑最长的停顿，而是挑「够长且靠中间」的那个。
+    best_frac, best_score = None, -1e9
+    for start, length in runs:
+        if length < 2:
+            continue
+        mid = levels[min(start + length // 2, len(levels) - 1)][0]
+        frac = mid / max(0.4, dur)
+        if not 0.25 <= frac <= 0.78:
+            continue
+        score = length - abs(frac - 0.5) * 10
+        if score > best_score:
+            best_frac, best_score = frac, score
+    return best_frac
 
 
 def _audio_beats(mp3: Path, dur: float, cfg: dict) -> list[tuple[str, float]]:
@@ -452,6 +468,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     layer_sets: list[list[dict]] = []
     kicker = str(script.get("kicker") or factcard.DEFAULT_KICKER)
     gesture_audit: list[dict] = []
+    switch_audit: list[float] = []
     for i, sc in enumerate(scenes):
         card = Path(str(sc["image"]))
         if i == 0:
@@ -568,6 +585,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 heard = _clause_switch(mp3, dur, char_cfg)
                 if heard:
                     switch_at = heard
+                switch_audit.append(round(switch_at, 2))
             elapsed = 0.0
             prev_ov = None      # 上一段口型：换姿态时要和它交叉，不能硬替换
             prev_pose = None
@@ -645,7 +663,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         "assetBase": str(workdir),
         "meta": {"engine": "vertical_short", "duration": round(t, 3),
                  "scenes": total, "voice": voice,
-                 "gesture": _gesture_summary(gesture_audit)},
+                 "gesture": _gesture_summary(gesture_audit, switch_audit)},
     }
 
 
