@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -355,6 +356,82 @@ def _scene_text(scene: dict[str, Any]) -> str:
     return scene.get("say") or ""
 
 
+_CAPTION_BREAK = "，。、；：！？,.;:!?"
+
+
+def _caption_chunks(text: str, limit: int = 16) -> list[str]:
+    """把一句话切成能一眼读完的字幕块。
+
+    句号是硬边界（念完就是一句），逗号顿号是软边界（同一句里的换气），
+    所以在句内合并、跨句不合并；行尾不留标点。
+    """
+    raw = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not raw:
+        return []
+    # 中文之间的空格是噪音；中文与西文之间留一个，别让 "KV Cache" 粘成 "KVCache"
+    raw = re.sub(r"(?<=[\u4e00-\u9fff]) (?=[\u4e00-\u9fff])", "", raw)
+    raw = re.sub(r"(?<=[A-Za-z0-9])(?=[\u4e00-\u9fff])", " ", raw)
+    raw = re.sub(r"(?<=[\u4e00-\u9fff])(?=[A-Za-z0-9])", " ", raw)
+    soft = "，、；：,.;:"
+    chunks: list[str] = []
+    for sent in re.findall(r"[^。！？!?]+[。！？!?]?", raw):
+        clauses: list[str] = []
+        buf = ""
+        for ch in sent:
+            buf += ch
+            if ch in soft:
+                clauses.append(buf)
+                buf = ""
+        if buf:
+            clauses.append(buf)
+        cur = ""
+        for cl in clauses:
+            if cur and len(cur) + len(cl) > limit:
+                chunks.append(cur)
+                cur = cl
+            else:
+                cur += cl
+        if cur:
+            chunks.append(cur)
+    # 没有逗号的长句只能硬切：竖屏字幕一屏一行，超了就会自己折成两行
+    split: list[str] = []
+    for c in chunks:
+        while len(c) > limit:
+            cut = limit
+            for i in range(limit, max(4, limit - 6), -1):
+                if c[i - 1] in "的了是和与就都也很":
+                    cut = i
+                    break
+            split.append(c[:cut])
+            c = c[cut:]
+        split.append(c)
+    out = []
+    for c in split:
+        c = c.strip().rstrip("，。、；：,.;:")
+        if not c:
+            continue
+        # 中文紧贴英文会糊成一坨："KVCache不是" / "prefill把缓存" 都要补空格
+        c = re.sub(r"(?<=[A-Za-z0-9])(?=[\u4e00-\u9fff])", " ", c)
+        c = re.sub(r"(?<=[\u4e00-\u9fff])(?=[A-Za-z0-9])", " ", c)
+        out.append(c)
+    return out
+
+
+def _caption_spans(chunks: list[str], start: float, dur: float) -> list[tuple[float, float]]:
+    """按字数分配时长：每块至少 1.1s，末块收到画面末尾。"""
+    # 下限 6 字：像「先说结论」这种 4 字块不该只闪 0.7 秒
+    weights = [max(6, len(c)) for c in chunks]
+    total_w = float(sum(weights)) or 1.0
+    spans: list[tuple[float, float]] = []
+    acc = start
+    for i, w in enumerate(weights):
+        seg = dur * w / total_w
+        end = start + dur if i == len(chunks) - 1 else acc + seg
+        spans.append((round(acc, 3), round(end, 3)))
+        acc += seg
+    return spans
+
+
 def _scene_duration(scene: dict[str, Any]) -> float:
     """没有显式 duration 时，按口播字数估算（中文约 4.2 字/秒），夹在 2~8s。"""
     if scene.get("duration"):
@@ -670,7 +747,9 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
         # ---- 2) 文字轨：主文案（VIP 字体 + 入场/出场动画）+ 可选逐句字幕
         # no_text：正文已经烧进卡面，再叠一轨就是重影（收尾卡就是这样）
         text = "" if scene.get("no_text") else _scene_text(scene)
-        caption = str(scene.get("caption") or native.get("subtitle") or "").strip()
+        # 字幕要跟着配音走：写死的卡面摘要会和耳朵听到的对不上
+        caption = str(scene.get("caption") or native.get("subtitle")
+                      or scene.get("say") or "").strip()
         blocks: list[dict[str, Any]] = []
         if text:
             body: dict[str, Any] = {
@@ -702,10 +781,11 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                 body["width"] = float(native["width"])
             body["track_name"] = str(native.get("text_track") or "text_main")
             blocks.append(body)
-        if caption and caption != text:
+        chunks = [c for c in _caption_chunks(caption, int(native.get("caption_chunk") or 16))
+                  if c != text]
+        if chunks:
             # 竖屏字幕必须落进底部安全带：half-canvas 单位，y=-0.86 ≈ 画面 93% 处
-            blocks.append({
-                "text": caption,
+            base = {
                 "font_size": int(native.get("caption_size") or 7),
                 "font_color": str(native.get("caption_color") or "#FFFFFF"),
                 "transform_y": float(native.get("caption_y", -0.86)),
@@ -715,9 +795,12 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                 "bold": True,
                 # 同轨同时长的片段会被 pyJianYingDraft 判为 overlap，字幕必须独立轨
                 "track_name": str(native.get("caption_track") or "text_sub"),
-            })
+            }
+            for chunk, span in zip(chunks, _caption_spans(chunks, total, dur)):
+                blocks.append({"text": chunk, "_span": span, **base})
         for body in blocks:
-            payload = {"draft_id": draft_id, "start": total, "end": total + dur, **body}
+            span = body.pop("_span", None) or (total, total + dur)
+            payload = {"draft_id": draft_id, "start": span[0], "end": span[1], **body}
             _post("/add_text", payload)
             stats["texts"] += 1
 
