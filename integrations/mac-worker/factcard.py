@@ -228,8 +228,8 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
             draw.rounded_rectangle((950 - bw - 34, 498, 966, 570), radius=36,
                                    fill=(*accent, 40), outline=(*accent, 150), width=2)
             draw.text((958 - bw - 17, 534), index, font=bf, fill=(*accent, 245), anchor="mm")
-    else:
-        # 开场：大引号 + 斜切色块
+    elif hook:
+        # 开场：斜切色块。收尾卡是素底，再画一条斜带就成了随机接缝
         draw.polygon([(0, 1200), (W, 980), (W, 1320), (0, 1540)], fill=(*accent, 26))
         # 开场卡不再单独画强调条：它和正文上方的分隔线只差一百多像素，会读成两道杠
 
