@@ -30,6 +30,8 @@ TITLE_FONT = "SourceHanSansCN_Bold"       # 剪映会员字体，白名单内、
 CAPTION_FONT = "SourceHanSansCN_Medium"
 
 # 白名单里确认过的资源（见 jianying_engine._catalog），未知名字会被引擎丢掉
+# 只用缩放/渐显：满屏图一滑动就露底边，卡面文字也跟着甩
+IMAGE_ANIMS = ["轻微放大", "轻微缩小", "渐显"]
 TRANSITIONS = ["叠化", "推近", "竖向模糊", "拉远", "闪白"]
 TEXT_ANIMS = ["居中打字", "打字机_I", "向右滑动", "渐显", "弹入"]
 # 出场动画（/get_text_outro_types 97 项、/get_outro_animation_types 72 项里挑的稳重款）
@@ -447,6 +449,9 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
                 "caption_size": 8, "caption_y": -0.78,
                 "text_anim_in": TEXT_ANIMS[i % len(TEXT_ANIMS)],
                 "text_anim_out": TEXT_OUTS[i % len(TEXT_OUTS)],
+                # 卡面入场动效：光靠转场，切进来那一秒还是硬图
+                "image_anim_in": IMAGE_ANIMS[i % len(IMAGE_ANIMS)],
+                "image_anim_in_duration": 0.7,
                 "transition_in": TRANSITIONS[i % len(TRANSITIONS)],
                 "transition_duration": 0.6,
                 # 氛围层：每屏都给一个轻特效，静态卡最怕"没质感"
