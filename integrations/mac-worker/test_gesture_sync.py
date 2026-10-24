@@ -68,6 +68,7 @@ def test_baselines_have_no_clash() -> None:
         gesture = spec["meta"]["gesture"]
         assert gesture["mismatch"] == 0, f"{rel} 手势错配：{gesture['clash_at']}"
         assert len(gesture["poses"]) >= 2, f"{rel} 全片一个手势：{gesture['poses']}"
+        assert len(set(gesture["gains"])) >= 2, f"{rel} 全片一个动幅：{gesture['gains']}"
 
 
 def test_author_poses_are_intent() -> None:

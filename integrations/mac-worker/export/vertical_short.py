@@ -224,7 +224,8 @@ def _blink_spans(start: float, seg: float, blinks: list[float]) -> list[tuple[fl
     return spans
 
 
-def _gesture_summary(audit: list[dict], switches: list[float] | None = None) -> dict:
+def _gesture_summary(audit: list[dict], switches: list[float] | None = None,
+                     gains: list[float] | None = None) -> dict:
     """手势自检：这句话本身有明确动作线索时，演的姿势该跟它一致。
 
     没有线索的句子按奇偶兜底，不算错；线索和姿势打架才是「贴图」——
@@ -241,11 +242,28 @@ def _gesture_summary(audit: list[dict], switches: list[float] | None = None) -> 
         "clash_at": [a["at"] for a in clash[:5]],
         # 换势时机（占本屏比例）：太晚等于后半句没手势
         "switch": list(switches or []),
+        # 每屏动作幅度系数：问句更活、结论更稳，全片才是同一个人在讲
+        "gains": list(gains or []),
     }
 
 
-def _pose_motion(pose: str) -> dict:
-    return dict(_POSE_MOTION.get(pose, _POSE_MOTION["idle"]))
+def _pose_motion(pose: str, say: str = "") -> dict:
+    """动作幅度跟着语气走：问句摆得活一点，下结论收稳一点。"""
+    motion = dict(_POSE_MOTION.get(pose, _POSE_MOTION["idle"]))
+    text = str(say or "")
+    gain = 1.0
+    if "？" in text or "?" in text:
+        gain += 0.22
+    if "！" in text or "!" in text:
+        gain += 0.15
+    if text.rstrip().endswith(("。", ".")) and not any(m in text for m in "？?！!"):
+        gain -= 0.10
+    gain = round(min(1.3, max(0.85, gain)), 3)
+    if gain != 1.0:
+        motion["amplitude"] = round(float(motion["amplitude"]) * gain, 2)
+        motion["period"] = round(float(motion["period"]) / (gain if gain > 1 else 1.0), 3)
+    motion["gain"] = gain
+    return motion
 
 
 def _energy_states(mp3: Path, dur: float) -> list[tuple[float, float]]:
@@ -485,6 +503,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     kicker = str(script.get("kicker") or factcard.DEFAULT_KICKER)
     gesture_audit: list[dict] = []
     switch_audit: list[float] = []
+    motion_audit: list[float] = []
     for i, sc in enumerate(scenes):
         card = Path(str(sc["image"]))
         if i == 0:
@@ -595,7 +614,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             # 后半句还是同一个动作，就别为了「换」而换：白做一次溶解，观众看不出来
             if alt_pose == pose:
                 alt_pose = None
-            motion = _pose_motion(pose)
+            motion = _pose_motion(pose, say)
+            motion_audit.append(motion.get("gain", 1.0))
             char_scene = _stage(char_cfg, i, total)
             beats = _beats(say, dur, i == total - 1, char_cfg,
                            mp3=mp3 if say else None)
@@ -682,7 +702,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         "assetBase": str(workdir),
         "meta": {"engine": "vertical_short", "duration": round(t, 3),
                  "scenes": total, "voice": voice,
-                 "gesture": _gesture_summary(gesture_audit, switch_audit)},
+                 "gesture": _gesture_summary(gesture_audit, switch_audit, motion_audit)},
     }
 
 
