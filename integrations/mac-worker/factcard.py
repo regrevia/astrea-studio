@@ -164,7 +164,8 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
         # 卡片高度跟着正文走，避免大片空白（"PPT 味"最主要的来源）
         measure = ImageDraw.Draw(overlay)
         body_lines = _wrap_text(measure, body, _font(46), W - 248) if body else []
-        card_bottom = max(1080, body_top + int(len(body_lines) * 46 * 1.45) + 110)
+        # 下限压到 860：原来 1080 会让只有一行正文的卡片下半张全是空的
+        card_bottom = max(860, body_top + int(len(body_lines) * 46 * 1.45) + 120)
         draw.rounded_rectangle((76, 500, 1004, card_bottom), radius=56,
                                fill=(255, 255, 255, 14),
                                outline=(255, 255, 255, 70), width=2)
@@ -187,7 +188,7 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
     draw.text((76, TOP_SAFE + 44), kicker, font=_font(40), fill=(255, 255, 255, 205))
 
     # 进度点
-    dot_y = H - 470
+    dot_y = H - 620  # 1300：卡片收紧后进度点也跟着上移，别悬在空白里
     gap, r = 26, 6
     start = W // 2 - int((total - 1) * gap / 2)
     for i in range(total):
@@ -307,11 +308,11 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
         "image": str(hook_img),
         "say": f"{topic}。{hook}",
         "text": _unwrap(topic, 10),
-        "caption": f"{topic}？{hook}"[:30],
+        "caption": f"{topic}？{hook}"[:18],
         "voice": voice,
         "native": {
             "font": TITLE_FONT, "font_size": _title_size(topic),
-            "transform_y": 0.354, "caption_size": 8, "caption_y": -0.78,
+            "transform_y": 0.354, "caption_size": 8, "caption_y": -0.72,
             "text_anim_in": "居中打字",
             "text_anim_out": "向上溶解",
             "transition_in": TRANSITIONS[0], "transition_duration": 0.7,

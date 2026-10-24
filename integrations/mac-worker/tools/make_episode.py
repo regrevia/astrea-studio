@@ -99,8 +99,13 @@ def wait_run(run_id: str, timeout: int = 900) -> dict:
 def one(spec_in: dict, args) -> dict:
     slug = factcard.re.sub(r"[^0-9a-zA-Z\u4e00-\u9fa5]+", "",
                            spec_in.get("topic") or "episode")[:24] or "episode"
-    out_dir = Path(args.out) if args.out else STUDIO_HOME / "state/episodes" / slug
+    base = Path(args.out) if args.out else STUDIO_HOME / "state/episodes"
+    # 批量时每条单独一个子目录，否则后一条会覆盖前一条的卡面
+    out_dir = base / slug if getattr(args, "batch", "") else base
     out_dir.mkdir(parents=True, exist_ok=True)
+    # 原始输入也落盘：卡面重出、复现、批量回归都靠它，spec.json 只是展开结果
+    (out_dir / "source.json").write_text(json.dumps(spec_in, ensure_ascii=False, indent=2),
+                                         encoding="utf-8")
     spec = factcard.expand(spec_in, out_dir)
     (out_dir / "spec.json").write_text(json.dumps(spec, ensure_ascii=False, indent=2),
                                        encoding="utf-8")
@@ -140,7 +145,11 @@ def main(argv: list[str]) -> int:
         results = []
         for i, item in enumerate(items, 1):
             print(f"\n=== [{i}/{len(items)}] {item.get('topic')}")
-            merged = {"kicker": args.kicker, "voice": args.voice, **item}
+            # 兼容两种写法：{"topic":…,"points":[…]} 或 {"title":…,"spec":{…}}
+            raw = item.get("spec") if isinstance(item.get("spec"), dict) else item
+            merged = {"kicker": args.kicker, "voice": args.voice, **raw}
+            if item.get("title"):
+                merged.setdefault("title", item["title"])
             if args.dry_run:
                 merged["_previewOnly"] = True
             results.append(one(merged, args))
