@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from difflib import SequenceMatcher
 import statistics
 import sys
 from typing import Any, Iterable
@@ -131,9 +132,17 @@ def check_copy(*, hook: str = "", points: Iterable[str] = (), cta: str = "",
         if re.search(r"[，；]", s) is None and len(s) > 16:
             add("no_comma", "info", f"口播第{i}句", "长句里没有逗号，TTS 只能硬断")
 
-    for i, (title, body, _) in enumerate(parsed, start=1):
-        if body and len(_squash(body)) > 18:
-            add("point_body_long", "warn", f"要点{i}", f"卡面正文 {len(_squash(body))} 字，超过一行半")
+    for i, (title, body, said) in enumerate(parsed, start=1):
+        flat_body = _squash(body)
+        if body and len(flat_body) > 18:
+            add("point_body_long", "warn", f"要点{i}", f"卡面正文 {len(flat_body)} 字，超过一行半")
+        # 卡面把口播原句贴上去，观众先读到再听到，等于剧透自己的下一句
+        flat_said = _squash(said)
+        if len(flat_body) >= 4 and len(flat_said) >= 4:
+            if flat_body in flat_said or SequenceMatcher(
+                    None, flat_body, flat_said).ratio() > 0.5:
+                add("card_echoes_voice", "warn", f"要点{i}",
+                    "卡面正文和口播是同一句话，读到就等于听完了")
 
     deduped, seen = [], set()
     for f in findings:
