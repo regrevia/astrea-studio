@@ -22,7 +22,6 @@ import { useMemo, useState } from 'react'
 import { checkCopy } from './copyCheck'
 import type { CopyScope, CopyWarn } from './copyCheck'
 import {
-  DEFAULT_FACT_CARD_CTA,
   DEFAULT_FACT_CARD_KICKER,
   DEFAULT_FACT_CARD_POINTS,
   DEFAULT_FACT_CARD_VOICE,
@@ -72,13 +71,18 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
   const [createdRunId, setCreatedRunId] = useState('')
 
   // 出片前先过一遍体检：命中的地方改完再提交，不用等渲染完才发现文案有问题。
-  const copyWarns = useMemo(() => checkCopy({
-    topic,
-    hook,
-    points,
-    cta: DEFAULT_FACT_CARD_CTA,
-    narration: narration.split('\n').map(line => line.trim()).filter(Boolean),
-  }), [topic, hook, points, narration])
+  // 空表单不体检，收尾是固定文案不参与，只盯着自己能改的字段。
+  const copyWarns = useMemo(() => {
+    const filled = topic.trim() || hook.trim() || narration.trim() || points.some(p => p.trim())
+    if (!filled)
+      return []
+    return checkCopy({
+      topic,
+      hook,
+      points,
+      narration: narration.split('\n').map(line => line.trim()).filter(Boolean),
+    })
+  }, [topic, hook, points, narration])
 
   const projectIds = Object.keys(projects)
   // 和「新建时间轴任务」一致：没手动选项目时用列表第一个。
