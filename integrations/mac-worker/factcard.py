@@ -20,7 +20,7 @@ W, H = 1080, 1920
 TOP_SAFE, BOTTOM_SAFE = 240, 430  # 顶部账号栏 / 底部字幕与按钮区
 
 BODY_SIZE = 78        # 卡面正文字号（1080×1920 下的像素值）
-HOOK_SIZE = 80        # 开场钩子字号
+HOOK_SIZE = 60        # 开场钩子字号：压在标题下面，不能和标题同大
 FONT_PATH = os.environ.get("FACTCARD_FONT", "/System/Library/Fonts/STHeiti Medium.ttc")
 DEFAULT_VOICE = "sami:BV405_streaming"
 DEFAULT_KICKER = "大模型面试题"
@@ -250,7 +250,7 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
     if body:
         if hook:
             _draw_block(overlay, body, HOOK_SIZE, body_top, 124, W - 248,
-                        fill=(255, 255, 255, 236), spacing=1.42, align="center")
+                        fill=(255, 255, 255, 214), spacing=1.42, align="center")
         else:
             _draw_block(overlay, body, body_size, body_top, 140, W - 264,
                         fill=(255, 255, 255, 236), spacing=1.42)
