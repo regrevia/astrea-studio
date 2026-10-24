@@ -28,7 +28,7 @@ function createController(overrides: Record<string, unknown> = {}) {
   return { controller: new ProductionWorkerController(production as never), production }
 }
 
-describe('ProductionWorkerController', () => {
+describe('productionWorkerController', () => {
   it('能力刷新接口挂在 worker 的固定 URL 上', () => {
     const handler = ProductionWorkerController.prototype.refreshCapabilities
 
@@ -53,7 +53,8 @@ describe('ProductionWorkerController', () => {
     const { controller, production } = createController()
 
     await expect(controller.refreshCapabilities(undefined, { capabilities: [] }))
-      .rejects.toBeInstanceOf(UnauthorizedException)
+      .rejects
+      .toBeInstanceOf(UnauthorizedException)
     expect(production.refreshWorkerCapabilities).not.toHaveBeenCalled()
   })
 
@@ -61,6 +62,7 @@ describe('ProductionWorkerController', () => {
     const { controller } = createController({ resolveWorker: vi.fn().mockResolvedValue(null) })
 
     await expect(controller.refreshCapabilities('bad', { capabilities: [] }))
-      .rejects.toBeInstanceOf(AppException)
+      .rejects
+      .toBeInstanceOf(AppException)
   })
 })

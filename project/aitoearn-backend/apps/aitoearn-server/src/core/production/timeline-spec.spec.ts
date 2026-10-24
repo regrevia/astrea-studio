@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { TimelineCanvasPreset, buildTimelineSpec } from './timeline-spec'
+import { buildTimelineSpec, TimelineCanvasPreset } from './timeline-spec'
 
 const FRIENDLY_INPUT = {
   engine: 'timeline',

@@ -293,12 +293,12 @@ export class ProductionService {
     const kind = engine === 'motion'
       ? ProductionJobKind.MOTION_RENDER
       : engine === 'slides'
-      ? ProductionJobKind.SLIDES_RENDER
-      : engine === 'jianying'
-      ? ProductionJobKind.JIANYING_DRAFT
-      : engine === 'timeline'
-      ? ProductionJobKind.TIMELINE_RENDER
-      : ProductionJobKind.RENDER_MPT
+        ? ProductionJobKind.SLIDES_RENDER
+        : engine === 'jianying'
+          ? ProductionJobKind.JIANYING_DRAFT
+          : engine === 'timeline'
+            ? ProductionJobKind.TIMELINE_RENDER
+            : ProductionJobKind.RENDER_MPT
     const job = await this.jobRepo.create({
       userId,
       runId: run.id,
@@ -784,7 +784,6 @@ export class ProductionService {
     }
     return await this.attemptRepo.listByUser(userId)
   }
-
 
   async getJobRaw(jobId: string) {
     return await this.jobRepo.getById(jobId)

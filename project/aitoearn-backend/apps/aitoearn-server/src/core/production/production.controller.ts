@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger'
 import { GetToken, Public, TokenInfo } from '@yikart/aitoearn-auth'
-import { AppException, ApiDoc, createZodDto, ResponseCode } from '@yikart/common'
+import { ApiDoc, AppException, createZodDto, ResponseCode } from '@yikart/common'
 import { ProductionJobStatus, PublicationDispatcher, PublicationStatus } from '@yikart/mongodb'
 import { z } from 'zod'
 import { ProductionService } from './production.service'
