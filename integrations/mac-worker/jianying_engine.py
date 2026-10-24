@@ -586,9 +586,11 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
         char_cfg = _character_config(spec)
         if char_cfg is not None:
             track = str(char_cfg.get("track") or "character")
+            scene = item.get("scene") or {}
+            pose = str(char_cfg.get("pose") or _scene_pose(char_cfg, idx, len(plan), scene))
             try:
                 png = _character_frame(char_cfg, idx, len(plan), job_dir, width, height,
-                                       bool(item["audio"]))
+                                       bool(item["audio"]), scene, pose)
             except Exception as exc:  # noqa: BLE001 - 角色贴不上不该毁掉整条片
                 png = None
                 stats["skipped"].append(f"character: {exc}")
@@ -617,12 +619,13 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
 
                 # 呼吸 + 轻微起伏：position_y 单位是半个画布高，0.008≈8px；
                 # 属性名必须用 pyJianYingDraft 的枚举名（transform_y 会被服务端拒绝）。
-                amp = float(char_cfg.get("bob") or 0.008)
-                breath = float(char_cfg.get("breath") or 1.015)
+                bob_k, sway_k = _MOTION.get(pose, (1.0, 1.0))
+                amp = float(char_cfg.get("bob") or 0.008) * bob_k
+                breath = 1.0 + (float(char_cfg.get("breath") or 1.015) - 1.0) * bob_k
                 t0 = total + 0.2
                 mid = total + dur / 2
                 t1 = max(mid + 0.3, total + dur - 0.2)
-                sway = float(char_cfg.get("sway") or 1.2)
+                sway = float(char_cfg.get("sway") or 1.2) * sway_k
                 for prop, lo, hi in (("position_y", "0", f"{amp:.4f}"),
                                      ("uniform_scale", "1", f"{breath:.3f}"),
                                      ("rotation", "0", f"{sway:.2f}")):
@@ -744,32 +747,67 @@ def _character_config(spec: dict[str, Any]) -> dict[str, Any] | None:
     return cfg
 
 
-def _character_pose(cfg: dict[str, Any], idx: int, total: int) -> str:
+# 讲述内容 → 姿态。角色得跟着这句话在做什么，而不是按屏号轮流摆姿势。
+_POSE_RULES = (
+    ("think", ("？", "?", "为什么", "怎么", "是不是", "到底", "吗")),
+    ("point", ("记住", "第一条", "第二", "第三", "关键", "注意", "一定要", "重点")),
+    ("happy", ("真的", "太", "最", "居然", "竟然", "惊喜", "爽")),
+)
+# 每个姿态的动幅：(上下起伏倍数, 摆动倍数)。想事情就该比挥手安静。
+_MOTION = {"idle": (1.0, 1.0), "wave": (1.3, 1.8), "point": (0.9, 0.7),
+           "think": (0.6, 0.5), "happy": (1.5, 2.0), "shrug": (0.7, 0.6)}
+
+
+def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
+                scene: dict[str, Any]) -> str:
+    """场景自带 pose 最优先，其次按讲述内容挑，最后才按首尾/奇偶兜底。"""
     poses = cfg.get("poses")
     if isinstance(poses, list) and poses:
         return str(poses[idx % len(poses)])
+    explicit = str((scene or {}).get("pose") or "").strip()
+    if explicit:
+        return explicit
     if idx == 0:
         return "wave"       # 开场挥手，先把人立住
     if idx >= total - 1:
         return "happy"      # 收尾给情绪高点
+    text = " ".join(str((scene or {}).get(k) or "")
+                    for k in ("say", "text", "caption"))
+    for pose, keys in _POSE_RULES:
+        if any(key in text for key in keys):
+            return pose
     return "point" if idx % 2 else "think"
 
 
+def _character_mouth(idx: int, speaking: bool, scene: dict[str, Any]) -> str:
+    """问句收尾把嘴留住圆口，感叹句张大，其余按镜头轮换（全片一个口型像冻住）。"""
+    if not speaking:
+        return "closed"
+    tail = str((scene or {}).get("say") or "").rstrip()
+    if tail.endswith(("？", "?")):
+        return "round"
+    if tail.endswith(("！", "!")):
+        return "open"
+    return ("open", "half", "open", "round")[idx % 4]
+
+
 def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
-                     width: int, height: int, speaking: bool) -> Path | None:
+                     width: int, height: int, speaking: bool,
+                     scene: dict[str, Any] = None,
+                     pose: str = "") -> Path | None:
     """把立绘贴到一张透明画布上，交回剪映当独立图层（可单独做动效）。"""
     from PIL import Image
 
     import character
 
-    pose = str(cfg.get("pose") or _character_pose(cfg, idx, total))
-    # 口型按镜头轮换：全片一个 "half" 会让嘴像被冻住
-    _MOUTHS = ("open", "half", "open", "round")
-    mouth = _MOUTHS[idx % len(_MOUTHS)] if speaking else "closed"
-    key = (pose, mouth)
+    pose = pose or str(cfg.get("pose") or _scene_pose(cfg, idx, total, scene or {}))
+    mouth = _character_mouth(idx, speaking, scene or {})
+    # 高兴时眯眼，是这套立绘里唯一能读出情绪的五官开关
+    eyes = "closed" if pose == "happy" else "open"
+    key = (pose, mouth, eyes)
     figure = _CHAR_FRAME_CACHE.get(key)
     if figure is None:
-        figure = character.render(pose=pose, mouth=mouth)
+        figure = character.render(pose=pose, mouth=mouth, eyes=eyes)
         _CHAR_FRAME_CACHE[key] = figure
     w = int(float(cfg.get("width") or 560) * width / 1080)
     fig = figure.resize((w, w), Image.LANCZOS)
