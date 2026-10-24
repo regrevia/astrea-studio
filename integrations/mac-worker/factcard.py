@@ -126,7 +126,8 @@ def _wrap_text(draw, text: str, font, max_w: float) -> list[str]:
 
 
 def _draw_block(page, text: str, size: int, top: int, left: int, max_w: float,
-                fill=(255, 255, 255, 240), spacing: float = 1.45) -> int:
+                fill=(255, 255, 255, 240), spacing: float = 1.45,
+                align: str = "left") -> int:
     """在出图阶段排版正文：剪映字号是相对量，精排只能自己算像素。返回结束 y。"""
     from PIL import ImageDraw
 
@@ -137,7 +138,10 @@ def _draw_block(page, text: str, size: int, top: int, left: int, max_w: float,
     y = top
     for ln in _wrap_text(draw, text, font, max_w):
         if ln:
-            draw.text((left, y), ln, font=font, fill=fill)
+            x = left
+            if align == "center":   # 标题居中，正文左对齐会读成两套排版
+                x = left + (max_w - draw.textlength(ln, font=font)) / 2
+            draw.text((x, y), ln, font=font, fill=fill)
         y += int(size * spacing)
     return y
 
@@ -244,11 +248,12 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
     # 正文要点：出图阶段精排（字号/行距/安全区都是像素级控制）
     if body:
         _draw_block(overlay, body, body_size if not hook else HOOK_SIZE, body_top,
-                    124, W - 248, fill=(255, 255, 255, 236), spacing=1.42)
+                    124, W - 248, fill=(255, 255, 255, 236), spacing=1.42,
+                    align="center" if hook else "left")
     if hook:
         # 开场卡没有边框，给钩子句一条细分隔线做锚
-        draw.rounded_rectangle((124, body_top - 44, 220, body_top - 38), radius=3,
-                               fill=(*accent, 200))
+        draw.rounded_rectangle((W // 2 - 48, body_top - 44, W // 2 + 48, body_top - 38),
+                               radius=3, fill=(*accent, 200))
 
     # 品牌标：只在开场和收尾露脸，中间每张都挂就成了水印
     if logo:
