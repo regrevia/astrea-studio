@@ -102,6 +102,8 @@
         "point": "Point {{index}}",
         "spoken": "Voiceover line {{index}}"
       }
-    }
+    },
+    "count": "Count",
+    "batchSuccess": "{{count}} queued"
   }
 }

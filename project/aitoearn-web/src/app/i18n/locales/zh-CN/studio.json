@@ -102,6 +102,8 @@
         "point": "要点 {{index}}",
         "spoken": "口播第 {{index}} 句"
       }
-    }
+    },
+    "count": "条数",
+    "batchSuccess": "{{count}} 条已排队"
   }
 }

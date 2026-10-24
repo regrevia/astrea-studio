@@ -8,7 +8,7 @@
  */
 
 import type { FactCardVoice } from '@/api/production/production.types'
-import { createFactCardRun } from '@/api/production/production.api'
+import { createFactCardRun, createFactCardRunBatch } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -69,6 +69,8 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<FactCardFormError | null>(null)
   const [createdRunId, setCreatedRunId] = useState('')
+  const [createdCount, setCreatedCount] = useState(1)
+  const [count, setCount] = useState('1')
 
   // 出片前先过一遍体检：命中的地方改完再提交，不用等渲染完才发现文案有问题。
   // 空表单不体检，收尾是固定文案不参与，只盯着自己能改的字段。
@@ -118,16 +120,24 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
 
     setSubmitting(true)
     try {
-      const res = await createFactCardRun(buildFactCardRunInput(values, effectiveProjectId))
-      if (res?.code !== 0 || !res?.data?.runId) {
+      const wanted = Number(count) || 1
+      const input = buildFactCardRunInput(values, effectiveProjectId)
+      const res = wanted > 1
+        ? await createFactCardRunBatch({ ...input, count: wanted })
+        : await createFactCardRun(input)
+      const payload = res?.data as { runId?: string, runIds?: string[] } | undefined
+      if (res?.code !== 0 || !(payload?.runIds?.length ?? payload?.runId)) {
         setError({
           key: 'factCard.error.submitFailed',
           params: { message: res?.message || t('factCard.error.unknown') },
         })
         return
       }
-      setCreatedRunId(res.data.runId)
-      onCreated(res.data.runId)
+      const batch = payload!
+      const first = batch.runIds?.[0] ?? batch.runId ?? ''
+      setCreatedRunId(first)
+      setCreatedCount(batch.runIds?.length ?? 1)
+      onCreated(first)
     }
     catch (err) {
       setError({
@@ -300,7 +310,11 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
 
           {createdRunId && (
             <div className="rounded-md border border-border bg-muted/40 p-3 text-sm sm:col-span-2">
-              <p className="font-medium text-foreground">{t('factCard.success', { runId: createdRunId })}</p>
+              <p className="font-medium text-foreground">
+                {createdCount > 1
+                  ? t('factCard.batchSuccess', { count: createdCount })
+                  : t('factCard.success', { runId: createdRunId })}
+              </p>
               {output === 'draft' && (
                 <>
                   <p className="mt-1 text-muted-foreground">{t('factCard.draftHint')}</p>
@@ -313,6 +327,19 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
           )}
 
           <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+            <div className="w-24">
+              <Label htmlFor="fact-card-count" className="text-xs">{t('factCard.count')}</Label>
+              <Select value={count} onValueChange={setCount}>
+                <SelectTrigger id="fact-card-count" className="mt-1 cursor-pointer">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {['1', '2', '3'].map(n => (
+                    <SelectItem key={n} value={n}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <Button
               type="submit"
               className="cursor-pointer"

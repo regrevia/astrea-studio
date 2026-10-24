@@ -72,6 +72,11 @@ export function createFactCardRun(data: CreateFactCardRunInput) {
   return http.post<CreateRunResult>('production/runs', data)
 }
 
+/** 同一份稿子排多条母版：一次出 2~3 条，挑一条发。 */
+export function createFactCardRunBatch(data: CreateFactCardRunInput & { count: number }) {
+  return http.post<{ runIds: string[], count: number }>('production/runs/batch', data)
+}
+
 /** 精确修改：合并 spec 补丁并重新渲染。 */
 export function reviseRun(id: string, data: { brief?: string, spec?: Record<string, unknown> }) {
   return http.post<ProductionRun>(`production/runs/${id}/revise`, data)

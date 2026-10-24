@@ -48,6 +48,11 @@ const CreateRunSchema = z.object({
 })
 class CreateRunDto extends createZodDto(CreateRunSchema, 'CreateProductionRunDto') {}
 
+const BatchRunSchema = CreateRunSchema.extend({
+  count: z.number().int().min(1).max(8).default(2).describe('排几条：同一份稿子出多个母版'),
+})
+class BatchRunDto extends createZodDto(BatchRunSchema, 'BatchProductionRunDto') {}
+
 const ReviseRunSchema = z.object({
   brief: z.string().optional().describe('修改后的需求'),
   spec: z.record(z.string(), z.unknown()).optional().describe('规格补丁'),
@@ -198,6 +203,25 @@ export class ProductionController {
       status: run.status,
       revision: run.revision,
       statusUrl: `/api/production/runs/${run.id}`,
+    }
+  }
+
+  @ApiDoc({ summary: '批量出片：同一份稿子排 count 条，返回全部 runId', body: BatchRunDto.schema })
+  @Post('runs/batch')
+  async createRunBatch(@GetToken() token: TokenInfo, @Body() body: BatchRunDto) {
+    const { count, ...one } = body
+    const runs = []
+    for (let i = 0; i < count; i += 1) {
+      // 串行入队：worker 本来就按队列一条条渲，并发提交只会白等
+      runs.push(await this.production.createRun(token.id, {
+        ...one,
+        spec: normalizeRunSpec(one),
+      }))
+    }
+    return {
+      runIds: runs.map(run => run.id),
+      count: runs.length,
+      statusUrl: `/api/production/runs/${runs[0]?.id ?? ''}`,
     }
   }
 
