@@ -611,6 +611,13 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                     cclip["intro_animation"] = anim_in
                     cclip["intro_animation_duration"] = float(
                         char_cfg.get("anim_in_duration") or 0.5)
+                if idx == len(plan) - 1:
+                    anim_out = _pick(char_cfg.get("anim_out") or "渐隐",
+                                     "video_outro_animations")
+                    if anim_out:
+                        cclip["outro_animation"] = anim_out
+                        cclip["outro_animation_duration"] = float(
+                            char_cfg.get("anim_out_duration") or 0.6)
                 try:
                     _post("/add_image", cclip)
                     stats["characters"] += 1

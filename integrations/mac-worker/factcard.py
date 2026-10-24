@@ -30,7 +30,7 @@ TITLE_FONT = "SourceHanSansCN_Bold"       # 剪映会员字体，白名单内、
 CAPTION_FONT = "SourceHanSansCN_Medium"
 
 # 白名单里确认过的资源（见 jianying_engine._catalog），未知名字会被引擎丢掉
-TRANSITIONS = ["分割", "云朵", "倒影", "冰雪结晶", "画笔擦除"]
+TRANSITIONS = ["叠化", "推近", "竖向模糊", "拉远", "闪白"]
 TEXT_ANIMS = ["居中打字", "打字机_I", "向右滑动", "渐显", "弹入"]
 # 出场动画（/get_text_outro_types 97 项、/get_outro_animation_types 72 项里挑的稳重款）
 TEXT_OUTS = ["向上溶解", "渐隐", "向下滑动", "向右擦除", "缩小消失"]
@@ -50,25 +50,6 @@ W, H = 1080, 1920
 TOP_SAFE, BOTTOM_SAFE = 240, 430  # 顶部账号栏 / 底部字幕与按钮区
 
 FONT_PATH = "/System/Library/Fonts/STHeiti Medium.ttc"
-DEFAULT_VOICE = "sami:BV405_streaming"
-TITLE_FONT = "SourceHanSansCN_Bold"       # 剪映会员字体，白名单内、可读性好
-CAPTION_FONT = "SourceHanSansCN_Medium"
-
-# 白名单里确认过的资源（见 jianying_engine._catalog），未知名字会被引擎丢掉
-TRANSITIONS = ["分割", "云朵", "倒影", "冰雪结晶", "画笔擦除"]
-TEXT_ANIMS = ["居中打字", "打字机_I", "向右滑动", "渐显", "弹入"]
-# 出场动画（/get_text_outro_types 97 项、/get_outro_animation_types 72 项里挑的稳重款）
-TEXT_OUTS = ["向上溶解", "渐隐", "向下滑动", "向右擦除", "缩小消失"]
-# 必须是 /get_video_scene_effect_types 里真实存在的名字（912 项）
-SCENE_EFFECTS = ["哈苏胶片", "画质清晰", "法式暖调", "电影感", "秋日暖阳"]
-
-PALETTES = [
-    ((14, 18, 38), (36, 30, 78), (122, 143, 255)),    # 深蓝紫
-    ((10, 26, 30), (22, 52, 58), (86, 226, 189)),     # 深青
-    ((32, 14, 26), (60, 26, 52), (255, 138, 176)),    # 深玫
-    ((30, 22, 10), (56, 40, 18), (255, 196, 87)),     # 深琥珀
-    ((16, 16, 20), (34, 34, 42), (160, 170, 200)),    # 中性收尾
-]
 
 
 # ---------------------------------------------------------------- 出图
@@ -348,7 +329,10 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
             "transform_y": 0.458, "caption_size": 8, "caption_y": -0.72,
             "text_anim_in": "居中打字",
             "text_anim_out": "向上溶解",
-            "transition_in": TRANSITIONS[0], "transition_duration": 0.7,
+            "transition_in": "叠化", "transition_duration": 0.7,
+            # 开场卡不能是纯静态底图：轻微放大入场 + 一层暖调，先把质感立住
+            "image_anim_in": "轻微放大", "image_anim_in_duration": 0.8,
+            "effect": [SCENE_EFFECTS[3]],
             "kenburns": True,
         },
     })
@@ -392,7 +376,8 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
             "transform_y": 0.10, "caption_size": 8, "caption_y": -0.78,
             "text_anim_in": "渐显",
             "text_anim_out": "渐隐",
-            "transition_in": "倒影", "transition_duration": 0.7,
+            "transition_in": "叠化", "transition_duration": 0.7,
+            "image_anim_out": "渐隐", "image_anim_out_duration": 0.6,
             "kenburns": True,
         },
     })
