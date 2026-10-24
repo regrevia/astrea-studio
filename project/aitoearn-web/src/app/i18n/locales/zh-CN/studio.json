@@ -1,0 +1,44 @@
+{
+  "assistant": {
+    "title": "AI 指挥台",
+    "subtitle": "说一句人话，查资料、建任务、出草稿、发布都由它代跑，每一步都会回报。",
+    "defaultSessionTitle": "Studio 指挥台会话",
+    "placeholder": "例如：帮我查一下 XX 品牌最近的新闻，做一条 30 秒竖屏短视频",
+    "hint": "Enter 发送，Shift + Enter 换行",
+    "send": "发送",
+    "openLink": "打开产物",
+    "newSession": "新会话",
+    "restoring": "正在恢复上次会话…",
+    "thinking": "指挥台正在处理…",
+    "empty": {
+      "title": "从一个目标开始",
+      "description": "直接说要做成什么，它会自己拆步骤。点下面的句子，改一改就能发。"
+    },
+    "prompts": {
+      "news": "帮我查一下 XX 品牌最近的新闻，做一条 30 秒竖屏短视频",
+      "tweak": "把刚才那条的字幕调大一点，换沉稳一点的配音",
+      "export": "把这条成片导出到剪映",
+      "publish": "再发抖音和小红书"
+    },
+    "action": {
+      "research": "查资料",
+      "material": "生成素材",
+      "run": "建渲染任务",
+      "render": "渲染成片",
+      "draft": "出草稿",
+      "publish": "发布",
+      "info": "说明"
+    },
+    "status": {
+      "running": "进行中",
+      "ok": "完成",
+      "failed": "失败"
+    },
+    "error": {
+      "unavailable": "指挥台后端未就绪（接口未响应或返回 404）。后端上线后刷新页面即可用，其它面板不受影响。",
+      "sendFailed": "发送失败：{{message}}",
+      "sessionFailed": "读取会话失败：{{message}}",
+      "emptyReply": "指挥台没有返回内容，请再发一次。"
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "assistant": {
+    "title": "AI Console",
+    "subtitle": "Say it in plain words: research, render tasks, drafts and publishing are all handled here, with every step reported back.",
+    "defaultSessionTitle": "Studio console session",
+    "placeholder": "e.g. Look up the latest news about brand X and make a 30s vertical short",
+    "hint": "Enter to send, Shift + Enter for a new line",
+    "send": "Send",
+    "openLink": "Open result",
+    "newSession": "New session",
+    "restoring": "Restoring your last session…",
+    "thinking": "Working on it…",
+    "empty": {
+      "title": "Start from a goal",
+      "description": "Describe the outcome; it breaks the work into steps. Pick a line below, tweak it, then send."
+    },
+    "prompts": {
+      "news": "Look up the latest news about brand X and make a 30s vertical short",
+      "tweak": "Make the subtitles on that last cut bigger and use a calmer voice-over",
+      "export": "Export this cut to Jianying",
+      "publish": "Then publish it to Douyin and Xiaohongshu"
+    },
+    "action": {
+      "research": "Research",
+      "material": "Material",
+      "run": "Create render task",
+      "render": "Render",
+      "draft": "Draft",
+      "publish": "Publish",
+      "info": "Note"
+    },
+    "status": {
+      "running": "Running",
+      "ok": "Done",
+      "failed": "Failed"
+    },
+    "error": {
+      "unavailable": "The console backend is not ready yet (no response or 404). It will work once the endpoints ship; other panels are unaffected.",
+      "sendFailed": "Send failed: {{message}}",
+      "sessionFailed": "Could not load the session: {{message}}",
+      "emptyReply": "The console returned nothing. Please send it again."
+    }
+  }
+}

@@ -1,4 +1,7 @@
 import type {
+  AssistantReply,
+  AssistantSession,
+  AssistantSessionDetail,
   Inventory,
   PageResult,
   ProductionEvent,
@@ -90,6 +93,31 @@ export function getHealth() {
  * 数据本来就在宿主机上（cookie 文件、ffmpeg 二进制），进不了容器，所以直连。
  * 用原生 fetch 而非 http 实例，避免带上后端的 token/拦截器。
  */
+/**
+ * 新建指挥台会话。
+ *
+ * 这三个方法都传 silent：指挥台要把后端 message 直接贴在对话里（后端没上线时
+ * 是「指挥台后端未就绪」），而不是弹一条全局网络错误提示。
+ * 返回 null 表示没拿到 JSON（接口 404 / 服务没起），由调用方降级处理。
+ */
+export function createAssistantSession(data: { title?: string } = {}) {
+  return http.post<AssistantSession>('production/assistant/sessions', data, true)
+}
+
+/** 读取会话历史（刷新后恢复上下文）。 */
+export function getAssistantSession(id: string) {
+  return http.get<AssistantSessionDetail>(`production/assistant/sessions/${id}`, undefined, true)
+}
+
+/** 发一条用户消息，返回指挥台的回复。 */
+export function sendAssistantMessage(id: string, message: string) {
+  return http.post<AssistantReply>(
+    `production/assistant/sessions/${id}/messages`,
+    { message },
+    true,
+  )
+}
+
 export async function getInventory(base = 'http://127.0.0.1:8899'): Promise<Inventory | null> {
   try {
     const res = await fetch(`${base}/inventory`, { cache: 'no-store' })

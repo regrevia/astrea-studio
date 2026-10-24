@@ -210,3 +210,62 @@ export interface Inventory {
   tools: Record<string, { available: boolean, version: string }>
   generatedAt?: string
 }
+
+/* ------------------------------------------------------------------ AI 指挥台
+ * 指挥台是「一句话跑完整条流水线」的会话接口：用户说人话，后端拆步骤并逐步回报。
+ * 步骤用 AssistantAction 表示，前端只负责渲染成状态卡片，不参与编排。
+ */
+
+/** 会话里一条消息的作者。 */
+export type AssistantRole = 'user' | 'assistant'
+
+/** 步骤类型：与流水线阶段一一对应。 */
+export type AssistantActionType
+  = | 'research'
+    | 'material'
+    | 'run'
+    | 'render'
+    | 'draft'
+    | 'publish'
+    | 'info'
+
+/** 步骤状态。running 表示还在跑，前端展示转圈。 */
+export type AssistantActionStatus = 'running' | 'ok' | 'failed'
+
+/** 指挥台回报的一个步骤。link 是产物页地址（成片、草稿、发布回执）。 */
+export interface AssistantAction {
+  id: string
+  type: AssistantActionType
+  status: AssistantActionStatus
+  label: string
+  detail?: string
+  link?: string
+}
+
+/** 一条会话消息。assistant 消息可以带若干步骤卡片。 */
+export interface AssistantMessage {
+  id: string
+  role: AssistantRole
+  content: string
+  createdAt: string
+  actions?: AssistantAction[]
+}
+
+/** 新建会话的返回。 */
+export interface AssistantSession {
+  id: string
+  title: string
+  createdAt: string
+}
+
+/** 读取会话的返回：历史消息按时间正序。 */
+export interface AssistantSessionDetail {
+  id: string
+  title: string
+  messages: AssistantMessage[]
+}
+
+/** 发一条消息的返回。 */
+export interface AssistantReply {
+  reply: AssistantMessage
+}

@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/utils/className'
+import AssistantPanel from './components/AssistantPanel'
 import NewRunForm from './components/NewRunForm'
 import { formatKib, PLATFORM_LABELS } from './studioConstants'
 
@@ -474,6 +475,8 @@ export default function StudioOverview() {
           </CardContent>
         </Card>
       )}
+
+      <AssistantPanel />
 
       <Card>
         <CardHeader className="pb-2">
