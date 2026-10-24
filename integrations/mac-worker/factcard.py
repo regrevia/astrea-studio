@@ -204,7 +204,7 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
     body_size, _ = _body_size(body, measure) if body else (BODY_SIZE, 0)
     if not hook and not plain:
         # 卡片高度跟着正文走，避免大片空白（"PPT 味"最主要的来源）
-        body_lines = _wrap_text(measure, body, _font(body_size), W - 248) if body else []
+        body_lines = _wrap_text(measure, body, _font(body_size), W - 264) if body else []
         # 短句放大后仍贴着卡顶会显得上重下轻，往下挪一点让正文落在版心
         if body_size > BODY_SIZE:
             body_top += 56 if body_size >= 110 else 40
@@ -217,9 +217,10 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
         draw.rounded_rectangle((76, 470, 1004, card_bottom), radius=56,
                                fill=(255, 255, 255, 14),
                                outline=(255, 255, 255, 70), width=2)
-        # 左侧强调条：标题到正文结束
-        draw.rounded_rectangle((100, 530, 112, card_bottom - 76), radius=6,
-                               fill=(*accent, 235))
+        # 左侧强调条只压标题区。拉到正文底下就是一条长杠，和两行大字的左缘
+        # 只隔 12px，读起来像文字压线
+        draw.rounded_rectangle((100, 530, 112, min(body_top - 34, card_bottom - 76)),
+                               radius=6, fill=(*accent, 235))
         # 编号做成右上角小徽章：幽灵大字会和标题抢视线
         if index:
             bf = _font(46)
@@ -247,9 +248,12 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
 
     # 正文要点：出图阶段精排（字号/行距/安全区都是像素级控制）
     if body:
-        _draw_block(overlay, body, body_size if not hook else HOOK_SIZE, body_top,
-                    124, W - 248, fill=(255, 255, 255, 236), spacing=1.42,
-                    align="center" if hook else "left")
+        if hook:
+            _draw_block(overlay, body, HOOK_SIZE, body_top, 124, W - 248,
+                        fill=(255, 255, 255, 236), spacing=1.42, align="center")
+        else:
+            _draw_block(overlay, body, body_size, body_top, 140, W - 264,
+                        fill=(255, 255, 255, 236), spacing=1.42)
     if hook:
         # 开场卡没有边框，给钩子句一条细分隔线做锚
         draw.rounded_rectangle((W // 2 - 48, body_top - 44, W // 2 + 48, body_top - 38),
