@@ -21,6 +21,12 @@ FFMPEG = "/opt/homebrew/bin/ffmpeg"
 STEP = 0.25
 # 整帧标准差低于这个值，等于画面没有内容（黑场、纯色、还是导出的空镜）
 FLAT_STD = 6.0
+# 硬切：相邻两帧（低分辨率灰度）平均绝对差。真片子里逐帧差异最大 ~30（开场上升、结尾推近），
+# 换成深色场景直接跳浅色场景会到 90 以上，45 这条线两边都留得住。
+CUT_DIFF = 45.0
+# 定格：1 秒窗口内几乎不变。带运镜的卡面每帧都有 ~2 的差，纯静态图才是 0。
+FREEZE_DIFF = 0.4
+FREEZE_WINDOW = 4
 # 文字区、人物区：判断这两块有没有东西，比整帧更容易抓住「字没贴上」
 TEXT_BOX = (124, 470, 1004, 1000)
 CHAR_BOX = (280, 900, 1040, 1700)
@@ -73,6 +79,25 @@ def check(video: Path, spec: Path) -> dict:
         at = float(np.flatnonzero(miss)[0]) * STEP
         findings.append({"code": code, "level": "warn", "at": round(at, 2),
                          "detail": f"{at:.1f}s 起{label}（{(miss.mean() * 100):.0f}% 的帧）"})
+    # 转场与节奏：该叠化的地方硬切、该动的画面定格，屏幕上就是 PPT 翻页感
+    if len(frames) > 1:
+        diff = np.abs(np.diff(frames.astype(np.int16), axis=0)).mean(axis=(1, 2))
+        for i in np.flatnonzero(diff > CUT_DIFF)[:3]:
+            findings.append({"code": "hard_cut", "level": "warn",
+                             "at": round(float(i + 1) * STEP, 2),
+                             "detail": f"{float(i + 1) * STEP:.2f}s 硬切"})
+        if len(diff) >= FREEZE_WINDOW:
+            quiet = diff < FREEZE_DIFF
+            run = 0
+            frozen: list[float] = []
+            for i, q in enumerate(quiet):
+                run = run + 1 if q else 0
+                if run == FREEZE_WINDOW:
+                    frozen.append(float(i - FREEZE_WINDOW + 1) * STEP)
+            for at in frozen[:3]:
+                findings.append({"code": "frozen", "level": "warn",
+                                 "at": round(at, 2),
+                                 "detail": f"{at:.1f}s 起画面定格"})
     return {"video": str(video), "duration": got, "findings": findings,
             "ok": not [f for f in findings if f["level"] == "error"]}
 
