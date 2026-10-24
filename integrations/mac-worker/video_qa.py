@@ -44,6 +44,17 @@ def _frames(path: Path, start: float, end: float, fps: float) -> np.ndarray:
     return np.frombuffer(out, dtype=np.uint8).reshape(-1, 480, 270)
 
 
+def _refine_cut(video: Path, around: float, span: float = 0.6, fps: float = 25.0) -> float:
+    """体检按 4 fps 采样，硬切的秒数只能到 0.25s；在命中点附近按 25 fps 复核一次。
+    人眼对齐转场时 0.25s 是看得出来的，报准一点才有用。"""
+    start = max(0.0, around - span)
+    frames = _frames(video, start, around + span, fps)
+    if len(frames) < 2:
+        return around
+    diff = np.abs(np.diff(frames.astype(np.int16), axis=0)).mean(axis=(1, 2))
+    return round(start + float(np.argmax(diff) + 1) / fps, 2)
+
+
 def _box_std(frames: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
     x0, y0, x1, y1 = box
     sx, sy = 270 / 1080, 480 / 1920
@@ -86,9 +97,9 @@ def check(video: Path, spec: Path) -> dict:
     if len(frames) > 1:
         diff = np.abs(np.diff(frames.astype(np.int16), axis=0)).mean(axis=(1, 2))
         for i in np.flatnonzero(diff > CUT_DIFF)[:3]:
-            findings.append({"code": "hard_cut", "level": "warn",
-                             "at": round(float(i + 1) * STEP, 2),
-                             "detail": f"{float(i + 1) * STEP:.2f}s 硬切"})
+            at = _refine_cut(video, float(i + 1) * STEP)
+            findings.append({"code": "hard_cut", "level": "warn", "at": at,
+                             "detail": f"{at:.2f}s 硬切"})
         if len(diff) >= FREEZE_WINDOW:
             quiet = diff < FREEZE_DIFF
             run = 0
