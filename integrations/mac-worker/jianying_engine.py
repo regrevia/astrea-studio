@@ -668,7 +668,8 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                         stats["skipped"].append(f"char_keyframe({prop}): {exc}")
 
         # ---- 2) 文字轨：主文案（VIP 字体 + 入场/出场动画）+ 可选逐句字幕
-        text = _scene_text(scene)
+        # no_text：正文已经烧进卡面，再叠一轨就是重影（收尾卡就是这样）
+        text = "" if scene.get("no_text") else _scene_text(scene)
         caption = str(scene.get("caption") or native.get("subtitle") or "").strip()
         blocks: list[dict[str, Any]] = []
         if text:
@@ -823,7 +824,7 @@ def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
                      pose: str = "",
                      mouth: str = "") -> Path | None:
     """把立绘贴到一张透明画布上，交回剪映当独立图层（可单独做动效）。"""
-    from PIL import Image
+    from PIL import Image, ImageDraw
 
     import character
 
@@ -846,6 +847,16 @@ def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
     x = max(0, min(x, width - 32 - cw))
     y = max(0, min(y, height - chh))
     canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    # 脚下压一层模糊椭圆当影子：没有它，立绘读起来就是贴在画面上的一张图
+    from PIL import ImageFilter
+
+    shade = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(shade)
+    cx = x + cw * 0.5
+    cy = y + chh * 0.95
+    sd.ellipse((cx - cw * 0.40, cy - chh * 0.055, cx + cw * 0.40, cy + chh * 0.045),
+               fill=(0, 0, 0, 90))
+    canvas.alpha_composite(shade.filter(ImageFilter.GaussianBlur(max(6, cw // 22))))
     canvas.alpha_composite(fig, (x - bb[0], y - bb[1]))
     # 文件名必须带口型/姿态：同一屏要贴好几段不同口型，同名会把前一张覆盖掉
     out = job_dir / f"char_{idx:02d}_{pose}_{mouth}.png"

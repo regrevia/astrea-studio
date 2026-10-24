@@ -79,6 +79,9 @@ def _seed(slug: str) -> int:
 _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9%\.\-\+/]*|.", re.S)
 
 
+_ORPHAN_PUNCT = set("，。、；：？！…）」』】》,.;:?!")
+
+
 def _wrap_text(draw, text: str, font, max_w: float) -> list[str]:
     """中文逐字断行，西文按整词走（PDF / GPT-4 不被劈开）。"""
     out: list[str] = []
@@ -96,7 +99,12 @@ def _wrap_text(draw, text: str, font, max_w: float) -> list[str]:
                 buf = probe
         if buf:
             out.append(buf)
-    return out
+    # 行首不该出现标点：把「，」。这种孤儿号并回上一行，否则读起来像断句错误
+    for i in range(1, len(out)):
+        while out[i] and out[i][0] in _ORPHAN_PUNCT:
+            out[i - 1] += out[i][0]
+            out[i] = out[i][1:]
+    return [ln for ln in out if ln or True]
 
 
 def _draw_block(page, text: str, size: int, top: int, left: int, max_w: float,
@@ -371,13 +379,17 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
         })
 
     # 3) 收尾
+    # 收尾卡也要有正文：空卡配一句飘在中间的字，最容易读成"没做完"
     cta_img = render_card(out_dir / f"s{total - 1:02d}.png", kicker=kicker,
                           index="", palette_idx=len(PALETTES) - 1, progress=total - 1,
-                          total=total, slug=slug, plain=True)
+                          total=total, slug=slug, hook=True,
+                          body=re.sub(r"\s+", "", cta), body_top=700)
     scenes.append({
         "image": str(cta_img),
         "say": str(narration.get("cta") or cta).strip(),
-        "text": _unwrap(cta, 11),
+        # 结论句已经画在卡面上，剪映再叠一层就是重影
+        "text": "",
+        "no_text": True,
         "caption": _first_sentence(cta),
         "voice": voice,
         "native": {
