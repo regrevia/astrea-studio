@@ -125,7 +125,8 @@ def _draw_block(page, text: str, size: int, top: int, left: int, max_w: float,
 
 def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
                 progress: int, total: int, slug: str, hook: bool = False,
-                body: str = "", body_top: int = 640, plain: bool = False) -> Path:
+                body: str = "", body_top: int = 640, plain: bool = False,
+                logo: Path | None = None) -> Path:
     """卡面底图：渐变 + 网格点 + 圆角描边卡 + 编号幽灵字 + 进度点。文字交给剪映。"""
     from PIL import Image, ImageDraw, ImageFilter
 
@@ -199,6 +200,27 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
         # 开场卡没有边框，给钩子句一条细分隔线做锚
         draw.rounded_rectangle((124, body_top - 44, 220, body_top - 38), radius=3,
                                fill=(*accent, 200))
+
+    # 品牌标：只在开场和收尾露脸，中间每张都挂就成了水印
+    if logo:
+        try:
+            from PIL import Image as _Image
+            chip = 132
+            x0, y0 = W - 76 - chip, TOP_SAFE - 8
+            mark = _Image.open(logo).convert("RGB")
+            # 图标四周留白很多，缩到 100px 会糊成一片白：先裁到内容框再居中
+            box = mark.convert("L").point(lambda v: 255 if v < 200 else 0).getbbox()
+            if box:
+                mark = mark.crop(box)
+            mark.thumbnail((chip - 34, chip - 34), _Image.LANCZOS)
+            # 圆角白底和 logo 必须画在同一层：画在 overlay 上的底会盖掉贴在 img 上的 logo
+            cell = _Image.new("RGBA", (chip, chip), (0, 0, 0, 0))
+            ImageDraw.Draw(cell).rounded_rectangle(
+                (0, 0, chip - 1, chip - 1), radius=30, fill=(255, 255, 255, 250))
+            cell.paste(mark, ((chip - mark.width) // 2, (chip - mark.height) // 2))
+            overlay.paste(cell, (x0, y0), cell)
+        except Exception:
+            pass  # 品牌标失败不该毁掉出片
 
     # 品牌角标
     draw.text((W - 76, H - 64), "Astrea Studio", font=_font(30),
@@ -320,7 +342,7 @@ def _parse_point(raw: object) -> tuple[str, str, str]:
 
 def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
                voice: str, kicker: str, out_dir: Path,
-               narration: dict | None = None) -> dict:
+               narration: dict | None = None, logo: Path | None = None) -> dict:
     """选题/要点 → 完整 scenes spec（含 5 张卡面 PNG）。"""
     scripts = [p for p in (points_raw or []) if str(p).strip()]
     points = [_parse_point(p) for p in scripts]
@@ -334,7 +356,7 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
     # 1) 开场钩子
     hook_img = render_card(out_dir / "s00.png", kicker=kicker, index="00",
                            palette_idx=0, progress=0, total=total, slug=slug, hook=True,
-                           body=hook, body_top=800)
+                           body=hook, body_top=800, logo=logo)
     scenes.append({
         "image": str(hook_img),
         "say": str(narration.get("intro") or f"{topic}。{hook}").strip(),
@@ -378,7 +400,7 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
 
     # 3) 收尾
     # 收尾卡也要有正文：空卡配一句飘在中间的字，最容易读成"没做完"
-    cta_img = render_card(out_dir / f"s{total - 1:02d}.png", kicker=kicker,
+    cta_img = render_card(out_dir / f"s{total - 1:02d}.png", kicker=kicker, logo=logo,
                           index="", palette_idx=len(PALETTES) - 1, progress=total - 1,
                           total=total, slug=slug, hook=True,
                           body=re.sub(r"\s+", "", cta), body_top=700)
@@ -419,6 +441,7 @@ def expand(spec: dict[str, Any], job_dir: Path) -> dict[str, Any]:
         cta=str(spec.get("cta") or DEFAULT_CTA),
         voice=str(spec.get("voice") or DEFAULT_VOICE),
         kicker=str(spec.get("kicker") or DEFAULT_KICKER),
+        logo=Path(str(spec["logo"])).expanduser() if spec.get("logo") else None,
         out_dir=Path(job_dir),
         narration=spec.get("narration") if isinstance(spec.get("narration"), dict) else None,
     )

@@ -162,6 +162,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--project", default=DEFAULT_PROJECT)
     ap.add_argument("--out", default="")
     ap.add_argument("--batch", default="", help="JSON 数组文件，逐条提交")
+    ap.add_argument("--logo", default="", help="品牌标 PNG 路径，只出现在首尾卡")
     ap.add_argument("--narration", default="",
                     help="口播稿文本，一行一屏；N 行替换要点，N+2 行含开场与收尾")
     ap.add_argument("--dry-run", action="store_true")
@@ -187,6 +188,8 @@ def main(argv: list[str]) -> int:
         ap.error("需要 --topic 或 --batch")
     spec_in = {"topic": args.topic, "kicker": args.kicker, "hook": args.hook,
                "points": args.point, "cta": args.cta, "voice": args.voice}
+    if getattr(args, "logo", ""):
+        spec_in["logo"] = args.logo
     if args.narration:
         lines = Path(args.narration).read_text(encoding="utf-8").splitlines()
         spec_in["points"], narration = apply_narration(args.point, lines)
