@@ -306,6 +306,11 @@ claim 的过滤读的是库里的 `productionWorker.capabilities`，注册时缺
 | 发布意图 | `publicationAttempt.content.assetKey` 分别指向对应平台成片，不是母版 |
 | 前端 | `/studio` 页面跑出「新建时间轴任务」表单，任务列表按平台出「抖音 1080×1920 1698 KiB / B站 1920×1080 2170 KiB」 |
 
+同一脚本的 `--mode advanced`（直接给完整 `spec.timeline`）也在 2026-10-24 15:11 跑通：
+run `6adc59d8bc9f08ef01a2c123` `succeeded`，douyin 1080x1920 1705 KiB、
+bilibili 1920x1080 2139 KiB 两个平台件都 `ok`，母版与平台件都传上 S3 并挂上草稿
+`6adc5a05bc9f08ef01a2c1b5`。两种入口（友好 spec / 完整 spec）现在都有实测证据。
+
 关键点：**发布阶段取的是平台成片而不是母版**（`planPublication` 里
 `platforms[platform]?.key || output.videoPath`）。之前 `run.output` 只有
 `videoPath`，多平台交付等于白做——发布永远发母版。
@@ -323,6 +328,25 @@ claim 的过滤读的是库里的 `productionWorker.capabilities`，注册时缺
 矩阵与"怎么翻成 documented"见 `docs/probe/export-panel/platform-matrix.md`。
 跑测试用 `python3 integrations/mac-worker/export/test_platform_profiles.py`
 （本机 pytest 不可用：3.9 的 anyio/typing_extensions 错位）。
+
+### 开源打包：`creator-studio-timeline`（已生成可发布目录）
+
+```bash
+bash scripts/export_timeline_repo.sh --smoke   # -> dist/creator-studio-timeline/（dist/ 已 gitignore）
+```
+
+发布包内容：`timeline_render.py` / `deliver.py` / `platform_profiles.py` + 三个测试 +
+公开 README + `examples/spec.json` + `examples/make_demo_assets.py` + `requirements.txt` +
+`.github/workflows/ci.yml` + 生成物 `expected_labels.py` + MIT `LICENSE`。
+
+脚本不是手抄而是生成，并在末尾就地验证：**48 项 unittest + 34 项平台档案全绿**，
+真渲染 9 秒 1080x1920 母版并出 douyin 规格；再整目录拷到 `/tmp` 按 README 四步原样复现
+（缺 `--spec`、素材不存在都按 spec 错误 `EXIT=2`，不会产出"看起来成功"的坏文件）。
+`expected_labels.py` 从 `platform_registry.LABELS` 现抽，避免发布包里的测试自我证明。
+
+诚实边界：① 17 个平台档案仍全是 `assumed`，README 把它写在显眼处并要求按自家账号后台改；
+② CI 只在本机 python3 验证过，GitHub Actions runner（apt ffmpeg + fonts-noto-cjk）还没真跑；
+③ 「从没跑过本项目的机器」这条验收被 GitHub 建仓阻塞，账号/仓库名定了再补一格。
 
 ## 6. 常用命令
 
