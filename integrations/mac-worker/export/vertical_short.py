@@ -309,8 +309,10 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 "motion": {"type": "none", "amplitude": 0.0, "period": 1.0},
             })
         # 一行一行落：每行 0.12s 间隔淡入，比整屏切过去更像有人在讲
+        # 叠化中段就把字提上来，否则新屏会先空 0.4 秒
+        lead = XFADE * 0.5 if i > 0 else 0.0
         for n, layer in enumerate(text_layers):
-            at = t + 0.10 + 0.12 * n
+            at = max(0.0, t - lead + 0.10 + 0.12 * n)
             overlay.append({
                 "src": str(layer["png"]),
                 "start": round(at, 3),
@@ -345,9 +347,15 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                         frame, workdir, f"c{i:02d}_{use_pose}_{mouth}.png")
                     start = t + elapsed
                     end = start + seg
-                    if i == 0 and elapsed == 0.0:
+                    head = elapsed == 0.0
+                    if head and i == 0:
                         start = max(0.0, start - FADE)
-                    fade_in = FADE if (i == 0 and elapsed == 0.0) else 0.0
+                    elif head:
+                        # 人物跟着叠化一起露面，别在换屏瞬间凭空出现
+                        start = max(0.0, start - lead)
+                    fade_in = FADE if head else 0.0
+                    if head and i > 0:
+                        fade_in = max(fade_in, 0.25)
                     fade_out = FADE if (i == total - 1 and end >= t + dur - 1e-6) else 0.0
                     overlay.append({
                         "src": str(frame),
