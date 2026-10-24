@@ -27,4 +27,5 @@ Studio 的「干货卡一键出片」入口：填选题、开场钩子、要点�
 
 - `index.tsx`：表单 UI、错误/成功提示、提交
 - `utils.ts`：常量、`标题::说明` 解析、校验、`buildFactCardSpec` / `buildFactCardRunInput`
+- `copyCheck.ts`：提交前的文案体检（模板词、句子节奏、卡面与口播重复），只返回命中项，不挡提交
 - 文案：`src/app/i18n/locales/{zh-CN,en}/studio.json` 的 `factCard.*`

@@ -18,8 +18,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Clapperboard, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { checkCopy } from './copyCheck'
+import type { CopyScope, CopyWarn } from './copyCheck'
 import {
+  DEFAULT_FACT_CARD_CTA,
   DEFAULT_FACT_CARD_KICKER,
   DEFAULT_FACT_CARD_POINTS,
   DEFAULT_FACT_CARD_VOICE,
@@ -34,6 +37,17 @@ import {
 import type { FactCardFormError, FactCardFormValues, FactCardOutput } from './utils'
 
 const hintClass = 'text-[11px] text-muted-foreground'
+
+const COPY_SCOPE_KEYS: Record<CopyScope, string> = {
+  all: 'factCard.copyCheck.scope.all',
+  hook: 'factCard.copyCheck.scope.hook',
+  topic: 'factCard.copyCheck.scope.topic',
+  cta: 'factCard.copyCheck.scope.cta',
+  points: 'factCard.copyCheck.scope.points',
+  voice: 'factCard.copyCheck.scope.voice',
+  point: 'factCard.copyCheck.scope.point',
+  spoken: 'factCard.copyCheck.scope.spoken',
+}
 
 interface FactCardFormProps {
   /** 制作项目 id → 名称，和新建时间轴任务共用同一份项目列表。 */
@@ -56,6 +70,15 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<FactCardFormError | null>(null)
   const [createdRunId, setCreatedRunId] = useState('')
+
+  // 出片前先过一遍体检：命中的地方改完再提交，不用等渲染完才发现文案有问题。
+  const copyWarns = useMemo(() => checkCopy({
+    topic,
+    hook,
+    points,
+    cta: DEFAULT_FACT_CARD_CTA,
+    narration: narration.split('\n').map(line => line.trim()).filter(Boolean),
+  }), [topic, hook, points, narration])
 
   const projectIds = Object.keys(projects)
   // 和「新建时间轴任务」一致：没手动选项目时用列表第一个。
@@ -218,6 +241,25 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
             </div>
             <span className={hintClass}>{t('factCard.pointsHint')}</span>
           </div>
+
+          {copyWarns.length > 0 && (
+            <ul className="flex flex-col gap-1 sm:col-span-2">
+              {copyWarns.map((warn) => {
+                const scope = t(COPY_SCOPE_KEYS[warn.scope], { index: warn.index })
+                const detail = t(`factCard.copyCheck.${warn.code}`, warn.params)
+                return (
+                  <li
+                    key={`${warn.code}-${warn.scope}-${warn.index ?? 0}`}
+                    className="text-xs text-muted-foreground"
+                  >
+                    {scope}
+                    {' · '}
+                    {detail}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="fact-card-voice">{t('factCard.voice')}</Label>
