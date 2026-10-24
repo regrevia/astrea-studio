@@ -54,6 +54,9 @@ function RunRow({ run, projectName }: { run: ProductionRun, projectName?: string
   const outputPlatforms = Object.entries(run.output?.platforms ?? {})
   // 文案体检只有 warn 值得上屏；info 是可改可不改的建议，不占位置。
   const copyWarnings = (run.output?.copyCheck?.findings ?? []).filter(f => f.level === 'warn' && f.detail)
+  // 画面体检同理：黑场、卡面缺字这种硬伤先报，剩下的按顺序带一条。
+  const qaFindings = (run.output?.videoQa?.findings ?? []).filter(f => f.detail)
+  const qaFirst = qaFindings.find(f => f.level === 'error') ?? qaFindings[0]
 
   return (
     <div className="flex items-start gap-3 rounded-lg border p-3">
@@ -101,6 +104,15 @@ function RunRow({ run, projectName }: { run: ProductionRun, projectName?: string
             {' '}
             {copyWarnings[0].detail}
             {copyWarnings.length > 1 ? ` 等 ${copyWarnings.length} 处` : ''}
+          </p>
+        )}
+
+        {qaFirst && (
+          <p className="mt-1 line-clamp-2 text-xs text-amber-600">
+            画面 ·
+            {' '}
+            {qaFirst.detail}
+            {qaFindings.length > 1 ? ` 等 ${qaFindings.length} 处` : ''}
           </p>
         )}
 

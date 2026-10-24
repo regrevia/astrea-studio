@@ -51,6 +51,7 @@ export interface ProductionRunOutput {
   canvas?: ProductionCanvas
   platforms?: Record<string, ProductionPlatformVideo>
   copyCheck?: ProductionCopyCheck
+  videoQa?: ProductionVideoQa
 }
 
 /** 文案体检里的一条提醒。level 为 warn 才值得上屏，info 是可选建议。 */
@@ -72,6 +73,13 @@ export interface ProductionCopyCheck {
     max_len?: number
     spread?: number
   }
+}
+
+/** 出片体检：时长、黑场、卡面缺字、人物缺席。ok=false 表示画面有硬伤。 */
+export interface ProductionVideoQa {
+  ok?: boolean
+  duration?: number
+  findings?: ProductionCopyFinding[]
 }
 
 /** 制作任务。 */
