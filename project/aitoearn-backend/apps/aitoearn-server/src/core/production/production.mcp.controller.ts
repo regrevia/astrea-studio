@@ -4,6 +4,7 @@ import { PublicationDispatcher } from '@yikart/mongodb'
 import { Tool } from '@yikart/nest-mcp'
 import { z } from 'zod'
 import { ProductionService } from './production.service'
+import { normalizeRunSpec } from './production.run-spec'
 
 /**
  * Studio tools for Codex.
@@ -28,6 +29,8 @@ const CreateRunSchema = z.object({
   projectId: z.string().describe('项目 ID'),
   title: z.string().min(1).describe('任务标题'),
   brief: z.string().default('').describe('用户原始需求，用自然语言写'),
+  engine: z.string().optional().describe('渲染通道：motion/slides/jianying/timeline，缺省走 MoneyPrinterTurbo'),
+  template: z.string().optional().describe('版式模板，比如 factcard（竖屏干货卡）'),
   spec: z.record(z.string(), z.unknown()).optional().describe('结构化制作规格：时长、比例、字幕、模板等'),
   facts: z.record(z.string(), z.unknown()).optional().describe('项目事实：产品名、卖点、禁止出现的说法'),
 })
@@ -108,7 +111,7 @@ export class ProductionMcpController {
       projectId: params.projectId,
       title: params.title,
       brief: params.brief ?? '',
-      spec: params.spec,
+      spec: normalizeRunSpec(params),
       facts: params.facts,
     })
     return toTextResult(

@@ -16,6 +16,7 @@ import { ApiDoc, AppException, createZodDto, ResponseCode } from '@yikart/common
 import { ProductionJobStatus, PublicationDispatcher, PublicationStatus } from '@yikart/mongodb'
 import { z } from 'zod'
 import { ProductionService } from './production.service'
+import { normalizeRunSpec } from './production.run-spec'
 
 const CreateProjectSchema = z.object({
   name: z.string().min(1).describe('项目名'),
@@ -40,6 +41,8 @@ const CreateRunSchema = z.object({
   projectId: z.string().describe('项目 ID'),
   title: z.string().min(1).describe('标题'),
   brief: z.string().default('').describe('用户原始需求'),
+  engine: z.string().optional().describe('渲染通道：motion/slides/jianying/timeline，缺省走 MoneyPrinterTurbo'),
+  template: z.string().optional().describe('版式模板，比如 factcard'),
   spec: z.record(z.string(), z.unknown()).optional().describe('结构化制作规格'),
   facts: z.record(z.string(), z.unknown()).optional().describe('项目事实'),
 })
@@ -186,7 +189,10 @@ export class ProductionController {
   @ApiDoc({ summary: '新建任务（立即返回 runId）', body: CreateRunDto.schema })
   @Post('runs')
   async createRun(@GetToken() token: TokenInfo, @Body() body: CreateRunDto) {
-    const run = await this.production.createRun(token.id, body)
+    const run = await this.production.createRun(token.id, {
+      ...body,
+      spec: normalizeRunSpec(body),
+    })
     return {
       runId: run.id,
       status: run.status,

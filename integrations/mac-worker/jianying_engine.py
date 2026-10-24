@@ -48,19 +48,31 @@ DRAFT_ROOT = HOME / "Movies" / "JianyingPro" / "User Data" / "Projects" / "com.l
 
 # ---------------------------------------------------------------- HTTP 层
 
-def _post(path: str, payload: dict[str, Any], timeout: int = 600) -> dict[str, Any]:
+def _post(path: str, payload: dict[str, Any], timeout: int = 600,
+          attempts: int = 3) -> dict[str, Any]:
+    """调 VectCutAPI。瞬时故障重试三次，业务错（比如同轨叠加）立刻抛。"""
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(
-        f"{VCUT_BASE}{path}", data=data,
-        headers={"Content-Type": "application/json"}, method="POST")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.URLError as exc:
-        raise JianyingError(f"VectCutAPI unreachable at {VCUT_BASE}: {exc}") from exc
-    if not body.get("success"):
-        raise JianyingError(f"{path} failed: {body.get('error') or body}")
-    return body.get("output") or {}
+    last: Exception | None = None
+    for i in range(attempts):
+        req = urllib.request.Request(
+            f"{VCUT_BASE}{path}", data=data,
+            headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            last = exc
+            if i + 1 < attempts:
+                time.sleep(2 * (i + 1))
+                continue
+            raise JianyingError(
+                f"VectCutAPI 连不上 {VCUT_BASE}（{exc}）。"
+                "确认服务在跑：curl -s localhost:9100/get_transition_types | head -c 100"
+            ) from exc
+        if not body.get("success"):
+            raise JianyingError(f"{path} failed: {body.get('error') or body}")
+        return body.get("output") or {}
+    raise JianyingError(f"{path} failed after {attempts} attempts: {last}")
 
 
 def _get(path: str, timeout: int = 60) -> dict[str, Any]:
@@ -379,13 +391,20 @@ def _tts(text: str, out: Path, voice: str) -> None:
     env = dict(os.environ)
     env["MPT_HOME"] = str(MPT_HOME)
     env["PYTHONPATH"] = str(MPT_HOME)
-    r = subprocess.run(
-        [str(python), "-c", code, text, voice, str(out)],
-        capture_output=True, text=True, cwd=str(MPT_HOME), env=env, timeout=240,
-    )
-    if not out.exists() or out.stat().st_size < 1000:
+    tail = "no output"
+    for attempt in range(3):
+        if out.exists():
+            out.unlink()
+        r = subprocess.run(
+            [str(python), "-c", code, text, voice, str(out)],
+            capture_output=True, text=True, cwd=str(MPT_HOME), env=env, timeout=240,
+        )
+        if out.exists() and out.stat().st_size >= 1000:
+            return
         tail = (r.stderr or r.stdout or "no output").strip()[-300:]
-        raise JianyingError(f"tts failed ({voice}): {tail}")
+        if attempt < 2:
+            time.sleep(3 * (attempt + 1))
+    raise JianyingError(f"tts failed ({voice}) 重试 3 次: {tail}")
 
 
 def _dur(path: Path) -> float:
