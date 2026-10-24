@@ -199,6 +199,10 @@ export interface FactCardSpec {
   voice: FactCardVoice
   /** 系列名，显示在卡面左上角。 */
   kicker: string
+  /** 开场口播，留空由 worker 用「选题。钩子」。要点口播随 points 第三段下发。 */
+  narration?: {
+    intro?: string
+  }
 }
 
 /** 创建干货卡任务的请求体。 */

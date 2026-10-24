@@ -74,7 +74,11 @@
       "pointFormat": "Point {{index}} must use the \"title::detail\" format (double colon)",
       "noProject": "No production project yet. Create a project before rendering.",
       "submitFailed": "Submit failed: {{message}}",
-      "unknown": "unknown error"
-    }
+      "unknown": "unknown error",
+      "narrationLines": "Script line count is off: use {withIntroOutro} lines (with intro and outro) or {pointsOnly} lines (points only)."
+    },
+    "narration": "Voice-over script",
+    "narrationPlaceholder": "One line per screen: intro, point 1, point 2…, outro",
+    "narrationHint": "Optional. Full script = {withIntroOutro} lines; points only = {pointsOnly} lines."
   }
 }

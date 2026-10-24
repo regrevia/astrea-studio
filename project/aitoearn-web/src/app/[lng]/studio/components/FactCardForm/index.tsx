@@ -3,8 +3,8 @@
 /**
  * FactCardForm - 干货卡一键出片表单
  *
- * 填选题 + 开场钩子 + 「标题::说明」要点 + 音色，一次提交就排一条 factcard 渲染任务。
- * worker 在宿主机逐屏出卡并配音，交付物直接落进剪映草稿箱，不需要手动导入。
+ * 填选题、开场钩子、「标题::说明」要点与音色，提交即排一条出片任务。
+ * 出片流程逐屏出卡并配音，成品落进剪映草稿箱，不需要手动导入。
  */
 
 import type { FactCardVoice } from '@/api/production/production.types'
@@ -27,6 +27,7 @@ import {
   MAX_FACT_CARD_POINTS,
   MIN_FACT_CARD_POINTS,
   buildFactCardRunInput,
+  factCardNarrationLineCounts,
   isFactCardVoice,
   validateFactCardForm,
 } from './utils'
@@ -45,6 +46,7 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
   const { t } = useTransClient('studio')
   const [topic, setTopic] = useState('')
   const [hook, setHook] = useState('')
+  const [narration, setNarration] = useState('')
   const [points, setPoints] = useState<string[]>(
     () => Array.from({ length: DEFAULT_FACT_CARD_POINTS }, () => ''),
   )
@@ -75,7 +77,7 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
     setError(null)
     setCreatedRunId('')
 
-    const values: FactCardFormValues = { topic, hook, points, voice, kicker }
+    const values: FactCardFormValues = { topic, hook, points, narration, voice, kicker }
     const invalid = validateFactCardForm(values)
     if (invalid) {
       setError(invalid)
@@ -149,6 +151,23 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
               placeholder={t('factCard.hookPlaceholder')}
               onChange={event => setHook(event.target.value)}
             />
+          </div>
+
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <Label htmlFor="fact-card-narration">{t('factCard.narration')}</Label>
+            <Textarea
+              id="fact-card-narration"
+              rows={points.length + 2}
+              value={narration}
+              placeholder={t('factCard.narrationPlaceholder')}
+              onChange={event => setNarration(event.target.value)}
+            />
+            <span className={hintClass}>
+              {t('factCard.narrationHint', {
+                pointsOnly: factCardNarrationLineCounts(points.length).pointsOnly,
+                withIntroOutro: factCardNarrationLineCounts(points.length).withIntroOutro,
+              })}
+            </span>
           </div>
 
           <div className="flex flex-col gap-2 sm:col-span-2">
