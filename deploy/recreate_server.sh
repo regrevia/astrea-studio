@@ -1,54 +1,38 @@
 #!/usr/bin/env bash
 # 用本地已构建的镜像重建 aitoearn-server 容器。
-# 为什么不用 docker compose：本机 docker-compose.yml 里还有 mongo/redis/ai 等
-# 服务的 `pull_policy: always`，而 Docker Hub 在本机不可达（registry EOF），
-# 导致 `up --force-recreate aitoearn-server` 在拉别的镜像时就整体失败。
+#
+# 两个坑都踩过，所以这里不做「删了再 docker run」：
+#   1. 先删容器再启动，镜像名/网络名写错就直接把服务删没了（nginx 502）。
+#   2. 根目录 docker-compose.yml 是模板，服务名带 pull_policy: always，
+#      Docker Hub 在本机不可达（registry EOF），一拉别的镜像就整体失败。
+# 现在统一走 render_config.py 生成的运行时 compose（pull_policy: never），
+# 并在重建后 reload nginx：容器 IP 变了，nginx 启动时解析的旧 IP 会 502。
 set -euo pipefail
 
 IMAGE="${1:-creator-studio/aitoearn-server:local}"
 NAME=creatorstudio-aitoearn-server-1
+COMPOSE="$HOME/CreatorStudio/config/compose.yml"
 ENVFILE="$HOME/CreatorStudio/config/compose.env"
 
-# 从现有容器抄环境变量与启动参数，避免手写出错
-# macOS 自带 bash 3.2 没有 mapfile，用 while read 兼容
-ENVS=()
-while IFS= read -r line; do
-  [ -n "$line" ] && ENVS+=("$line")
-done < <(docker inspect "$NAME" --format '{{range .Config.Env}}{{println .}}{{end}}')
-MOUNTS=$(docker inspect "$NAME" --format '{{range .Mounts}}-v {{.Source}}:{{.Destination}} {{end}}')
-NET=$(docker inspect "$NAME" --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')
+docker image inspect "$IMAGE" >/dev/null 2>&1 || {
+  echo "镜像不存在: $IMAGE（先跑 bash deploy/build_images.sh aitoearn-server）" >&2
+  exit 1
+}
+[ -f "$COMPOSE" ] || { echo "缺少运行时配置: $COMPOSE（先跑 python3 deploy/render_config.py）" >&2; exit 1; }
 
 echo "镜像: $IMAGE"
-echo "网络: $NET"
+STUDIO_IMAGE_SERVER="$IMAGE" docker compose -p creatorstudio \
+  --env-file "$ENVFILE" -f "$COMPOSE" \
+  up -d --no-deps --pull never --force-recreate aitoearn-server
 
-docker rm -f "$NAME" >/dev/null 2>&1 || true
-
-ENVARGS=()
-for e in "${ENVS[@]}"; do
-  case "$e" in
-    PATH=*|HOSTNAME=*|HOME=*|NODE_VERSION=*|YARN_VERSION=*|PKG_RELEASE=*|NODE_ENV=*) ;;
-    *) ENVARGS+=(-e "$e") ;;
-  esac
-done
-
-# shellcheck disable=SC2086
-docker run -d \
-  --name "$NAME" \
-  --network "$NET" \
-  --network-alias aitoearn-server \
-  --restart unless-stopped \
-  "${ENVARGS[@]}" \
-  $MOUNTS \
-  --health-cmd "node -e \"require('http').get('http://localhost:3002/health', r => process.exit(r.statusCode === 200 ? 0 : 1))\"" \
-  --health-interval 30s --health-timeout 10s --health-retries 3 --health-start-period 60s \
-  --entrypoint docker-entrypoint.sh \
-  "$IMAGE" \
-  sh -c 'exec pm2-runtime start apps/${APP_NAME}/src/main.js --name ${APP_NAME} -- -c config.yaml'
-
-echo "已启动，等待 healthy..."
+echo "等待 healthy..."
 for i in $(seq 1 30); do
   sleep 4
-  st=$(docker inspect "$NAME" --format '{{.State.Health.Status}}' 2>/dev/null || echo unknown)
+  st=$(docker inspect "$NAME" --format '{{.State.Health.Status}}' 2>/dev/null || echo absent)
   echo "  [$i] $st"
   [ "$st" = "healthy" ] && break
 done
+
+# 容器 IP 会变，nginx 需要重新解析上游，否则 /api 一直 502
+docker exec creatorstudio-nginx-1 nginx -s reload >/dev/null 2>&1 || true
+echo "=== aitoearn-server up"

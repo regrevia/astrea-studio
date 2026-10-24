@@ -77,8 +77,12 @@ function normalizeRunOutput(
     ? result['copyCheck'] as Record<string, unknown>
     : null
 
+  const videoQa = result['videoQa'] !== null && typeof result['videoQa'] === 'object'
+    ? result['videoQa'] as Record<string, unknown>
+    : null
+
   const videoKey = typeof result['videoKey'] === 'string' ? result['videoKey'] : ''
-  if (!videoKey && !Object.keys(platforms).length && !copyCheck) {
+  if (!videoKey && !Object.keys(platforms).length && !copyCheck && !videoQa) {
     return null
   }
   const output: Record<string, unknown> = { ...existing }
@@ -99,6 +103,9 @@ function normalizeRunOutput(
   }
   if (copyCheck) {
     output['copyCheck'] = copyCheck
+  }
+  if (videoQa) {
+    output['videoQa'] = videoQa
   }
   return output
 }

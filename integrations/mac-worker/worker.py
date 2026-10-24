@@ -31,6 +31,7 @@ from render_mpt import RenderError, render as render_mpt
 from slides_render import SlidesError, render_from_payload as render_slides
 from motion_render_engine import render_motion, MotionError
 from jianying_engine import render_jianying, JianyingError
+import video_qa
 from export import timeline_render as timeline
 from export import vertical_short as vertical
 from export import deliver as delivery
@@ -499,6 +500,10 @@ class Worker:
         }
         if copy_report is not None:
             result["copyCheck"] = copy_report
+        try:
+            result["videoQa"] = video_qa.check(Path(ev["output"]), Path(spec_path))
+        except Exception as exc:  # 体检失败不该让成片白跑，记一条就够
+            log.warning("job %s video qa failed: %s", job_id, exc)
 
         # load_spec 只保留它认识的键，platforms/fit 得从原始 spec 里取
         src_spec = spec_obj if isinstance(spec_obj, dict) else {}
