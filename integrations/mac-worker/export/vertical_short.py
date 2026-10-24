@@ -117,6 +117,25 @@ def _block_layers(text: str, size: int, top: int, workdir: Path, prefix: str, *,
     return out
 
 
+def _stage(cfg: dict, idx: int, total: int) -> dict:
+    """按屏给人物换机位：整片钉死在一个角上，再灵的口型也像贴图。
+
+    开头略远（把话说给你听），正文推进，收尾靠近（话是对着你说的）。
+    脚本里显式给了 width/x/y 就照用，这里只补空位。
+    """
+    out = dict(cfg)
+    if idx == 0:
+        want = {"width": 566, "x": 586, "y": 1062}
+    elif idx == total - 1:
+        want = {"width": 664, "x": 494, "y": 966}
+    else:
+        want = {"width": 620, "x": 560, "y": 1014}
+    for k, v in want.items():
+        if not out.get(k):
+            out[k] = v
+    return out
+
+
 def _title_layers(text: str, workdir: Path, idx: int) -> list[dict]:
     """要点标题：贴左边强调条，和原来烧进卡面的位置一致。"""
     text = " ".join(str(text or "").split())
@@ -331,6 +350,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             if not char_cfg.get("gesture_sync", True):
                 alt_pose = None
             motion = _pose_motion(pose)
+            char_scene = _stage(char_cfg, i, total)
             beats = _beats(say, dur, i == total - 1, char_cfg)
             switch_at = 0.55
             elapsed = 0.0
@@ -339,7 +359,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 if alt_pose and dur > 0 and (elapsed / dur) >= switch_at:
                     use_pose = alt_pose
                 frame = JE._character_frame(
-                    char_cfg, i, total, workdir, spec["width"], spec["height"],
+                    char_scene, i, total, workdir, spec["width"], spec["height"],
                     speaking=bool(say), scene=scene, pose=use_pose, mouth=mouth,
                 )
                 if frame is not None:
