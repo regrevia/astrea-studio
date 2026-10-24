@@ -322,8 +322,10 @@ def render_previews(spec: dict, out_dir: Path) -> list[Path]:
         title_px = max(24, int(float(native.get("font_size") or 12) * w / 195))
         cy = h / 2 - float(native.get("transform_y", -0.45)) * h / 2
         cx = w / 2 + float(native.get("transform_x") or 0) * w / 2
+        # 预览必须用和剪映同一个行距，否则自查看到的行距不是成片的行距
+        title_spacing = 1 + float(native.get("line_spacing", 0.25))
         _draw_centered(page, scene.get("text") or "", _font(title_px), cx, cy,
-                       (255, 255, 255), w * 0.72)
+                       (255, 255, 255), w * 0.72, spacing=title_spacing)
         cap = scene.get("caption") or ""
         if cap:
             cap_px = max(20, int(float(native.get("caption_size") or 9) * w / 195))
@@ -431,6 +433,7 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
         "voice": voice,
         "native": {
             "font": TITLE_FONT, "font_size": _title_size(topic),
+            "line_spacing": 0.1,
             "transform_y": 0.458, "caption_size": 8, "caption_y": -0.72,
             "text_anim_in": "居中打字",
             "text_anim_out": "向上溶解",

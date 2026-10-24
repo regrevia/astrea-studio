@@ -797,6 +797,9 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                 body["font_color"] = str(native["color"])
             if native.get("bold"):
                 body["bold"] = True
+            # 两行标题用默认行距（0.25）会散成两段，标题要压紧成一整块
+            if native.get("line_spacing") is not None:
+                body["line_spacing"] = float(native["line_spacing"])
             if native.get("width"):
                 body["width"] = float(native["width"])
             body["track_name"] = str(native.get("text_track") or "text_main")
