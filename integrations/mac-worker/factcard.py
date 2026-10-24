@@ -279,11 +279,20 @@ def _first_sentence(text: str, limit: int = 30) -> str:
     return text[:cut]
 
 
+def _fallback_say(title: str, body: str) -> str:
+    """没写口播稿时，短说明补个标题当主语，长说明直接念，别念成清单。"""
+    text = str(body or "").strip()
+    if len(text) >= 8:
+        return text
+    return f"{title}。{text}".strip("。")
+
+
 def _parse_point(raw: object) -> tuple[str, str, str]:
     """要点支持「标题::说明」和「标题::说明::口播稿」两种写法。
 
     屏幕文案和嘴里说的话是两件事：卡面上要短，口播要顺口。
-    不给口播稿时退回「标题。说明」，至少能出片。
+    不给口播稿时用说明直接念：说明本来就是你写的一句话，
+    再叠一遍「标题。」就变成念要点清单了。
     """
     if isinstance(raw, dict):
         title = str(raw.get("title") or "").strip()
@@ -291,14 +300,14 @@ def _parse_point(raw: object) -> tuple[str, str, str]:
         say = str(raw.get("say") or raw.get("narration") or "").strip()
         if not body and not say:
             raise ValueError(f"要点缺说明：{raw}")
-        return title, body, say or f"{title}。{body}".strip("。")
+        return title, body, say or _fallback_say(title, body)
     parts = [p.strip() for p in str(raw).split("::")]
     title = parts[0] if parts else ""
     body = parts[1] if len(parts) > 1 else ""
     say = parts[2] if len(parts) > 2 else ""
     if not body and not say:
         raise ValueError(f"要点格式应为「标题::说明[::口播稿]」：{raw}")
-    return title, body, say or f"{title}。{body}".strip("。")
+    return title, body, say or _fallback_say(title, body)
 
 
 def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
