@@ -126,7 +126,7 @@ def _stage(cfg: dict, idx: int, total: int) -> dict:
     """
     out = dict(cfg)
     if idx == 0:
-        want = {"width": 566, "x": 586, "y": 1062}
+        want = {"width": 700, "x": 320, "y": 830}
     elif idx == total - 1:
         want = {"width": 664, "x": 494, "y": 966}
     else:
@@ -399,6 +399,12 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     kicker = str(script.get("kicker") or factcard.DEFAULT_KICKER)
     for i, sc in enumerate(scenes):
         card = Path(str(sc["image"]))
+        if i == 0:
+            # 封面卡自己铺：build_spec 那张带一条钩子分隔线，字被挪到进度条下之后
+            # 分隔线就孤零零挂在正文底下，像没删干净的版式零件
+            card = factcard.render_card(
+                workdir / "cover.png", kicker=kicker, index="", palette_idx=0,
+                progress=0, total=total, slug="cover", plain=True, draw_body=False)
         if i == total - 1 and not script.get("cta_card"):
             # 收尾空卡 + 一句飘着的字，最容易读成「没做完」：给收尾也铺一块卡面
             card = factcard.render_card(
@@ -407,8 +413,9 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 total=total, slug="cta", hook=False, draw_body=False)
         cards.append(card)
         if i == 0:
-            layers = _block_layers(hook_text, factcard.HOOK_SIZE, 800, workdir, f"h{i:02d}",
-                                   align="center", left=124, max_w=center_w,
+            # 封面：标题靠左压在进度条下，人物占右下，两者拼成一条对角线
+            layers = _block_layers(hook_text, factcard.HOOK_SIZE, 470, workdir, f"h{i:02d}",
+                                   align="left", left=124, max_w=640,
                                    fill=(255, 255, 255, 214))
         elif i == total - 1:
             # 卡面左上角是空的强调条，配一句栏目名才不像是漏排了
