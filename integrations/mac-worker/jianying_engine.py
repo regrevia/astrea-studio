@@ -983,7 +983,8 @@ def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
                      width: int, height: int, speaking: bool,
                      scene: dict[str, Any] = None,
                      pose: str = "",
-                     mouth: str = "") -> Path | None:
+                     mouth: str = "",
+                     eyes: str = "") -> Path | None:
     """把立绘贴到一张透明画布上，交回剪映当独立图层（可单独做动效）。"""
     from PIL import Image, ImageDraw
 
@@ -991,8 +992,8 @@ def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
 
     pose = pose or str(cfg.get("pose") or _scene_pose(cfg, idx, total, scene or {}))
     mouth = mouth or _character_mouth(idx, speaking, scene or {})
-    # 高兴时眯眼，是这套立绘里唯一能读出情绪的五官开关
-    eyes = "closed" if pose == "happy" else "open"
+    # 高兴时眯眼，是这套立绘里唯一能读出情绪的五官开关；眨眼由调用方按时间点传
+    eyes = eyes or ("closed" if pose == "happy" else "open")
     key = (pose, mouth, eyes)
     figure = _CHAR_FRAME_CACHE.get(key)
     if figure is None:

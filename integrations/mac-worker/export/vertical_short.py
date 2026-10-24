@@ -188,6 +188,40 @@ _POSE_MOTION = {
 }
 
 
+BLINK_WINDOW = 0.09   # 一次眨眼占 90ms：再长会像睡着，再短检查不出来
+BLINK_MIN = 0.05      # 前后睁眼段别短于这个，否则一闪一闪像掉帧
+
+
+def _blink_times(dur: float, cfg: dict, idx: int) -> list[float]:
+    """每 2.6~3.8 秒眨一次眼，相位跟场景序号错开，免得整片动作像节拍器。"""
+    if cfg.get("blink") is False or dur < 1.2:
+        return []
+    seed = abs(hash(f"blink{idx}")) % 1000 / 1000.0
+    out: list[float] = []
+    at = 0.9 + seed * 0.9
+    while at < dur - 0.35:
+        out.append(round(at, 3))
+        at += 2.6 + (1.2 * seed if len(out) % 2 else 1.2 * (1 - seed))
+    return out
+
+
+def _blink_spans(start: float, seg: float, blinks: list[float]) -> list[tuple[float, float, str]]:
+    """把一段口型按眨眼点切成 (起点, 时长, 眼态)；眼态空串表示交给引擎默认。"""
+    cuts = [b for b in blinks if start < b < start + seg]
+    spans: list[tuple[float, float, str]] = []
+    cur = start
+    for b in cuts:
+        if b - cur > BLINK_MIN:
+            spans.append((cur, b - cur, ""))
+        close = min(BLINK_WINDOW, start + seg - b)
+        if close > 0:
+            spans.append((b, close, "closed"))
+            cur = b + close
+    if start + seg - cur > 1e-6:
+        spans.append((cur, start + seg - cur, ""))
+    return spans
+
+
 def _pose_motion(pose: str) -> dict:
     return dict(_POSE_MOTION.get(pose, _POSE_MOTION["idle"]))
 
@@ -508,20 +542,25 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             elapsed = 0.0
             prev_ov = None      # 上一段口型：换姿态时要和它交叉，不能硬替换
             prev_pose = None
+            blinks = _blink_times(dur, char_cfg, i)
             for mouth, seg in beats:
                 use_pose = pose
                 if alt_pose and dur > 0 and (elapsed / dur) >= switch_at:
                     use_pose = alt_pose
-                frame = JE._character_frame(
-                    char_scene, i, total, workdir, spec["width"], spec["height"],
-                    speaking=bool(say), scene=scene, pose=use_pose, mouth=mouth,
-                )
-                if frame is not None:
+                # 眨眼把一段口型切成「睁—眯—睁」：全片瞪着一只大眼不动，就是贴图
+                for s_at, s_seg, s_eyes in _blink_spans(elapsed, seg, blinks):
+                    frame = JE._character_frame(
+                        char_scene, i, total, workdir, spec["width"], spec["height"],
+                        speaking=bool(say), scene=scene, pose=use_pose, mouth=mouth,
+                        eyes=s_eyes,
+                    )
+                    if frame is None:
+                        continue
                     frame, fx, fy, fw = _crop_frame(
-                        frame, workdir, f"c{i:02d}_{use_pose}_{mouth}.png")
-                    start = t + elapsed
-                    end = start + seg
-                    head = elapsed == 0.0
+                        frame, workdir, f"c{i:02d}_{use_pose}_{mouth}_{s_eyes or 'open'}.png")
+                    start = t + s_at
+                    end = start + s_seg
+                    head = s_at == 0.0
                     if head and i == 0:
                         start = max(0.0, start - FADE)
                     elif head:
