@@ -441,8 +441,11 @@ class Worker:
 
         # 竖屏 factcard 走同一条 timeline 通道：worker 自己把脚本展开成静帧卡 +
         # 立绘 + 配音的 spec，平台侧只发脚本文本，不用先算好时间轴
+        copy_report = None
         if isinstance(spec_obj, dict) and spec_obj.get("mode") == "vertical_short":
             progress(4, "timeline:script")
+            # 文案体检跟着母版一起回给平台：写稿的人在 run 详情里就能看到
+            copy_report = vertical._copy_report(spec_obj)
             try:
                 built = vertical.build_spec(
                     spec_obj, workdir,
@@ -494,6 +497,8 @@ class Worker:
             "renderSeconds": ev["seconds"],
             "deliveries": [],
         }
+        if copy_report is not None:
+            result["copyCheck"] = copy_report
 
         # load_spec 只保留它认识的键，platforms/fit 得从原始 spec 里取
         src_spec = spec_obj if isinstance(spec_obj, dict) else {}

@@ -432,6 +432,33 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     }
 
 
+def _copy_report(script: dict) -> dict | None:
+    """竖屏这条链路也要体检文案：写稿的人看的是同一个结论。"""
+    try:
+        from copy_check import check_copy
+    except Exception:  # noqa: BLE001
+        return None
+    narr = script.get("narration")
+    narr = narr if isinstance(narr, dict) else {}
+    pts = [str(x) for x in (script.get("points") or [])]
+    says = [x.split("::")[2] if x.count("::") >= 2 else "" for x in pts]
+    spoken = [str(narr.get("intro") or "")] if narr.get("intro") else []
+    fallback = [str(x) for x in (narr.get("points") or [])]
+    spoken += [x for x in (says or fallback) if x]
+    if narr.get("cta"):
+        spoken.append(str(narr["cta"]))
+    try:
+        return check_copy(
+            topic=str(script.get("topic") or ""),
+            hook=str(script.get("hook") or ""),
+            points=pts,
+            cta=str(script.get("cta") or ""),
+            narration=spoken,
+        )
+    except Exception as exc:  # noqa: BLE001 - 体检失败不影响出片
+        return {"findings": [], "metrics": {}, "ok": True, "error": str(exc)[:160]}
+
+
 def render(script: dict, workdir: Path, mp4: Path, *,
            voice: str = "", logo: Path | None = None) -> dict:
     workdir = Path(os.path.expanduser(str(workdir)))
@@ -440,7 +467,8 @@ def render(script: dict, workdir: Path, mp4: Path, *,
     spec_path.write_text(json.dumps(spec, ensure_ascii=False, indent=2), encoding="utf-8")
     loaded = TR.load_spec(spec_path, base=workdir)
     ev = TR.render(loaded, mp4)
-    return {
+    copy_report = _copy_report(script)
+    out = {
         "engine": "vertical_short",
         "videoPath": ev["output"],
         "specPath": str(spec_path),
@@ -451,6 +479,9 @@ def render(script: dict, workdir: Path, mp4: Path, *,
         "audios": ev["audios"],
         "renderSeconds": ev["seconds"],
     }
+    if copy_report is not None:
+        out["copyCheck"] = copy_report
+    return out
 
 
 def main(argv=None) -> int:
