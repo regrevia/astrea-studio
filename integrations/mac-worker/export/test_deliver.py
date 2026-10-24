@@ -173,7 +173,7 @@ class TestPlan(unittest.TestCase):
 class TestRealEncode(unittest.TestCase):
     """用 testsrc2 + sine 生成母版，真跑 ffmpeg，再用亮度采样验几何。
 
-    testsrc2 有彩色方块和移动元素，模糊背景后顶部不会是黑；央黑边则恰好是 16。
+    testsrc2 有彩色方块和移动元素，模糊背景后顶部不会是黑；contain 黑边则恰好是 16。
     """
 
     @classmethod
