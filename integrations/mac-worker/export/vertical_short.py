@@ -74,43 +74,83 @@ def _fit_title(text: str, max_w: int, sizes=(66, 60, 54, 48)) -> tuple[int, list
     return sizes[-1], lines
 
 
-def _compose_card(scene: dict, out: Path, role: str) -> Path:
-    """把标题排进卡面。
+def _measure():
+    from PIL import Image, ImageDraw
+    return ImageDraw.Draw(Image.new("RGB", (8, 8)))
 
-    ``render_previews`` 用的是剪映层的相对坐标，直接搬来会顶到画布外；
-    mp4 这版按像素自己排，开场居中、要点贴左边强调条。
-    """
+
+def _text_layer(line: str, size: int, workdir: Path | None, name: str, *,
+                fill=(255, 255, 255, 240)) -> tuple[tuple[int, int], Path]:
+    """把一行字渲成紧贴字形的透明 PNG，返回 ((w,h), path)。"""
     from PIL import Image, ImageDraw
 
-    page = Image.open(scene["image"]).convert("RGB")
-    text = " ".join(str(scene.get("text") or "").split())
-    if text:
-        draw = ImageDraw.Draw(page)
-        if role == "hook":
-            size, lines = _fit_title(text, factcard.W - 240, sizes=(72, 66, 60, 54))
-            y = 640 - int(size * 1.25) * (len(lines) - 1) // 2
-            for ln in lines:
-                draw.text((factcard.W // 2, y), ln, font=factcard._font(size),
-                          fill=(255, 255, 255, 240), anchor="ma")
-                y += int(size * 1.28)
-        elif role == "cta":
-            # 结尾只有一句话，跟着要点卡片左对齐会显得又小又空：
-            # 居中放大、压在画面中段，人物在右下托住它。
-            size, lines = _fit_title(text, factcard.W - 200, sizes=(96, 88, 80, 72, 64))
-            y = 700 - int(size * 1.3) * (len(lines) - 1) // 2
-            for ln in lines:
-                draw.text((factcard.W // 2, y), ln, font=factcard._font(size),
-                          fill=(255, 255, 255, 245), anchor="ma")
-                y += int(size * 1.3)
-        else:
-            size, lines = _fit_title(text, 1004 - 140 - 24)
-            y = 512 if len(lines) > 1 else 542
-            for ln in lines:
-                draw.text((140, y), ln, font=factcard._font(size),
-                          fill=(255, 255, 255, 226))
-                y += int(size * 1.26)
-    page.save(out, "PNG")
+    font = factcard._font(size)
+    probe = ImageDraw.Draw(Image.new("L", (8, 8)))
+    box = probe.textbbox((0, 0), line, font=font)
+    pad = max(4, size // 8)
+    w = max(2, box[2] - box[0]) + pad * 2
+    w += w % 2  # 时间轴按 scale=w:-2 缩放，宽度必须偶数
+    h = max(1, box[3] - box[1]) + pad * 2
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ImageDraw.Draw(img).text((pad - box[0], pad - box[1]), line, font=font, fill=fill)
+    path = Path(workdir or "/tmp") / name
+    img.save(path, "PNG")
+    return (w, h), path
+
+
+def _block_layers(text: str, size: int, top: int, workdir: Path, prefix: str, *,
+                  align: str, left: int, max_w: int, fill, spacing: float = 1.42) -> list[dict]:
+    """一段正文按 factcard 的排版规则切成逐行贴片（行高、断句、对齐都跟卡面一致）。"""
+    text = " ".join(str(text or "").split())
+    if not text:
+        return []
+    draw = _measure()
+    font = factcard._font(size)
+    out: list[dict] = []
+    y = top
+    for n, ln in enumerate([ln for ln in factcard._wrap_text(draw, text, font, max_w) if ln]):
+        (w, _h), png = _text_layer(ln, size, workdir, f"{prefix}_l{n}.png", fill=fill)
+        x = left + (max_w - w) // 2 if align == "center" else left
+        out.append({"png": png, "x": int(x), "y": int(y), "w": int(w)})
+        y += int(size * spacing)
     return out
+
+
+def _title_layers(text: str, workdir: Path, idx: int) -> list[dict]:
+    """要点标题：贴左边强调条，和原来烧进卡面的位置一致。"""
+    text = " ".join(str(text or "").split())
+    if not text:
+        return []
+    size, lines = _fit_title(text, 1004 - 140 - 24)
+    top = 512 if len(lines) > 1 else 542
+    out: list[dict] = []
+    for n, ln in enumerate(lines):
+        (w, _h), png = _text_layer(ln, size, workdir, f"t{idx:02d}_{n}.png",
+                                   fill=(255, 255, 255, 226))
+        out.append({"png": png, "x": 140, "y": int(top + n * size * 1.26), "w": int(w)})
+    return out
+
+
+def _text_layer(line: str, size: int, workdir: Path | None, name: str, *,
+                align: str = "left", fill=(255, 255, 255, 240)):
+    """把一行字渲成紧贴字形的透明 PNG，返回 (path, w, h) 与相对基线偏移。"""
+    from PIL import Image, ImageDraw
+
+    font = factcard._font(size)
+    probe = ImageDraw.Draw(Image.new("L", (8, 8)))
+    box = probe.textbbox((0, 0), line, font=font)
+    pad = max(4, size // 8)
+    w = max(2, box[2] - box[0]) + pad * 2
+    w += w % 2  # 时间轴按 scale=w:-2 缩放，宽度必须偶数
+    h = max(1, box[3] - box[1]) + pad * 2
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.text((pad - box[0], pad - box[1]), line, font=font, fill=fill)
+    if workdir is None:
+        workdir = Path("/tmp")
+    path = Path(workdir) / name
+    img.save(path, "PNG")
+    return (w, h), path
 
 
 
@@ -198,20 +238,41 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         narration=narration if isinstance(narration, dict) else None,
         logo=logo,
         out_dir=workdir,
+        draw_text=False,
     )
     scenes = spec["scenes"]
     total = len(scenes)
     # 卡面文字自己排：预览版是给剪映层用的相对坐标，烧进 mp4 会溢出画面
     # 标题取原始文本：剪映层那份被压掉空格，"KV Cache" 会粘成 "KVCache"
-    raw_titles = [" ".join(str(script.get("topic") or "").split())]
+    raw_bodies = []
     for raw in points_raw:
-        raw_titles.append(" ".join(str(raw).split("::")[0].split()))
-    raw_titles.append("")
-    cards = []
+        parts = str(raw).split("::", 1)
+        raw_bodies.append(" ".join(parts[1].split()) if len(parts) > 1 else "")
+    hook_text = " ".join(str(script.get("hook") or factcard.DEFAULT_HOOK).split())
+    cta_text = " ".join(str(script.get("cta") or factcard.DEFAULT_CTA).split())
+    center_w = factcard.W - 248
+    cards: list[Path] = []
+    layer_sets: list[list[dict]] = []
     for i, sc in enumerate(scenes):
-        title = raw_titles[i] if i < len(raw_titles) else ""
-        cards.append(_compose_card({**sc, "text": title}, workdir / f"card{i:02d}.png",
-                                   "hook" if i == 0 else "cta" if i == total - 1 else "point"))
+        cards.append(Path(str(sc["image"])))
+        if i == 0:
+            layers = _block_layers(hook_text, factcard.HOOK_SIZE, 800, workdir, f"h{i:02d}",
+                                   align="center", left=124, max_w=center_w,
+                                   fill=(255, 255, 255, 214))
+        elif i == total - 1:
+            layers = _block_layers(cta_text, factcard.HOOK_SIZE, 700, workdir, f"h{i:02d}",
+                                   align="center", left=124, max_w=center_w,
+                                   fill=(255, 255, 255, 214))
+        else:
+            layers = _title_layers(str(sc.get("text") or ""), workdir, i)
+            body = raw_bodies[i - 1] if 0 < i <= len(raw_bodies) else ""
+            if body:
+                size, _n = factcard._body_size(body, _measure())
+                top = 700 + (56 if size >= 110 else 40 if size > factcard.BODY_SIZE else 0)
+                layers += _block_layers(body, size, top, workdir, f"b{i:02d}",
+                                        align="left", left=140, max_w=factcard.W - 264,
+                                        fill=(255, 255, 255, 236))
+        layer_sets.append(layers)
     char_cfg = script.get("character")
     if char_cfg is False:
         char_cfg = None
@@ -221,6 +282,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     video, overlay, audio = [], [], []
     t = 0.0
     for i, (scene, card) in enumerate(zip(scenes, cards)):
+        text_layers = layer_sets[i]
         say = str(scene.get("say") or "").strip()
         mp3 = workdir / f"a{i:02d}.mp3"
         if say:
@@ -235,6 +297,18 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             "fade_in": FADE if i == 0 else 0.0,
             "fade_out": FADE if i == total - 1 else 0.0,
         })
+        # 一行一行落：每行 0.12s 间隔淡入，比整屏切过去更像有人在讲
+        for n, layer in enumerate(text_layers):
+            at = t + 0.10 + 0.12 * n
+            overlay.append({
+                "src": str(layer["png"]),
+                "start": round(at, 3),
+                "end": round(t + dur, 3),
+                "x": float(layer["x"]), "y": float(layer["y"]),
+                "opacity": 1.0, "width": int(layer["w"]),
+                "fade": 0.30,
+                "motion": {"type": "none", "amplitude": 0.0, "period": 1.0},
+            })
         if char_cfg is not None:
             # 一屏一张立绘就是贴图：按口型拍点切成几段，手势在中段换一次，
             # 角色才是在"讲这句话"，而不是被贴上来定格。

@@ -174,7 +174,7 @@ def _body_size(text: str, measure=None, max_w: float = W - 264) -> tuple[int, in
 def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
                 progress: int, total: int, slug: str, hook: bool = False,
                 body: str = "", body_top: int = 640, plain: bool = False,
-                logo: Path | None = None) -> Path:
+                logo: Path | None = None, draw_body: bool = True) -> Path:
     """卡面底图：渐变 + 网格点 + 圆角描边卡 + 编号幽灵字 + 进度点。文字交给剪映。"""
     from PIL import Image, ImageDraw, ImageFilter
 
@@ -253,7 +253,7 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
                            fill=(*accent, 240))
 
     # 正文要点：出图阶段精排（字号/行距/安全区都是像素级控制）
-    if body:
+    if body and draw_body:
         if hook:
             _draw_block(overlay, body, HOOK_SIZE, body_top, 124, W - 248,
                         fill=(255, 255, 255, 214), spacing=1.42, align="center")
@@ -417,7 +417,8 @@ def _parse_point(raw: object) -> tuple[str, str, str]:
 
 def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
                voice: str, kicker: str, out_dir: Path,
-               narration: dict | None = None, logo: Path | None = None) -> dict:
+               narration: dict | None = None, logo: Path | None = None,
+               draw_text: bool = True) -> dict:
     """选题/要点 → 完整 scenes spec（含 5 张卡面 PNG）。"""
     scripts = [p for p in (points_raw or []) if str(p).strip()]
     points = [_parse_point(p) for p in scripts]
@@ -431,7 +432,7 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
     # 1) 开场钩子
     hook_img = render_card(out_dir / "s00.png", kicker=kicker, index="00",
                            palette_idx=0, progress=0, total=total, slug=slug, hook=True,
-                           body=hook, body_top=800, logo=logo)
+                           body=hook, body_top=800, logo=logo, draw_body=draw_text)
     scenes.append({
         "image": str(hook_img),
         "say": str(narration.get("intro") or f"{topic}。{hook}").strip(),
@@ -455,11 +456,12 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
     for i, (title, body, say) in enumerate(points, start=1):
         img = render_card(out_dir / f"s{i:02d}.png", kicker=kicker, index=f"0{i}",
                           palette_idx=i, progress=i, total=total, slug=slug,
-                          body=body, body_top=700)
+                          body=body, body_top=700, draw_body=draw_text)
         scenes.append({
             "image": str(img),
             "say": say,
             "text": _unwrap(title, 11),
+            "body": body,
                 "voice": voice,
             "native": {
                 # 要点标签降级成小号、贴左的栏目名：正文放大后它不该再当标题
@@ -484,7 +486,7 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
     cta_img = render_card(out_dir / f"s{total - 1:02d}.png", kicker=kicker, logo=logo,
                           index="", palette_idx=len(PALETTES) - 1, progress=total - 1,
                           total=total, slug=slug, hook=True,
-                          body=re.sub(r"\s+", "", cta), body_top=700)
+                          body=re.sub(r"\s+", "", cta), body_top=700, draw_body=draw_text)
     scenes.append({
         "image": str(cta_img),
         "say": str(narration.get("cta") or cta).strip(),
