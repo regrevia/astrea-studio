@@ -279,8 +279,13 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
             draw.ellipse((x - 1, y - 1, x + 1, y + 1), fill=(255, 255, 255, 18))
 
     if plain:
-        # 收尾卡不要空卡框：没有正文的圆角矩形只会显得空
-        draw.polygon([(0, 1180), (W, 1010), (W, 1340), (0, 1510)], fill=(*accent, 30))
+        # 开场是素底：原来那条斜切色块正压在立绘身上，像一块没对齐的板。
+        # 换成钩子文字后面一团柔光，字有底、人物也不被切。
+        glow = Image.radial_gradient("L").resize((1080, 1080))
+        glow = glow.point(lambda v: max(0, int(52 * (1 - v / 255))))
+        patch = Image.new("RGBA", (1080, 1080), (*accent, 0))
+        patch.putalpha(glow)
+        overlay.alpha_composite(patch, (0, 240))
     measure = ImageDraw.Draw(overlay)
     body_size, body_lines, body_top, card_bottom = (
         body_layout(body, measure, top=body_top) if body else (BODY_SIZE, [], body_top, 1000))
