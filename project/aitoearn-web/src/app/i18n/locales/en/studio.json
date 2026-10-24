@@ -43,7 +43,7 @@
   },
   "factCard": {
     "title": "One-click fact card",
-    "subtitle": "Pick a topic and points, submit once, and get a vertical fact card; the draft lands in the Jianying draft box automatically, no manual import.",
+    "subtitle": "Topic and points in, vertical card video out.",
     "topic": "Topic",
     "topicPlaceholder": "What is KV Cache",
     "hook": "Opening hook",
@@ -52,21 +52,19 @@
     "pointsCount": "{{min}}-{{max}} items",
     "pointLabel": "Point {{index}}",
     "pointPlaceholder": "Store only K and V::because Q is used once for this step",
-    "pointsHint": "Write each point as \"title::detail\" with a double colon; cards are rendered in the order you enter them.",
+    "pointsHint": "Each point reads \"title::detail\", split by a double colon.",
     "addPoint": "Add a point",
     "removePoint": "Remove this point",
     "voice": "Voice",
-    "voiceHint": "Voice is synthesized on this machine. Female by default.",
     "voiceOptions": {
       "female": "Sweet narration (female)",
       "male": "Narrator Xiaoshuai (male)"
     },
     "kicker": "Series name",
-    "kickerHint": "Shown at the top-left of each card; defaults to 大模型面试题.",
+    "kickerHint": "Shown at the top left of every card.",
     "submit": "Generate video",
-    "submitHint": "Cards and voice are generated scene by scene; the draft lands in Jianying in under a minute.",
-    "success": "Submitted: run {{runId}} is queued.",
-    "draftHint": "The draft appears in the Jianying draft box automatically; no manual import needed.",
+    "success": "Submitted as run {{runId}}.",
+    "draftHint": "The draft is in the Jianying draft box.",
     "openDraftBox": "Open draft box",
     "error": {
       "topicRequired": "Please fill in the topic",
@@ -79,6 +77,11 @@
     },
     "narration": "Voice-over script",
     "narrationPlaceholder": "One line per screen: intro, point 1, point 2…, outro",
-    "narrationHint": "Leave blank to read your notes aloud. {{withIntroOutro}} lines include opening and closing; {{pointsOnly}} lines replace the points only."
+    "narrationHint": "{{withIntroOutro}} lines include intro and outro; {{pointsOnly}} lines replace only the points.",
+    "output": "Output",
+    "outputOptions": {
+      "mp4": "MP4 directly",
+      "draft": "Jianying draft"
+    }
   }
 }

@@ -199,17 +199,22 @@ export interface TimelineSpecInput {
  * 前端只负责把用户填的内容按这个结构提交。
  */
 
+/** 干货卡出片通道：剪映草稿，或后台直接渲染 mp4。 */
+export type FactCardEngine = 'jianying' | 'timeline'
+
 /** 干货卡可用音色。BV405 甜美解说（女声），BV411 解说小帅（男声）。 */
 export type FactCardVoice = 'sami:BV405_streaming' | 'sami:BV411_streaming'
 
 /** 干货卡 spec。points 每项是「标题::说明」，建议 2-4 条。 */
 export interface FactCardSpec {
   /**
-   * 渲染通道按 `run.spec.engine` 派切：只有 jianying 才会出剪映草稿。
+   * 渲染通道按 `run.spec.engine` 派切：jianying 出剪映草稿，timeline 直接出 mp4。
    * 顶层 engine 会被接口 DTO 丢掉，所以 spec 里必须再带一份。
    */
-  engine: 'jianying'
+  engine: FactCardEngine
   template: 'factcard'
+  /** timeline 通道：worker 按脚本现场出卡面与配音，不用前端算时间轴。 */
+  mode?: 'vertical_short'
   /** 选题，同时作为开场字幕。 */
   topic: string
   /** 开场钩子，留空由 worker 用默认钩子。 */
@@ -229,7 +234,7 @@ export interface FactCardSpec {
 
 /** 创建干货卡任务的请求体。 */
 export interface CreateFactCardRunInput {
-  engine: 'jianying'
+  engine: FactCardEngine
   template: 'factcard'
   projectId: string
   title: string

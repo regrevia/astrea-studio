@@ -43,7 +43,7 @@
   },
   "factCard": {
     "title": "干货卡一键出片",
-    "subtitle": "填选题和要点，一次提交就出竖屏干货卡；草稿自动进剪映草稿箱，不用手动导入。",
+    "subtitle": "填选题和要点，一次提交就出竖屏干货卡。",
     "topic": "选题",
     "topicPlaceholder": "KV Cache 是什么",
     "hook": "开场钩子",
@@ -52,21 +52,19 @@
     "pointsCount": "{{min}}-{{max}} 条",
     "pointLabel": "第 {{index}} 条要点",
     "pointPlaceholder": "只存 K 和 V::因为 Q 只在当前这一步用一次",
-    "pointsHint": "每条写成「标题::说明」，用英文双冒号分隔；按填写顺序逐屏出卡。",
+    "pointsHint": "每条「标题::说明」，双冒号分隔。",
     "addPoint": "加一条要点",
     "removePoint": "删除这一条",
     "voice": "音色",
-    "voiceHint": "配音在本机合成，默认女声。",
     "voiceOptions": {
       "female": "甜美解说（女声）",
       "male": "解说小帅（男声）"
     },
     "kicker": "系列名",
-    "kickerHint": "显示在卡面左上角，默认「大模型面试题」。",
+    "kickerHint": "显示在卡面左上角。",
     "submit": "一键出片",
-    "submitHint": "提交后逐屏出卡并配音，几十秒内草稿进剪映。",
-    "success": "已提交，任务 {{runId}} 正在排队。",
-    "draftHint": "草稿会自动出现在剪映草稿箱，无需手动导入。",
+    "success": "已提交，任务 {{runId}}。",
+    "draftHint": "草稿已在剪映草稿箱。",
     "openDraftBox": "去草稿箱",
     "error": {
       "topicRequired": "请填写选题",
@@ -79,6 +77,11 @@
     },
     "narration": "口播稿",
     "narrationPlaceholder": "一行一屏：开场、要点 1、要点 2…、收尾",
-    "narrationHint": "可留空，留空就念你写的说明。写满 {{withIntroOutro}} 行含开场收尾，只写 {{pointsOnly}} 行只替换要点。"
+    "narrationHint": "写满 {{withIntroOutro}} 行含开场收尾；写 {{pointsOnly}} 行只替换要点。",
+    "output": "出片方式",
+    "outputOptions": {
+      "mp4": "直接出 mp4",
+      "draft": "剪映草稿"
+    }
   }
 }

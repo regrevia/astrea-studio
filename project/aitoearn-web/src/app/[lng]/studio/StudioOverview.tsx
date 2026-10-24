@@ -81,10 +81,14 @@ function RunRow({ run, projectName }: { run: ProductionRun, projectName?: string
         )}
 
         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <span>阶段：{run.currentStage || '—'}</span>
+          {run.status === 'succeeded' || run.status === 'failed'
+            ? null
+            : <span>阶段：{run.currentStage || '—'}</span>}
           {run.revision ? <span>第 {run.revision} 版</span> : null}
           {run.duration ? <span>{run.duration.toFixed(1)}s</span> : null}
-          {run.materialId ? <span className="text-emerald-600">已进草稿箱</span> : null}
+          {run.output?.videoUrl
+            ? <span className="text-emerald-600">已出片</span>
+            : run.materialId ? <span className="text-emerald-600">已进草稿箱</span> : null}
         </div>
 
         {run.lastError && (

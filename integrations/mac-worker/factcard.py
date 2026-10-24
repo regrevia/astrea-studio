@@ -102,8 +102,9 @@ def _wrap_text(draw, text: str, font, max_w: float) -> list[str]:
                     if buf[j] in _ORPHAN_PUNCT:
                         cut = j + 1
                         break
-                far_enough = cut > 0 and draw.textlength(buf[:cut], font=font) >= max_w * 0.78
-                if far_enough and len(buf) - cut <= 4:
+                # 断点够长就断在标点后：硬切会造出「长上 / 下文」这种半个词
+                far_enough = cut > 0 and draw.textlength(buf[:cut], font=font) >= max_w * 0.45
+                if far_enough:
                     out.append(buf[:cut])
                     buf = buf[cut:] + tok
                 else:
@@ -122,7 +123,8 @@ def _wrap_text(draw, text: str, font, max_w: float) -> list[str]:
     if len(out) >= 2 and len(out[-1]) == 1 and len(out[-2]) > 2:
         out[-1] = out[-2][-1] + out[-1]
         out[-2] = out[-2][:-1]
-    return [ln for ln in out if ln or True]
+    # 在标点后断行时行尾会留一个空格："Value " 挂在行末看着像少打了个字
+    return [ln.rstrip() for ln in out]
 
 
 def _draw_block(page, text: str, size: int, top: int, left: int, max_w: float,
@@ -145,10 +147,11 @@ def _draw_block(page, text: str, size: int, top: int, left: int, max_w: float,
         y += int(size * spacing)
     return y
 
-_BODY_CANDIDATES = (96, 88, BODY_SIZE)
+# 两行排不下就往下试，直到 60：长句宁可小一号，也不要撑破卡片边框
+_BODY_CANDIDATES = (96, 88, BODY_SIZE, 72, 66, 60)
 
 
-def _body_size(text: str, measure=None, max_w: float = W - 248) -> tuple[int, int]:
+def _body_size(text: str, measure=None, max_w: float = W - 264) -> tuple[int, int]:
     """PPT 式短句配 78px 会显得卡片空：在能排成两行以内的前提下取最大字号。
 
     只看字数会挑出把「按镜头切关键帧」拦腰断成 5+2 的字号——断句比字号更显眼。
@@ -163,7 +166,9 @@ def _body_size(text: str, measure=None, max_w: float = W - 248) -> tuple[int, in
             lines = [text]
         if len(lines) <= 2:
             return size, len(lines)
-    return BODY_SIZE, 2
+    # 最小字号还是超两行：返回真实行数，卡片高度要按它算，否则正文穿出卡底
+    lines = _wrap_text(measure, text, _font(_BODY_CANDIDATES[-1]), max_w) if measure is not None else [text]
+    return _BODY_CANDIDATES[-1], len(lines)
 
 
 def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
@@ -201,10 +206,11 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
         # 收尾卡不要空卡框：没有正文的圆角矩形只会显得空
         draw.polygon([(0, 1180), (W, 1010), (W, 1340), (0, 1510)], fill=(*accent, 30))
     measure = ImageDraw.Draw(overlay)
-    body_size, _ = _body_size(body, measure) if body else (BODY_SIZE, 0)
+    body_size, body_nlines = _body_size(body, measure) if body else (BODY_SIZE, 0)
     if not hook and not plain:
         # 卡片高度跟着正文走，避免大片空白（"PPT 味"最主要的来源）
         body_lines = _wrap_text(measure, body, _font(body_size), W - 264) if body else []
+        body_nlines = max(body_nlines, len(body_lines))
         # 短句放大后仍贴着卡顶会显得上重下轻，往下挪一点让正文落在版心
         if body_size > BODY_SIZE:
             body_top += 56 if body_size >= 110 else 40
@@ -213,7 +219,7 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
         floor = 1000 if len(body_lines) > 1 else 900
         # 上限 1010：立绘头顶从 1014 起，卡片再长就把角色闷在卡里
         card_bottom = min(1010, max(floor,
-                                   body_top + int(len(body_lines) * body_size * 1.42) + 96))
+                                   body_top + int(body_nlines * body_size * 1.42) + 96))
         draw.rounded_rectangle((76, 470, 1004, card_bottom), radius=56,
                                fill=(255, 255, 255, 14),
                                outline=(255, 255, 255, 70), width=2)

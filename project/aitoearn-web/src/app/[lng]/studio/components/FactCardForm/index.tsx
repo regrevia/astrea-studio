@@ -4,7 +4,7 @@
  * FactCardForm - 干货卡一键出片表单
  *
  * 填选题、开场钩子、「标题::说明」要点与音色，提交即排一条出片任务。
- * 出片流程逐屏出卡并配音，成品落进剪映草稿箱，不需要手动导入。
+ * 出片流程逐屏出卡并配音：mp4 后台渲染，草稿直接落进剪映草稿箱。
  */
 
 import type { FactCardVoice } from '@/api/production/production.types'
@@ -31,7 +31,7 @@ import {
   isFactCardVoice,
   validateFactCardForm,
 } from './utils'
-import type { FactCardFormError, FactCardFormValues } from './utils'
+import type { FactCardFormError, FactCardFormValues, FactCardOutput } from './utils'
 
 const hintClass = 'text-[11px] text-muted-foreground'
 
@@ -52,6 +52,7 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
   )
   const [voice, setVoice] = useState<FactCardVoice>(DEFAULT_FACT_CARD_VOICE)
   const [kicker, setKicker] = useState(DEFAULT_FACT_CARD_KICKER)
+  const [output, setOutput] = useState<FactCardOutput>('mp4')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<FactCardFormError | null>(null)
   const [createdRunId, setCreatedRunId] = useState('')
@@ -77,7 +78,7 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
     setError(null)
     setCreatedRunId('')
 
-    const values: FactCardFormValues = { topic, hook, points, narration, voice, kicker }
+    const values: FactCardFormValues = { topic, hook, points, narration, voice, kicker, output }
     const invalid = validateFactCardForm(values)
     if (invalid) {
       setError(invalid)
@@ -230,7 +231,19 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
                 ))}
               </SelectContent>
             </Select>
-            <span className={hintClass}>{t('factCard.voiceHint')}</span>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="fact-card-output">{t('factCard.output')}</Label>
+            <Select value={output} onValueChange={(value) => { if (value === 'mp4' || value === 'draft') setOutput(value) }}>
+              <SelectTrigger id="fact-card-output">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="mp4">{t('factCard.outputOptions.mp4')}</SelectItem>
+                <SelectItem value="draft">{t('factCard.outputOptions.draft')}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {error && (
@@ -242,10 +255,14 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
           {createdRunId && (
             <div className="rounded-md border border-border bg-muted/40 p-3 text-sm sm:col-span-2">
               <p className="font-medium text-foreground">{t('factCard.success', { runId: createdRunId })}</p>
-              <p className="mt-1 text-muted-foreground">{t('factCard.draftHint')}</p>
-              <Button asChild variant="outline" size="sm" className="mt-2 cursor-pointer">
-                <Link href="/draft-box">{t('factCard.openDraftBox')}</Link>
-              </Button>
+              {output === 'draft' && (
+                <>
+                  <p className="mt-1 text-muted-foreground">{t('factCard.draftHint')}</p>
+                  <Button asChild variant="outline" size="sm" className="mt-2 cursor-pointer">
+                    <Link href="/draft-box">{t('factCard.openDraftBox')}</Link>
+                  </Button>
+                </>
+              )}
             </div>
           )}
 
@@ -259,7 +276,6 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
               <Clapperboard className="mr-1.5 h-4 w-4" />
               {t('factCard.submit')}
             </Button>
-            <span className={hintClass}>{t('factCard.submitHint')}</span>
           </div>
         </form>
       </CardContent>

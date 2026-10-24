@@ -1004,8 +1004,16 @@ def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
     gw = int(w * 1.10)
     ga = fig.split()[-1].resize((gw, gw), Image.LANCZOS)
     ga = ga.filter(ImageFilter.GaussianBlur(max(8, gw // 26)))
+    # 只模糊轮廓会在方形画布边界上留一圈硬边，深色卡面上看就是一个亮方块。
+    # 再乘一层径向遮罩，让光晕在边缘自然消失。
+    from PIL import ImageChops
+
+    mask = Image.new("L", (gw, gw), 0)
+    ImageDraw.Draw(mask).ellipse((gw * 0.06, gw * 0.06, gw * 0.94, gw * 0.94), fill=255)
+    mask = mask.filter(ImageFilter.GaussianBlur(gw // 9))
+    ga = ImageChops.multiply(ga, mask)
     halo = Image.new("RGBA", (gw, gw), (255, 255, 255, 255))
-    halo.putalpha(ga.point(lambda v: int(v * 0.30)))
+    halo.putalpha(ga.point(lambda v: int(v * 0.26)))
     canvas.alpha_composite(halo, (int(x + cw * 0.5 - gw * 0.5),
                                  int(y + chh * 0.5 - gw * 0.5)))
     canvas.alpha_composite(fig, (x - bb[0], y - bb[1]))

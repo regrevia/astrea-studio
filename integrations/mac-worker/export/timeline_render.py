@@ -55,6 +55,7 @@ VIDEO_FITS = ("cover", "contain")
 OVERLAY_MOTIONS = ("bob", "sway", "none")
 OVERLAY_SIDES = ("left", "right", "top", "bottom")
 OVERLAY_VIDEO_SUFFIXES = (".webm", ".mov", ".mp4", ".m4v", ".mkv", ".gif", ".avi")
+STILL_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
 
 
 class SpecError(ValueError):
@@ -154,10 +155,20 @@ def load_spec(path, base: Path | None = None) -> dict:
         fit = c.get("fit") or "cover"
         if fit not in VIDEO_FITS:
             raise SpecError(f"video[{i}] fit 只能是 {VIDEO_FITS}，得到 {fit!r}")
+        still = src.suffix.lower() in STILL_SUFFIXES
+        zoom = c.get("zoom") or (1.0, 1.0)
+        if isinstance(zoom, dict):
+            zoom = (float(zoom.get("from") or 1.0), float(zoom.get("to") or 1.0))
+        zoom = (float(zoom[0]), float(zoom[1]))
+        if min(zoom) < 1.0:
+            raise SpecError(f"video[{i}] zoom 不能小于 1（会露出画布边）")
         clips.append({
             "src": src, "in": start, "out": end,
             "dur": end - start, "fit": fit,
             "speed": float(c.get("speed") or 1.0),
+            "still": still, "zoom": zoom,
+            "fade_in": float(c.get("fade_in") or 0.0),
+            "fade_out": float(c.get("fade_out") or 0.0),
         })
     if not clips:
         raise SpecError("video 至少要有 1 段")
@@ -391,9 +402,13 @@ class RenderPlan:
 
         # 1) 视频片段：输入级 seek（快），逐段归一化后 concat
         for clip in self.spec["video"]:
-            cmd += ["-ss", f"{clip['in']:g}",
-                    "-t", f"{clip['dur'] / (clip['speed'] or 1):g}",
-                    "-i", str(clip["src"])]
+            if clip.get("still"):
+                # 静帧只进一次，帧数由 zoompan 的 d 决定；加 -loop 会变成 d 倍帧数
+                cmd += ["-i", str(clip["src"])]
+            else:
+                cmd += ["-ss", f"{clip['in']:g}",
+                        "-t", f"{clip['dur'] / (clip['speed'] or 1):g}",
+                        "-i", str(clip["src"])]
 
         n_video = len(self.spec["video"])
         # 2) 字幕 PNG：loop 成整段视频，便于用 fade 的绝对时间
@@ -428,19 +443,34 @@ class RenderPlan:
         parts = []
         for i, clip in enumerate(self.spec["video"]):
             speed = clip["speed"] or 1.0
-            if speed != 1.0:
-                parts.append(f"[{i}:v]setpts=PTS/{speed:g}[s{i}]")
-                src = f"[s{i}]"
+            dur = clip["dur"] / speed
+            label = f"[{i}:v]"
+            if clip.get("still"):
+                z0, z1 = clip.get("zoom") or (1.0, 1.0)
+                frames = max(1, int(round(dur * FPS)))
+                if abs(z1 - z0) > 1e-3:
+                    # 静卡不动就是 PPT：一屏里极慢地推/拉，肉眼几乎看不出位移，画面是活的
+                    chain = (f"zoompan=z='{z0:.4f}+({z1 - z0:.4f})*on/{frames}':"
+                             f"d={frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+                             f"s={W}x{H}:fps={FPS:g},trim=duration={dur:g}")
+                else:
+                    chain = f"scale={W}:{H},fps={FPS:g},trim=duration={dur:g}"
             else:
-                src = f"[{i}:v]"
-            scale = (f"scale={W}:{H}:force_original_aspect_ratio="
-                     f"{'increase' if clip['fit'] == 'cover' else 'decrease'}")
-            if clip["fit"] == "cover":
-                chain = f"{scale},crop={W}:{H}"
-            else:
-                chain = f"{scale},pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black"
-            parts.append(
-                f"{src}{chain},fps={FPS:g},setsar=1,format=yuv420p[v{i}]")
+                if speed != 1.0:
+                    parts.append(f"[{i}:v]setpts=PTS/{speed:g}[s{i}]")
+                    label = f"[s{i}]"
+                scale = (f"scale={W}:{H}:force_original_aspect_ratio="
+                         f"{'increase' if clip['fit'] == 'cover' else 'decrease'}")
+                if clip["fit"] == "cover":
+                    chain = f"{scale},crop={W}:{H},fps={FPS:g}"
+                else:
+                    chain = f"{scale},pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black,fps={FPS:g}"
+            fi, fo = clip.get("fade_in") or 0.0, clip.get("fade_out") or 0.0
+            if fi > 0:
+                chain += f",fade=t=in:st=0:d={fi:g}"
+            if fo > 0:
+                chain += f",fade=t=out:st={max(0.0, dur - fo):g}:d={fo:g}"
+            parts.append(f"{label}{chain},setsar=1,format=yuv420p[v{i}]")
         concat_in = "".join(f"[v{i}]" for i in range(n_video))
         parts.append(f"{concat_in}concat=n={n_video}:v=1:a=0[vc]")
 

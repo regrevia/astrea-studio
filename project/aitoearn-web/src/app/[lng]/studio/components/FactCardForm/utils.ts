@@ -16,6 +16,8 @@ export const DEFAULT_FACT_CARD_POINTS = 3
 /** 要点用英文双冒号分隔，与出片侧 `标题::说明` 的解析一致。 */
 export const FACT_CARD_POINT_SEPARATOR = '::'
 
+export type FactCardOutput = 'mp4' | 'draft'
+
 export interface FactCardFormValues {
   topic: string // ui-copy-ignore
   hook: string // ui-copy-ignore
@@ -25,6 +27,7 @@ export interface FactCardFormValues {
   narration: string
   voice: FactCardVoice // ui-copy-ignore
   kicker: string // ui-copy-ignore
+  output: FactCardOutput // ui-copy-ignore
 }
 
 /** 口播稿拆出来的三段，与镜头顺序对齐。 */
@@ -131,6 +134,7 @@ export function validateFactCardForm(values: FactCardFormValues): FactCardFormEr
 }
 
 export function buildFactCardSpec(values: FactCardFormValues): FactCardSpec {
+  const vertical = values.output === 'mp4'
   const hook = values.hook.trim()
   const pointCount = buildFactCardPoints(values.points).length
   const narration = mapFactCardNarration(values.narration, pointCount)
@@ -139,8 +143,9 @@ export function buildFactCardSpec(values: FactCardFormValues): FactCardSpec {
   return {
     // 后端按 run.spec.engine 派切渲染通道，只有 jianying 才会出剪映草稿；
     // 顶层 engine 会被接口 DTO 丢掉，所以 spec 里必须再带一份。
-    engine: 'jianying', // ui-copy-ignore
+    engine: vertical ? 'timeline' : 'jianying', // ui-copy-ignore
     template: 'factcard', // ui-copy-ignore
+    ...(vertical ? { mode: 'vertical_short' as const } : {}),
     topic: values.topic.trim(),
     ...(hook ? { hook } : {}),
     points: buildFactCardPoints(values.points, narration?.points),
@@ -158,7 +163,7 @@ export function buildFactCardRunInput(values: FactCardFormValues, projectId: str
   const pointCount = buildFactCardPoints(values.points).length
   const hasNarration = Boolean(values.narration.trim())
   return {
-    engine: 'jianying',
+    engine: values.output === 'mp4' ? 'timeline' : 'jianying',
     template: 'factcard',
     projectId,
     title: `${kicker} · ${topic}`,

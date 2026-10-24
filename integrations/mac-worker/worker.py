@@ -31,6 +31,7 @@ from slides_render import SlidesError, render_from_payload as render_slides
 from motion_render_engine import render_motion, MotionError
 from jianying_engine import render_jianying, JianyingError
 from export import timeline_render as timeline
+from export import vertical_short as vertical
 from export import deliver as delivery
 
 LOG_FORMAT = "%(asctime)s %(levelname)-7s %(message)s"
@@ -393,6 +394,12 @@ class Worker:
         run_id = payload.get("runId") or ""
         revision = int(payload.get("revision") or 1)
         spec_obj = payload.get("spec")
+        # worker 的 PATH 里可能没有 homebrew；用配置里的绝对路径覆盖模块常量
+        for ff in (self.cfg.ffmpeg, self.cfg.ffprobe):
+            if Path(ff).exists():
+                timeline.FFMPEG = delivery.FFMPEG = self.cfg.ffmpeg
+                timeline.FFPROBE = delivery.FFPROBE = self.cfg.ffprobe
+
         # 外层 spec（可能带引擎外壳）与内层 timeline 本体都可能是 assetBase 的来源
         src_spec: dict[str, Any] = spec_obj if isinstance(spec_obj, dict) else {}
         spec_path_hint = payload.get("specPath")
@@ -409,7 +416,23 @@ class Worker:
             spec_obj = inner
             src_spec = inner
 
-        if isinstance(spec_obj, dict) and spec_obj.get("canvas"):
+        # 竖屏 factcard 走同一条 timeline 通道：worker 自己把脚本展开成静帧卡 +
+        # 立绘 + 配音的 spec，平台侧只发脚本文本，不用先算好时间轴
+        if isinstance(spec_obj, dict) and spec_obj.get("mode") == "vertical_short":
+            progress(4, "timeline:script")
+            try:
+                built = vertical.build_spec(
+                    spec_obj, workdir,
+                    voice=str(spec_obj.get("voice") or ""),
+                    logo=Path(str(spec_obj["logo"])).expanduser() if spec_obj.get("logo") else None,
+                )
+            except Exception as exc:
+                raise TimelineError(f"竖屏脚本展开失败: {exc}") from None
+            spec_path = workdir / "spec.json"
+            spec_path.write_text(json.dumps(built, ensure_ascii=False, indent=2), encoding="utf-8")
+            src_spec = built
+            spec_obj = built
+        elif isinstance(spec_obj, dict) and spec_obj.get("canvas"):
             spec_path = workdir / "spec.json"
             spec_path.write_text(json.dumps(spec_obj, ensure_ascii=False, indent=2),
                                  encoding="utf-8")
@@ -424,12 +447,6 @@ class Worker:
         base = Path(asset_base).expanduser() if asset_base else spec_path.parent
         if not base.exists():
             raise TimelineError(f"assetBase 不存在: {base}")
-
-        # worker 的 PATH 里可能没有 homebrew；用配置里的绝对路径覆盖模块常量
-        for ff in (self.cfg.ffmpeg, self.cfg.ffprobe):
-            if Path(ff).exists():
-                timeline.FFMPEG = delivery.FFMPEG = self.cfg.ffmpeg
-                timeline.FFPROBE = delivery.FFPROBE = self.cfg.ffprobe
 
         progress(5, "timeline:spec")
         try:
