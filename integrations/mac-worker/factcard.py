@@ -185,7 +185,8 @@ def body_layout(text: str, measure=None, max_w: float = W - 264,
     这里同时受两个约束：断行不能留孤字，正文末行到卡底要留够 BODY_PAD 且不压立绘。
     """
     if not text:
-        return BODY_SIZE, [], int(top), 1000
+        # 只有标题的卡：卡框收到标题下沿，否则下半张卡是空的（一眼看出没排完）
+        return BODY_SIZE, [], int(top), int(top) + 210
 
     def _clean(rows: list[str]) -> bool:
         if len(rows) <= 1:

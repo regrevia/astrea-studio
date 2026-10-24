@@ -128,7 +128,7 @@ def _stage(cfg: dict, idx: int, total: int) -> dict:
     out = dict(cfg)
     # 竖屏里人物占宽太小就只是贴纸：开场到收尾都在画面 1/3 以上
     if idx == 0:
-        want = {"width": 770, "x": 288, "y": 800}
+        want = {"width": 780, "x": 452, "y": 792}
     elif idx == total - 1:
         want = {"width": 730, "x": 460, "y": 930}
     else:
