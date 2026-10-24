@@ -620,10 +620,14 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                     "end": total + dur,
                 }
                 transition = _pick(native.get("transition_in"), "transitions")
-                if transition:
+                # 末屏后面没有画面，转场只会变成片尾淡黑，吃掉收尾卡的阅读时间
+                if transition and idx < len(plan) - 1:
+                    td = float(native.get("transition_duration") or 0.6)
+                    # 短屏用长转场，一半时间都在花掉，正文来不及看
+                    if dur < 2.6:
+                        td = min(td, 0.45)
                     clip["transition"] = transition
-                    clip["transition_duration"] = float(
-                        native.get("transition_duration") or 0.6)
+                    clip["transition_duration"] = td
                     stats["transitions"] += 1
                 anim_in = _pick(native.get("image_anim_in"), "video_intro_animations")
                 if anim_in:

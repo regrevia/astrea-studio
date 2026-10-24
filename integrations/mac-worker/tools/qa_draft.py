@@ -123,6 +123,9 @@ def check(draft: pathlib.Path) -> dict:
         if trans_ids & set(seg.get("extra_material_refs") or []):
             seen += 1
     add("屏间有转场", seen >= max(1, len(cards) - 1), f"{seen} 处转场 / {max(0, len(cards) - 1)} 个衔接")
+    tail = track(d, "image_main")
+    last_has = bool(tail) and bool(trans_ids & set(tail[-1].get("extra_material_refs") or []))
+    add("片尾不加转场", not last_has, "末屏有转场" if last_has else "末屏干净")
 
     audio = [s for s in track(d, "audio_main") if s.get("material_id")]
     audio_end = max((s["target_timerange"]["start"] + s["target_timerange"]["duration"]
