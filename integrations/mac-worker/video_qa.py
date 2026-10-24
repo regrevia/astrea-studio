@@ -27,6 +27,9 @@ CUT_DIFF = 45.0
 # 定格：1 秒窗口内几乎不变。带运镜的卡面每帧都有 ~2 的差，纯静态图才是 0。
 FREEZE_DIFF = 0.4
 FREEZE_WINDOW = 4
+# 角色区定格：真人片子里角色区最长静默 1.25s（换姿势的叠化），2s 不动就是贴图了
+CHAR_STATIC_DIFF = 0.3
+CHAR_STATIC_WINDOW = 8
 # 文字区、人物区：判断这两块有没有东西，比整帧更容易抓住「字没贴上」
 TEXT_BOX = (124, 470, 1004, 1000)
 CHAR_BOX = (280, 900, 1040, 1700)
@@ -98,6 +101,22 @@ def check(video: Path, spec: Path) -> dict:
                 findings.append({"code": "frozen", "level": "warn",
                                  "at": round(at, 2),
                                  "detail": f"{at:.1f}s 起画面定格"})
+    # 角色是不是「贴图」：嘴和姿势不动，画面再花也是块贴纸
+    if len(frames) > CHAR_STATIC_WINDOW:
+        x0, y0, x1, y1 = CHAR_BOX
+        sx, sy = 270 / 1080, 480 / 1920
+        box = frames[:, int(y0 * sy):int(y1 * sy), int(x0 * sx):int(x1 * sx)].astype(np.int16)
+        cdiff = np.abs(np.diff(box, axis=0)).mean(axis=(1, 2))
+        run = 0
+        stuck: list[float] = []
+        for i, q in enumerate(cdiff < CHAR_STATIC_DIFF):
+            run = run + 1 if q else 0
+            if run == CHAR_STATIC_WINDOW:
+                stuck.append(float(i - CHAR_STATIC_WINDOW + 1) * STEP)
+        for at in stuck[:3]:
+            findings.append({"code": "character_static", "level": "warn",
+                             "at": round(at, 2),
+                             "detail": f"{at:.1f}s 起角色不动"})
     return {"video": str(video), "duration": got, "findings": findings,
             "ok": not [f for f in findings if f["level"] == "error"]}
 
