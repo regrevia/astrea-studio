@@ -83,6 +83,8 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9%\.\-\+/]*|.", re.S)
 
 
 _ORPHAN_PUNCT = set("，。、；：？！…）」』】》,.;:?!")
+# 换行优先断在这些字后面：它们是词边界，断在词中间就成了「最舍 / 不得删」
+_NATURAL_BREAK = _ORPHAN_PUNCT | set("里的是在把就才也都让给和与这那我你它过到要后前点")
 
 
 def _wrap_text(draw, text: str, font, max_w: float) -> list[str]:
@@ -123,6 +125,24 @@ def _wrap_text(draw, text: str, font, max_w: float) -> list[str]:
     if len(out) >= 2 and len(out[-1]) == 1 and len(out[-2]) > 2:
         out[-1] = out[-2][-1] + out[-1]
         out[-2] = out[-2][:-1]
+    # 两行长短悬殊（"你收藏夹里最舍不得删的是 / 哪条"）读起来像断错了：改在中间断，
+    # 让两行接近等宽。贪心断行只保证不超宽，不管好看。
+    if len(out) == 2 and len(out[0]) > 4 and (
+            len(out[-1]) <= 2 or len(out[-1]) < len(out[0]) * 0.45):
+        flat = out[0] + out[1]
+        best, best_gap = None, None
+        for cut in range(2, len(flat) - 1):
+            left_w = draw.textlength(flat[:cut], font=font)
+            right_w = draw.textlength(flat[cut:], font=font)
+            if left_w > max_w or right_w > max_w:
+                continue
+            # 断在虚词/标点后读着才顺；断在词中间（"最舍 / 不得删"）肉眼就是断错
+            natural = flat[cut - 1] in _NATURAL_BREAK
+            gap = abs(left_w - right_w) + (0 if natural else 900)
+            if best_gap is None or gap < best_gap:
+                best, best_gap = cut, gap
+        if best is not None:
+            out = [flat[:best], flat[best:]]
     # 在标点后断行时行尾会留一个空格："Value " 挂在行末看着像少打了个字
     return [ln.rstrip() for ln in out]
 
@@ -149,6 +169,49 @@ def _draw_block(page, text: str, size: int, top: int, left: int, max_w: float,
 
 # 两行排不下就往下试，直到 60：长句宁可小一号，也不要撑破卡片边框
 _BODY_CANDIDATES = (96, 88, BODY_SIZE, 72, 66, 60)
+
+
+BODY_PAD = 96      # 卡底到正文末行的留白
+CARD_CAP = 1010    # 卡底上限：立绘头顶 1014，再长就把角色闷进卡片
+
+
+def body_layout(text: str, measure=None, max_w: float = W - 264,
+                top: int = 700) -> tuple[int, list[str], int, int]:
+    """正文几何一次算清：字号、断行、起排 y、卡底。
+
+    卡面底图和文字贴片各算各的，行高一差分不清是「留白不够」还是「字太大」。
+    这里同时受两个约束：断行不能留孤字，正文末行到卡底要留够 BODY_PAD 且不压立绘。
+    """
+    if not text:
+        return BODY_SIZE, [], int(top), 1000
+
+    def _clean(rows: list[str]) -> bool:
+        if len(rows) <= 1:
+            return True
+        if len(rows) > 2:
+            return False
+        last, first = len(rows[-1]), len(rows[0])
+        return last >= 3 and last >= first * 0.45
+
+    def _geom(size: int, rows: list[str]) -> tuple[int, int]:
+        start = int(top) + (56 if size >= 110 else 40 if size > BODY_SIZE else 0)
+        return start, start + int(len(rows) * size * 1.42) + BODY_PAD
+
+    chosen: tuple[int, list[str], int] | None = None
+    for size in _BODY_CANDIDATES:
+        rows = _wrap_text(measure, text, _font(size), max_w) if measure is not None else [text]
+        start, need = _geom(size, rows)
+        if need <= CARD_CAP and _clean(rows):
+            chosen = (size, rows, start)
+            break
+    if chosen is None:
+        size = _BODY_CANDIDATES[-1]
+        rows = _wrap_text(measure, text, _font(size), max_w) if measure is not None else [text]
+        chosen = (size, rows, _geom(size, rows)[0])
+    size, rows, start = chosen
+    _, need = _geom(size, rows)
+    floor = 1000 if len(rows) > 1 else 900
+    return size, rows, start, min(CARD_CAP, max(floor, need))
 
 
 def _body_size(text: str, measure=None, max_w: float = W - 264) -> tuple[int, int]:
@@ -215,20 +278,11 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
         # 收尾卡不要空卡框：没有正文的圆角矩形只会显得空
         draw.polygon([(0, 1180), (W, 1010), (W, 1340), (0, 1510)], fill=(*accent, 30))
     measure = ImageDraw.Draw(overlay)
-    body_size, body_nlines = _body_size(body, measure) if body else (BODY_SIZE, 0)
+    body_size, body_lines, body_top, card_bottom = (
+        body_layout(body, measure, top=body_top) if body else (BODY_SIZE, [], body_top, 1000))
     if not hook and not plain:
-        # 卡片高度跟着正文走，避免大片空白（"PPT 味"最主要的来源）
-        body_lines = _wrap_text(measure, body, _font(body_size), W - 264) if body else []
-        body_nlines = max(body_nlines, len(body_lines))
-        # 短句放大后仍贴着卡顶会显得上重下轻，往下挪一点让正文落在版心
-        if body_size > BODY_SIZE:
-            body_top += 56 if body_size >= 110 else 40
-        # 卡片高度跟着正文走；下限 1000 让正文区占满上三分之二
-        # 一行正文还给 1000 的卡底，下半张卡就是空的：短句把卡收到 900 上下
-        floor = 1000 if len(body_lines) > 1 else 900
-        # 上限 1010：立绘头顶从 1014 起，卡片再长就把角色闷在卡里
-        card_bottom = min(1010, max(floor,
-                                   body_top + int(body_nlines * body_size * 1.42) + 96))
+        # 卡片高度跟着正文走，避免大片空白（"PPT 味"最主要的来源）；
+        # 几何跟贴片共用 body_layout，卡底和字底不会再差出一档留白
         draw.rounded_rectangle((76, 470, 1004, card_bottom), radius=56,
                                fill=(255, 255, 255, 14),
                                outline=(255, 255, 255, 70), width=2)

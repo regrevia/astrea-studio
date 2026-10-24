@@ -430,8 +430,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             layers = _title_layers(str(sc.get("text") or ""), workdir, i)
             body = raw_bodies[i - 1] if 0 < i <= len(raw_bodies) else ""
             if body:
-                size, _n = factcard._body_size(body, _measure())
-                top = 700 + (56 if size >= 110 else 40 if size > factcard.BODY_SIZE else 0)
+                size, _lines, top, _bottom = factcard.body_layout(body, _measure())
                 layers += _block_layers(body, size, top, workdir, f"b{i:02d}",
                                         align="left", left=140, max_w=factcard.W - 264,
                                         fill=(255, 255, 255, 236))
