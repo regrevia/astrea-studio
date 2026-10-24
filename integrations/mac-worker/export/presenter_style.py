@@ -42,15 +42,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import host_profile as H  # noqa: E402
 import timeline_render as T  # noqa: E402
 
-# dsh-pet 的素材目录（MIT）；不存在就要求显式传 --maid-dir
-DEFAULT_MAID_DIR = Path(os.path.expanduser(
-    "~/.dsh/profiles/desktop/node_modules/dsh-pet/assets/webm"))
-DEFAULT_VOICE = "sami:BV411_streaming"  # 剪映「解说小帅」
+# 主角模块：默认是 dsh-pet 的蓝毛小女仆（MIT）；也可以换成鲸鱼娘、真人或数字人
+DEFAULT_MAID_DIR = H.DEFAULT_MAID_DIR
+DEFAULT_VOICE = H.DEFAULT_VOICE
 
 PAGE = {"x": 76, "y": 168, "w": 948, "h": 632}
-MAID = {"x": 1046, "y": 470, "w": 872}   # 素材带透明留白，视觉实体约 45% 宽
+MAID = dict(H.DEFAULT_PLACEMENT)   # 素材带透明留白，视觉实体约 45% 宽
 CAPTION_Y = 822        # 字幕条顶边像素 y（卡片正下方）
 GAP = 0.75           # 页与页之间留呼吸（也把总时长抬到 1 分钟以上）
 SLIDE = 0.42         # 翻页时长
@@ -246,7 +246,7 @@ def narrate(text: str, out: Path, voice: str) -> float:
 
 # ------------------------------------------------------------------ 组装 spec
 def build_spec(content: dict, outdir: Path, *, canvas=None, maid_dir=None,
-               voice=None, fps=30, work=None, tts=None) -> dict:
+               host=None, voice=None, fps=30, work=None, tts=None) -> dict:
     """内容 → timeline spec。
 
     `tts` 可注入替身 `(text, out_path, voice) -> 秒数`，测试时不必联网配音。
@@ -266,10 +266,11 @@ def build_spec(content: dict, outdir: Path, *, canvas=None, maid_dir=None,
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     work = Path(work) if work else Path(tempfile.mkdtemp(prefix="presenter-"))
+    work.mkdir(parents=True, exist_ok=True)
     assets = outdir / "assets"
     assets.mkdir(exist_ok=True)
-    maid_dir = Path(os.path.expanduser(str(maid_dir or DEFAULT_MAID_DIR)))
-    voice = voice or content.get("voice") or DEFAULT_VOICE
+    profile = _resolve_host(content, host=host, maid_dir=maid_dir)
+    voice = voice or content.get("voice") or profile.voice
     series = str(content.get("series") or "ASTREA STUDIO")
 
     # 1) 背景 + 每页卡片 + 每页配音
@@ -297,18 +298,7 @@ def build_spec(content: dict, outdir: Path, *, canvas=None, maid_dir=None,
             "enter": {"from": "right", "duration": SLIDE},
             "exit": {"to": "left", "duration": SLIDE},
         })
-        clip = sc["maid"] or _default_maid_clip(i, maid_dir)
-        if clip:
-            path = (maid_dir / clip) if not Path(str(clip)).is_absolute() else Path(str(clip))
-            if not path.is_file():
-                raise PresenterError(f"人物素材不存在: {path}")
-            overlays.append({
-                "src": str(path), "start": round(sc["start"], 3),
-                "end": round(sc["end"], 3),
-                "x": MAID["x"], "y": MAID["y"], "width": MAID["w"],
-                "fade": 0.3,
-                "motion": {"type": "bob", "amplitude": 9, "period": 2.6},
-            })
+        overlays.extend(_host_overlays(profile, sc, i, work, FPS))
 
     # 4) 字幕条（PNG overlay，像素级控制，交给 renderer 的文字层容易顶边）+ 配音
     texts, audios = [], []
@@ -341,7 +331,9 @@ def build_spec(content: dict, outdir: Path, *, canvas=None, maid_dir=None,
         "audio": audios,
         "font": T.find_font(),
         "meta": {"title": title, "series": series, "voice": voice,
-                 "duration": total, "style": "presenter"},
+                 "duration": total, "style": "presenter",
+                 "host": {"id": profile.id, "label": profile.label,
+                          "kind": profile.kind, "alpha": profile.alpha}},
     }
 
 
@@ -367,33 +359,105 @@ def _caption_lines(text: str, limit: int = 26) -> list:
     return lines
 
 
-def _default_maid_clip(idx: int, maid_dir: Path):
-    """按语气挑 dsh-pet 的现成动作；缺素材就静默跳过（仍能出片）。"""
-    order = ["优雅女仆舞.webm", "东张西望.webm", "女仆屈膝礼仪.webm",
-             "凭空生花.webm", "三球抛接.webm"]
-    if not Path(maid_dir).is_dir():
-        return None
-    return order[idx % len(order)]
+def _resolve_host(content: dict, *, host=None, maid_dir=None) -> H.HostProfile:
+    """主角优先级：显式 host > 显式 maid_dir > content.host > 内置默认。"""
+    if host is not None:
+        try:
+            return H.load_host(host)
+        except H.HostError as exc:
+            raise PresenterError(str(exc)) from exc
+    if maid_dir is not None:
+        folder = Path(os.path.expanduser(str(maid_dir)))
+        clips = []
+        if folder.is_dir():
+            order = ["优雅女仆舞.webm", "东张西望.webm", "女仆屈膝礼仪.webm",
+                     "凭空生花.webm", "三球抛接.webm"]
+            clips = [folder / n for n in order if (folder / n).is_file()]
+        return H.HostProfile(id="custom", label="自定义人物", kind="avatar",
+                             voice=DEFAULT_VOICE, dir=folder, clips=clips)
+    try:
+        return H.load_host(content.get("host") or None)
+    except H.HostError:
+        # 没装 dsh-pet 也要能出片：主角位置留空，卡片/字幕/配音照常
+        return H.HostProfile(id="none", label="无主角", kind="avatar",
+                             voice=DEFAULT_VOICE, clips=[])
+
+
+def _host_overlays(profile: H.HostProfile, scene: dict, idx: int, work: Path,
+                   fps: float) -> list:
+    """一页的主角叠层：alpha 素材直接叠；真人/数字人先垫圆角相框。"""
+    clip = scene.get("maid")
+    if clip:
+        base = profile.dir or Path(".")
+        path = Path(str(clip))
+        path = path if path.is_absolute() else (base / path)
+        if not path.is_file():
+            raise PresenterError(f"人物素材不存在: {path}")
+        src = path
+    else:
+        try:
+            src = H.ensure_clip(profile, work, idx, scene["end"] - scene["start"], fps)
+        except H.HostError as exc:
+            raise PresenterError(str(exc)) from exc
+    if src is None:
+        return []
+
+    place = dict(profile.placement)
+    out = []
+    if not profile.alpha:
+        try:
+            vw, vh = H.probe_size(src)
+        except H.HostError:
+            vw, vh = 16, 9
+        box_w = int(place["width"])
+        box_h = max(2, int(round(box_w * vh / max(1, vw))))
+        box_h -= box_h % 2
+        place = {"x": int(place["x"]), "y": max(0, 1080 - box_h - 90),
+                 "width": box_w}
+        if profile.outline:
+            frame = H.make_frame(work / f"hostframe{idx:02d}.png", box_w, box_h)
+            out.append({
+                "src": str(frame), "start": round(scene["start"], 3),
+                "end": round(scene["end"], 3),
+                "x": place["x"] - H.FRAME_PAD, "y": place["y"] - H.FRAME_PAD,
+                "width": box_w + H.FRAME_PAD * 2, "fade": 0.3,
+            })
+    out.append({
+        "src": str(src), "start": round(scene["start"], 3),
+        "end": round(scene["end"], 3),
+        "x": place["x"], "y": place["y"], "width": place["width"],
+        "fade": 0.3, "motion": dict(profile.motion),
+    })
+    return out
 
 
 # ------------------------------------------------------------------ CLI
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="虚拟主播技术讲解风格：内容 → timeline spec")
-    ap.add_argument("content", help="content.json 路径")
-    ap.add_argument("--outdir", required=True, help="素材与产物目录")
+    ap.add_argument("content", nargs="?", help="content.json 路径")
+    ap.add_argument("--outdir", help="素材与产物目录")
     ap.add_argument("--spec-out", help="spec 写到哪（默认 outdir/spec.json）")
     ap.add_argument("--render", help="顺手渲母版到这个路径")
-    ap.add_argument("--maid-dir", help="人物 webm 目录（默认 dsh-pet）")
+    ap.add_argument("--host", help="主角 id 或角色目录（默认 dsh-pet 女仆；见 --list-hosts）")
+    ap.add_argument("--maid-dir", help="兼容旧参数：人物 webm 目录")
+    ap.add_argument("--list-hosts", action="store_true", help="列出可用主角")
     ap.add_argument("--voice", help=f"配音音色（默认 {DEFAULT_VOICE}）")
     ap.add_argument("--keep-work", action="store_true")
     args = ap.parse_args(argv)
 
+    if args.list_hosts:
+        for h in H.list_hosts():
+            print(f"{h.id:16s} {h.kind:13s} {h.label}  voice={h.voice}")
+        return 0
+
+    if not args.content or not args.outdir:
+        ap.error("除 --list-hosts 外都要给 content 和 --outdir")
     content = json.loads(Path(args.content).read_text(encoding="utf-8"))
     outdir = Path(args.outdir)
     work = Path(tempfile.mkdtemp(prefix="presenter-"))
     try:
-        spec = build_spec(content, outdir, maid_dir=args.maid_dir,
-                          voice=args.voice, work=work)
+        spec = build_spec(content, outdir, host=args.host or content.get("host"),
+                          maid_dir=args.maid_dir, voice=args.voice, work=work)
         sp = Path(args.spec_out) if args.spec_out else outdir / "spec.json"
         sp.parent.mkdir(parents=True, exist_ok=True)
         sp.write_text(json.dumps(spec, ensure_ascii=False, indent=2),

@@ -30,6 +30,7 @@ Upstream provides account connections, platform publishing, and the web/backend 
 - **Publishing**: posts to signed-in platform accounts; every submission is confirmed by a human in the dashboard first.
 - **Own timeline renderer**: one spec yields the master — video, images and alpha-channel character overlays, multi-track audio, loudness normalisation and frame-exact enter/exit motion; no JianYing required, no window stealing focus.
 - **Virtual-host explainer style**: give it a content JSON (page titles, narration, character actions) and it composes page cards, caption bars, character loops and background music into a 1080p explainer; the same spec can then be written into a JianYing draft for final polish.
+- **Swappable presenter**: the narrator is a standalone module. A virtual avatar (alpha-channel action clips such as the dsh-pet maid or a whale-girl), real footage, or a digital human can all host the video; each presenter carries its own voice, so switching presenter switches the narrator. Drop assets into `~/CreatorStudio/state/characters/<id>/` and the panel lists them.
 - **Local data**: rendering, exporting and publishing run on your machine; projects and videos stay on local disk.
 
 The section below is the upstream AiToEarn documentation, kept verbatim for reference.
