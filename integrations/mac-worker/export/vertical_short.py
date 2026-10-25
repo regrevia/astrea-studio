@@ -41,6 +41,10 @@ DEFAULT_VOICE = factcard.DEFAULT_VOICE
 TAIL_HOLD = 0.35
 FADE = 0.22
 XFADE = 0.40
+# 换手势的交叉长度：太短是「跳一下」，太长两只手同时在画面里像重影
+POSE_XFADE = 0.22
+# 换手势躲开眨眼：两个动作贴在一起，观众看到的是抽搐
+POSE_BLINK_GUARD = 0.35
 TAIL = 1.00  # 话说完再定一秒：立刻黑屏是最廉价的收尾  # 相邻两屏叠化时长：整屏硬切是「PPT 翻页」最重的一笔
 
 
@@ -780,9 +784,13 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             prev_ov = None      # 上一段口型：换姿态时要和它交叉，不能硬替换
             prev_pose = None
             blinks = _blink_times(dur, char_cfg, i)
+            switched = False
             for mouth, seg in beats:
-                use_pose = pose
-                if alt_pose and dur > 0 and (elapsed / dur) >= switch_at:
+                use_pose = alt_pose if switched else pose
+                if (not switched and alt_pose and dur > 0
+                        and (elapsed / dur) >= switch_at
+                        and all(abs(elapsed - b) >= POSE_BLINK_GUARD for b in blinks)):
+                    switched = True
                     use_pose = alt_pose
                 # 眨眼把一段口型切成「睁—眯—睁」：全片瞪着一只大眼不动，就是贴图
                 for s_at, s_seg, s_eyes in _blink_spans(elapsed, seg, blinks):
@@ -829,12 +837,13 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                         ov["enter"] = {"from": "bottom", "duration": 0.55,
                                        "ease": "out-cubic"}
                     if prev_ov is not None and use_pose != prev_pose:
-                        # 换手势瞬间直接替换会「跳一下」，两头各淡 0.15s 叠过去
-                        start = max(0.0, start - 0.15)
+                        # 换手势瞬间直接替换会「跳一下」，两头交叉叠过去，
+                        # 上一段撑到叠化中点：新动作接住时旧动作刚好退干净
+                        start = max(0.0, start - POSE_XFADE)
                         ov["start"] = round(start, 3)
-                        ov["fade"] = max(ov["fade"], 0.15)
-                        prev_ov["end"] = round(start + 0.15, 3)
-                        prev_ov["fade"] = max(prev_ov["fade"], 0.15)
+                        ov["fade"] = max(ov["fade"], POSE_XFADE)
+                        prev_ov["end"] = round(start + POSE_XFADE, 3)
+                        prev_ov["fade"] = max(prev_ov["fade"], POSE_XFADE)
                     overlay.append(ov)
                     char_ovs.append(ov)
                     prev_ov, prev_pose = ov, use_pose

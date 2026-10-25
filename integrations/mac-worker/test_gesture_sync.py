@@ -39,11 +39,23 @@ def test_stronger_cue_wins() -> None:
     assert JE._keyword_pose("居然真的搞定了") == "happy"
 
 
-def test_switch_needs_two_topics() -> None:
-    """一句话只讲一件事就不换势：为了动而动，观众看到的是抽搐。"""
-    assert JE._second_half_pose({}, 1, 5, {"say": "视频里的 PPT，它看不见。Envoy 抽帧，喂给它。"}) is None
-    assert vs._punctuation_anchor("链接丢给 AI，它只读到标题。跟没读差不多。") == \
-        JE._clause_cut("链接丢给 AI，它只读到标题。跟没读差不多。") / len("链接丢给 AI，它只读到标题。跟没读差不多。")
+def test_switch_only_between_quoted_actions() -> None:
+    """换势只能换成这句话自己命中过的动作，且不能换成情绪/礼数类。
+
+    一句话本来就带两层线索（指重点 + 说缺口）时，后半句换个手势是在演；
+    只讲一件事时不换，为了动而动就是抽搐。
+    """
+    say = "视频里的 PPT，它看不见。Envoy 抽帧，喂给它。"
+    alt = JE._second_half_pose({}, 1, 5, {"say": say})
+    assert alt in JE._keyword_scores(say), alt
+    assert alt in ("point", "think", "shrug"), alt
+    assert JE._second_half_pose({}, 1, 5, {"say": "收藏了一千条，我一条没做。"}) is None
+    assert JE._second_half_pose({}, 1, 5, {"say": "短句不换。"}) is None
+
+
+def test_switch_anchor_matches_clause() -> None:
+    say = "链接丢给 AI，它只读到标题。跟没读差不多。"
+    assert vs._punctuation_anchor(say) == JE._clause_cut(say) / len(say)
 
 
 def test_punctuation_anchor() -> None:
@@ -86,7 +98,8 @@ if __name__ == "__main__":
     test_semantics_beat_courtesy()
     test_stronger_cue_wins()
     test_punctuation_anchor()
-    test_switch_needs_two_topics()
+    test_switch_only_between_quoted_actions()
+    test_switch_anchor_matches_clause()
     test_courtesy_still_default()
     test_baselines_have_no_clash()
     test_author_poses_are_intent()

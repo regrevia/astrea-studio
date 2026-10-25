@@ -977,14 +977,19 @@ def _second_half_pose(cfg: dict[str, Any], idx: int, total: int,
     # 整句一个意思时换来换去只是抽搐。
     if tail_want and tail_want != base_want:
         return tail_want
-    return None
-    # 两半都没关键词时，默认姿态前后一模一样；给后半句一个对比姿态，
-    # 让"陈述→思考 / 思考→陈述"有落点，而不是整屏一个定格。
-    if head in ("point", "think"):
-        return "think" if head == "point" else "point"
-    if head == "wave":
-        # 开场挥手说完「它只读到标题」还在挥就假了：后半句按内容收住
-        return _keyword_pose(tail) or "think"
+    # 后半句没有自己的关键词时，不能就此定格一整屏。从这句话本身已经
+    # 命中过的动作里挑一个分数接近、但和前半句不同的换上去：两种动作都有
+    # 文本依据，体检也不会判成错配，看起来才像一句话里换了个手势。
+    scores = _keyword_scores(say)
+    top = float(scores.get(base_want) or 0.0)
+    if top <= 0:
+        return None
+    # 只在「讲解类」动作里换：开心/挥手是情绪和礼数，一句批评话里换成笑脸就假了
+    for name, score in sorted(scores.items(), key=lambda kv: -kv[1]):
+        if name == base_want or name in ("happy", "wave") or float(score) <= 0:
+            continue
+        if float(score) >= top * 0.55:
+            return name
     return None
 
 
@@ -1124,10 +1129,11 @@ def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
     mouth = mouth or _character_mouth(idx, speaking, scene or {})
     # 高兴时眯眼，是这套立绘里唯一能读出情绪的五官开关；眨眼由调用方按时间点传
     eyes = eyes or ("closed" if pose == "happy" else "open")
-    key = (pose, mouth, eyes)
+    outfit = str(cfg.get("outfit") or "").strip() or None
+    key = (pose, mouth, eyes, outfit or "", character.outfit_root(outfit).name)
     figure = _CHAR_FRAME_CACHE.get(key)
     if figure is None:
-        figure = character.render(pose=pose, mouth=mouth, eyes=eyes)
+        figure = character.render(pose=pose, mouth=mouth, eyes=eyes, outfit=outfit)
         _CHAR_FRAME_CACHE[key] = figure
     w = int(float(cfg.get("width") or 620) * width / 1080)
     fig = figure.resize((w, w), Image.LANCZOS)

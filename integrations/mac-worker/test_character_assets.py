@@ -29,7 +29,8 @@ def main() -> int:
     _fake(root / "base/01_base_open.png", (255, 128, 0))
     _fake(root / "poses/pose_point_closed.png", (0, 0, 255))
     _fake(root / "poses/pose_point_open.png", (0, 128, 255))
-    _fake(root / "eyes/eyes_closed.png", (128, 0, 255))
+    _fake(root / "base/03_base_blink_closed.png", (128, 0, 255))
+    _fake(root / "outfits/02_maid/base/01_base_closed.png", (200, 30, 90))
 
     old = character.ASSET_ROOT
     character.ASSET_ROOT = root
@@ -49,6 +50,16 @@ def main() -> int:
         assert character.render(mouth="closed").getpixel((256, 256))[:3] == (255, 0, 0)
         assert character.render(mouth="open").getpixel((256, 256))[:3] == (255, 128, 0)
         assert character.render(eyes="closed").getpixel((256, 256))[:3] == (128, 0, 255)
+
+        # 换装：只在本套里挑图，缺动作时用本套站姿，不跨服装借
+        character.OUTFITS_ROOT = root / "outfits"
+        maid = character.render(pose="idle", mouth="closed", outfit="02_maid")
+        assert maid.getpixel((256, 256))[:3] == (200, 30, 90), maid.getpixel((256, 256))
+        maid_think = character.render(pose="think", mouth="closed", outfit="02_maid")
+        assert maid_think.getpixel((256, 256))[:3] == (200, 30, 90), maid_think.getpixel((256, 256))
+        assert character.outfit_root("02_maid") == root / "outfits/02_maid"
+        assert character.outfit_root("99_nope") == root
+        assert character.list_outfits() == ["01_sailor", "02_maid"]
 
         # 没有真图的姿势退回程序化占位图，不能抛异常
         character.ASSET_ROOT = root / "nope"

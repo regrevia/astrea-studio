@@ -279,42 +279,85 @@ def _key_green(img: Image.Image) -> Image.Image:
     return img
 
 
-def _asset_png(pose: str, mouth: str, eyes: str) -> Image.Image | None:
-    """按「pose + 口型」挑一张差分；眼睛闭只对 idle 有专门的一张。"""
-    root = ASSET_ROOT
+OUTFITS_ROOT = ASSET_ROOT / "outfits"
+DEFAULT_OUTFIT = "01_sailor"
+
+
+def list_outfits() -> list[str]:
+    """平台上能直接换的服装：根目录那套水手裙 + outfits/ 下每套。"""
+    names = [DEFAULT_OUTFIT]
+    if OUTFITS_ROOT.is_dir():
+        names += sorted(p.name for p in OUTFITS_ROOT.iterdir() if p.is_dir())
+    return names
+
+
+def outfit_root(outfit: str | None = None) -> Path:
+    """某套服装的素材目录；不指定就用根目录（水手裙）。"""
+    name = str(outfit or os.environ.get("WHALE_OUTFIT") or "").strip()
+    if name and name != DEFAULT_OUTFIT:
+        cand = OUTFITS_ROOT / name
+        if cand.is_dir():
+            return cand
+    return ASSET_ROOT
+
+
+def _asset_candidates(root: Path, pose: str, mouth: str, eyes: str) -> list[Path]:
+    """同一套服装内部按「动作说话版 → 动作闭口版 → 该套站姿」降级。
+
+    只在本套里找：从女仆装降级到水手裙的图，人会突然换衣服。
+    """
+    states = [mouth]
+    if mouth in ("half", "open", "round"):
+        states.append("open")
+    states.append("closed")
+    uniq: list[str] = []
+    for st in states:
+        if st not in uniq:
+            uniq.append(st)
+    cands: list[Path] = []
+    if pose in ("", "idle", "neutral"):
+        for st in uniq:
+            if eyes == "closed":
+                cands.append(root / ("base/03_base_blink_closed.png"
+                                     if st == "closed" else "base/04_base_blink_open.png"))
+            cands.append(root / f"base/01_base_{st}.png")
+        cands.append(root / "base/01_base_closed.png")
+        cands.append(root / "base/01_base.png")
+    else:
+        for st in uniq:
+            cands.append(root / f"poses/pose_{pose}_{st}.png")
+        for st in uniq:
+            cands.append(root / f"poses/pose_{pose}_open.png")
+        cands.append(root / f"poses/pose_{pose}.png")
+        cands.append(root / "base/01_base_closed.png")
+    return cands
+
+
+def _asset_png(pose: str, mouth: str, eyes: str, outfit: str | None = None) -> Image.Image | None:
+    """按「服装 + 动作 + 口型」挑一张差分；眼睛闭只对站姿有专门的一张。"""
+    root = outfit_root(outfit)
     if not root.is_dir():
         return None
-    if eyes == "closed" and pose in ("idle", ""):
-        cands = [root / "eyes/eyes_closed.png", root / "base/01_base_closed_eyes.png"]
-    else:
-        states = [mouth]
-        if mouth in ("half", "open", "round"):
-            states.append("open")
-        states.append("closed")
-        cands = []
-        for st in states:
-            cands.append(root / f"poses/pose_{pose}_{st}.png")
-        if pose in ("", "idle"):
-            cands += [root / f"base/01_base_{st}.png" for st in states]
-            cands.append(root / "base/01_base.png")
-    for path in cands:
+    for path in _asset_candidates(root, pose, mouth, eyes):
         if not path.is_file():
             continue
         try:
             stamp = path.stat().st_mtime
-            hit = _ASSET_CACHE.get((str(path), stamp))
+            key = (str(path), stamp)
+            hit = _ASSET_CACHE.get(key)
             if hit is None:
                 hit = _key_green(Image.open(path).convert("RGBA"))
                 hit = hit.resize((DES, DES), Image.LANCZOS)
-                _ASSET_CACHE[(str(path), stamp)] = hit
+                _ASSET_CACHE[key] = hit
             return hit.copy()
         except Exception:  # noqa: BLE001 - 真图坏了不该让整条片挂掉
             continue
     return None
 
 
-def render(pose="idle", mouth="closed", eyes="open", sway=0.0, tilt=None) -> Image.Image:
-    real = _asset_png(pose, mouth, eyes)
+def render(pose="idle", mouth="closed", eyes="open", sway=0.0, tilt=None,
+           outfit: str | None = None) -> Image.Image:
+    real = _asset_png(pose, mouth, eyes, outfit)
     if real is not None:
         return real
     img = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
