@@ -461,6 +461,50 @@ def _tts_cache_path(text: str, voice: str) -> Path | None:
     return TTS_CACHE / slug / f"{key}.mp3"
 
 
+TTS_CACHE_MAX_BYTES = 1200 * 1024 * 1024   # 缓存上限：一只 20 秒片约 200KB，够存几千条
+TTS_CACHE_MAX_AGE = 45 * 86400              # 45 天没被用到的音色旧稿子没人会再出片
+
+
+def _prune_tts_cache(keep: Path | None = None) -> None:
+    """配音缓存要封顶：一直只写不删，跑几个月磁盘就满了，平台跟着躺。
+
+    先按年龄删，再按总量从最久没用的删起；刚写进去的那条永远留着。
+    清理失败不影响出片，缓存是加速用的，不是产物。
+    """
+    try:
+        if not TTS_CACHE.exists():
+            return
+        now = time.time()
+        files = []
+        for f in TTS_CACHE.glob("*/*.mp3"):
+            try:
+                st = f.stat()
+            except OSError:
+                continue
+            if keep is not None and f == keep:
+                continue
+            if now - st.st_mtime > TTS_CACHE_MAX_AGE:
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
+                continue
+            files.append((st.st_mtime, st.st_size, f))
+        total = sum(sz for _m, sz, _f in files)
+        if total <= TTS_CACHE_MAX_BYTES:
+            return
+        for _m, sz, f in sorted(files):
+            if total <= TTS_CACHE_MAX_BYTES:
+                break
+            try:
+                f.unlink()
+                total -= sz
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+
 def _tts(text: str, out: Path, voice: str) -> None:
     """剪映音色配音（SAMI 内部接口）。
 
@@ -498,6 +542,7 @@ def _tts(text: str, out: Path, voice: str) -> None:
                 try:
                     cache.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copyfile(out, cache)
+                    _prune_tts_cache(cache)
                 except OSError:
                     pass
             return
