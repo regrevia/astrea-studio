@@ -484,6 +484,11 @@ class Worker:
             spec_path = Path(got["specPath"])
         elif isinstance(spec_obj, dict) and spec_obj.get("mode") == "vertical_short":
             progress(4, "timeline:script")
+            # 批量排 N 条时同一份稿子入队 N 次：把 runId 当表演种子，
+            # 出来的几条手势不一样，才有得挑；不传种子时渲染结果仍是原样。
+            if run_id and not spec_obj.get("_variant_seed"):
+                spec_obj["_variant_seed"] = run_id
+            log.info("variant seed=%r run=%s", spec_obj.get("_variant_seed"), run_id)
             # 文案体检跟着母版一起回给平台：写稿的人在 run 详情里就能看到
             copy_report = vertical._copy_report(spec_obj)
             try:

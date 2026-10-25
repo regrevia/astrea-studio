@@ -976,7 +976,8 @@ def _third_pose(cfg: dict[str, Any], idx: int, total: int,
 
 
 def _second_half_pose(cfg: dict[str, Any], idx: int, total: int,
-                      scene: dict[str, Any], first: str = "") -> str | None:
+                      scene: dict[str, Any], first: str = "",
+                      seed: int = 0) -> str | None:
     """一句话里换了话题就换手势：前半句思考、后半句给结论，比整屏一个姿势像在演。
 
     只在句读后还剩下实质内容时切换，短句硬切反而像卡顿。
@@ -1006,14 +1007,14 @@ def _second_half_pose(cfg: dict[str, Any], idx: int, total: int,
     if top <= 0:
         return None
     # 只在「讲解类」动作里换：开心/挥手是情绪和礼数，一句批评话里换成笑脸就假了
-    for name, score in sorted(scores.items(), key=lambda kv: -kv[1]):
+    cands = [
+        name for name, score in sorted(scores.items(), key=lambda kv: -kv[1])
         # 只躲「前半句正在演的那个」：整句 want 本身也是候选，前半句让位演了
         # 次优线索时，后半句回到整句的重心，正好是一句话里的态度转折。
-        if name == first or name in ("happy", "wave") or float(score) <= 0:
-            continue
-        if float(score) >= top * 0.55:
-            return name
-    return None
+        if name != first and name not in ("happy", "wave")
+        and float(score) > 0 and float(score) >= top * 0.55
+    ]
+    return _variant_pick(cands, seed) or None
 
 
 def _clause_cut(say: str) -> int:
@@ -1108,9 +1109,20 @@ def _keyword_pose(text: str) -> str:
     return max(scores, key=lambda pose: (round(scores[pose], 3), -order.get(pose, 9)))
 
 
+def _variant_pick(cands: list[str], seed: int) -> str:
+    """同一份稿子多出几条母版时，换一个「也在语义范围内」的动作。
+
+    候选只能来自这句话原本命中的线索，所以换的是表演，不是内容：文案一个字
+    没动，体检也不会判成错配。seed 为 0 时保持原来的首选，老片复现不变。
+    """
+    if not seed or len(cands) < 2:
+        return cands[0] if cands else ""
+    return cands[seed % len(cands)]
+
+
 def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
                 scene: dict[str, Any], avoid: str = "",
-                avoid_extra: str = "") -> str:
+                avoid_extra: str = "", seed: int = 0) -> str:
     """场景自带 pose 最优先，其次按讲述内容挑，最后才按首尾/奇偶兜底。
 
     avoid 是上一屏已经用过的姿势：连着三屏都在"想事情"，观众看到的是定格的
@@ -1138,6 +1150,15 @@ def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
     if hit and hit not in ("wave", "happy"):
         # 语义命中就别让「开场挥手/收尾傻笑」压掉：收尾那句是「没想到」，
         # 给个惊喜比给个笑更贴。
+        if seed:
+            scores = _keyword_scores(text)
+            top = float(scores.get(hit) or 0.0)
+            cands = [hit] + sorted(
+                (k for k, v in scores.items()
+                 if k != hit and k not in recent and k not in ("wave", "happy")
+                 and float(v) > 0 and float(v) >= top * 0.55),
+                key=lambda k: -float(scores[k]))
+            return _variant_pick(cands, seed)
         return hit
     if idx == 0:
         return "wave"       # 开场挥手，先把人立住

@@ -355,6 +355,7 @@ def _segment_sprites(seg: dict, render, key_green):
 
 def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: Path,
           duration: float, render, key_green, name: str = "char_layer",
+          seed: int = 0,
           log=print) -> tuple[Path, int, int] | None:
     """把分段表渲染成一条带 alpha 的视频，裁到人物实际占的框。
 
@@ -365,6 +366,9 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
 
     segs = [dict(s) for s in segments
             if float(s.get("end") or 0) - float(s.get("start") or 0) > 0.01]
+    # 同稿多母版：把呼吸/重心/眨眼/镜头感的相位挪一下，两条片子各有各的
+    # 身体节奏，逐帧都不一样；不说话时也在动的观感不变，只是动的位置不同。
+    _ph = (int(seed) % 360) * math.pi / 180.0 if seed else 0.0
     if not segs:
         return None
     segs = _fill_gaps(segs)
@@ -464,11 +468,11 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
             # 缓慢呼吸 + 轻晃：让「没在说话」的段落也在动
             # 三个不成整数倍的周期叠着走：单条正弦到顶点会停一会儿，
             # 叠起来才没有「正好都不动」的时刻
-            dy = (bob * math.sin(2.0 * math.pi * t / BOB_PERIOD)
-                  + bob * 0.34 * math.sin(2.0 * math.pi * t / 2.9 + 0.7)
-                  + bob * 0.17 * math.sin(2.0 * math.pi * t / 1.7 + 2.3))
-            dx = (sway * math.sin(2.0 * math.pi * t / SWAY_PERIOD + 1.1)
-                  + sway * 0.5 * math.sin(2.0 * math.pi * t / 3.7))
+            dy = (bob * math.sin(2.0 * math.pi * t / BOB_PERIOD + _ph)
+                  + bob * 0.34 * math.sin(2.0 * math.pi * t / 2.9 + 0.7 + _ph)
+                  + bob * 0.17 * math.sin(2.0 * math.pi * t / 1.7 + 2.3 + _ph))
+            dx = (sway * math.sin(2.0 * math.pi * t / SWAY_PERIOD + 1.1 + _ph)
+                  + sway * 0.5 * math.sin(2.0 * math.pi * t / 3.7 + _ph))
             dy += e_dy
             # 换姿势时给一下小跳：立绘本身没换动作，只靠倾斜和呼吸太"稳"，
             # 0.26 秒的低幅起落读起来像答话时点了一下头。
@@ -482,15 +486,15 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
             # 只有嘴在动、肩膀和重心一动不动，读起来还是贴纸：
             # 呼吸让身高微微起伏（±0.6%），倾斜让重心在两只脚之间换，
             # 支点压在脚底中线，脚不会跟着漂。合成一次仿射，不额外花钱。
-            breath = 1.0 + 0.006 * math.sin(2.0 * math.pi * t / 3.30)
+            breath = 1.0 + 0.006 * math.sin(2.0 * math.pi * t / 3.30 + _ph)
             bias = mult = 0.0
             for seg_a, wgt in active:
                 b_le, m_le = _POSE_ATTITUDE.get(str(seg_a.get("pose") or ""), (0.0, 1.0))
                 bias += b_le * wgt
                 mult += m_le * wgt
             lean = math.radians(
-                mult * (0.9 * math.sin(2.0 * math.pi * t / 6.10 + 0.4)
-                        + 0.45 * math.sin(2.0 * math.pi * t / 2.30 + 1.9)) + bias)
+                mult * (0.9 * math.sin(2.0 * math.pi * t / 6.10 + 0.4 + _ph)
+                        + 0.45 * math.sin(2.0 * math.pi * t / 2.30 + 1.9 + _ph)) + bias)
             pw, ph = piece.size
             nw, nh = pw + 2 * rot, ph + 2 * rot
             cos_l, sin_l = math.cos(lean), math.sin(lean)

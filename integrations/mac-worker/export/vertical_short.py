@@ -831,6 +831,10 @@ def _film_glow(workdir: Path, total: float) -> list[dict]:
 def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | None = None) -> dict:
     """脚本 → timeline spec（静帧卡 + 立绘 + 逐屏配音）。"""
     workdir.mkdir(parents=True, exist_ok=True)
+    # 一次排多条母版时，同稿不同表演：种子取自 runId，只影响手势选择，
+    # 文案/配音/时长一个字都不动。没有种子（老 spec 直发）时行为完全不变。
+    _raw_seed = str(script.get("_variant_seed") or "")
+    variant_seed = int(hashlib.md5(_raw_seed.encode()).hexdigest()[:6], 16) if _raw_seed else 0
     voice = voice or str(script.get("voice") or DEFAULT_VOICE)
     # 口播稿可能是文件路径（和 make_episode 一样）：不认路径就会退回要点里的说明句，
     # 同一份脚本出的 mp4 比剪映草稿长几秒，听起来还不像人写的
@@ -1141,7 +1145,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             # 角色才是在"讲这句话"，而不是被贴上来定格。
             pose = str(char_cfg.get("pose")
                        or JE._scene_pose(char_cfg, i, total, scene, avoid=scene_prev,
-                                         avoid_extra=scene_prev2))
+                                         avoid_extra=scene_prev2, seed=variant_seed))
             # 屏内逐帧状态（prev_pose）会在下面被改写，跨屏记忆单独存
             scene_prev2, scene_prev = scene_prev, pose
             # 作者用 poses 列表指定了整条片的手势，那是意图不是错配；显式 pose 同理
@@ -1157,7 +1161,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                                       "want": want, "supported": supported,
                                       "last": i == total - 1})
             alt_pose = (None if char_cfg.get("pose") else
-                        JE._second_half_pose(char_cfg, i, total, scene, first=pose))
+                        JE._second_half_pose(char_cfg, i, total, scene, first=pose,
+                                             seed=variant_seed))
             # 体检要报「这一屏真正演过的姿势」，只记前半句会漏掉换势后的那一个
             if gesture_audit and gesture_audit[-1]["idx"] == i:
                 gesture_audit[-1]["alt"] = alt_pose or ""
@@ -1340,7 +1345,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 char_segs, width=int(spec["width"]), height=int(spec["height"]),
                 fps=int(spec["fps"]), workdir=workdir, duration=round(t, 3),
                 render=character.render, key_green=character._key_green,
-                log=lambda _m: None)
+                seed=variant_seed, log=lambda _m: None)
             if char_mov is not None:
                 char_mov, char_x, char_y = char_mov
         except Exception as exc:  # noqa: BLE001 - 动画层崩了也得有成片，退回静帧
