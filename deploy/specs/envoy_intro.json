@@ -1,0 +1,32 @@
+{
+  "projectId": "{{PROJECT_ID}}",
+  "title": "介绍 Envoy · 排版复核",
+  "brief": "换行规则改了，重跑同一份稿子确认成片。",
+  "engine": "timeline",
+  "template": "factcard",
+  "spec": {
+    "topic": "AI 读不了链接，Envoy 补上",
+    "hook": "把链接丢给 AI，它读的多半只是标题",
+    "kicker": "把链接交给 AI",
+    "points": [
+      "画面也能读::视频按帧拆开，图才有得看::视频里的 PPT，它看不见。Envoy 抽帧，喂给它。",
+      "结论能回查::哪句从哪来，点开就能核对::每条结论后面挂时间戳，想核对？跳过去就行。",
+      "缺口不编::空白就写空白，不替你编::读不到的地方，它直接标未覆盖。不编。"
+    ],
+    "cta": "装上 Envoy，链接就是材料",
+    "voice": "sami:BV405_streaming",
+    "narration": {
+      "intro": "链接丢给 AI，它只读到标题。跟没读差不多。",
+      "points": [
+        "视频里的 PPT，它看不见。Envoy 抽帧，喂给它。",
+        "每条结论后面挂时间戳，想核对？跳过去就行。",
+        "读不到的地方，它直接标未覆盖。不编。"
+      ],
+      "outro": "装上 Envoy，链接就是材料。想看哪条，评论区丢过来。"
+    },
+    "engine": "timeline",
+    "template": "factcard",
+    "mode": "vertical_short",
+    "character": true
+  }
+}

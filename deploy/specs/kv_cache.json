@@ -1,0 +1,31 @@
+{
+  "projectId": "{{PROJECT_ID}}",
+  "title": "大模型面试题 · KV Cache 是什么",
+  "brief": "平台表单原样提交，验证一键出片。",
+  "engine": "timeline",
+  "template": "factcard",
+  "spec": {
+    "topic": "KV Cache 是什么",
+    "hook": "显存不够时，它替你续命",
+    "kicker": "大模型面试题",
+    "points": [
+      "只留 K 和 V::Q 用完就扔::它只记得 K 和 V，别的一概不留。",
+      "记住换速度::越长越吃显存::代价很直白。缓存越长越占卡，你也躲不掉。",
+      "先铺缓存::prefill 先跑一遍::所以先跑一遍 prefill，把缓存铺好再开跑。"
+    ],
+    "cta": "你选省显存，还是省时间？",
+    "voice": "sami:BV405_streaming",
+    "narration": {
+      "intro": "先说结论。它不是技巧。",
+      "points": [
+        "它只记得 K 和 V，别的一概不留。",
+        "代价很直白。缓存越长越占卡，你也躲不掉。",
+        "所以先跑一遍 prefill，把缓存铺好再开跑。"
+      ]
+    },
+    "engine": "timeline",
+    "template": "factcard",
+    "mode": "vertical_short",
+    "character": true
+  }
+}
