@@ -700,16 +700,22 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
 
     # 3) 收尾
     # 收尾卡也要有正文：空卡配一句飘在中间的字，最容易读成"没做完"
+    # 卡面写什么、配音就念什么。以前卡面只写 cta、配音念了更长的 outro，
+    # 观众看到「装上 Envoy，链接就是材料」，耳朵却多听到半句，像两条音轨没对齐。
+    # 稿子里 cta 和 outro 常常都在：cta 是写在卡上的短语，outro 才是配音念的整句。
+    # 优先 outro，卡面才会跟耳朵听到的是同一句。
+    close_say = str(narration.get("outro") or narration.get("cta") or cta).strip()
     cta_img = render_card(out_dir / f"s{total - 1:02d}.png", kicker=kicker, logo=logo,
                           index="", palette_idx=len(PALETTES) - 1, progress=total - 1,
                           total=total, slug=slug, hook=True, hud=hud,
-                          body=re.sub(r"\s+", "", cta), body_top=700, draw_body=draw_text)
+                          body=re.sub(r"\s+", "", close_say), body_top=700,
+                          draw_body=draw_text)
     scenes.append({
         "image": str(cta_img),
         "palette": len(PALETTES) - 1,
         # 稿子可能写成 outro 而不是 cta：只认 cta 会把收尾那句丢掉，配音改成
         # 卡面正文念一遍，情绪也退回默认的笑
-        "say": str(narration.get("cta") or narration.get("outro") or cta).strip(),
+        "say": close_say,
         # 结论句已经画在卡面上，剪映再叠一层就是重影
         "text": "",
         "no_text": True,

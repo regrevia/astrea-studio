@@ -641,16 +641,35 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             layers = (_block_layers(str(label), 48, 592, workdir, f"l{i:02d}",
                                     align="center", left=124, max_w=center_w,
                                     fill=(255, 255, 255, 168)) if str(label).strip() else [])
+            # 收尾念的是 outro，卡面却只写 cta：耳朵多听到半句，眼睛对不上。
+            # 卡面改成同一句，按句号拆成「主张 / 补一句」，主次分两级而不是硬塞一屏。
+            close_say = str(
+                (script.get("narration") or {}).get("outro")
+                or (script.get("narration") or {}).get("cta")
+                or cta_text).strip()
+            close_say = " ".join(close_say.split())
+            close_parts = [x.strip() for x in re.split(r"(?<=[。！？])", close_say) if x.strip()]
+            head = close_parts[0] if close_parts else close_say
+            tail = "".join(close_parts[1:])
             # 收尾那句要一行读完：掉到第二行只剩半行，读起来像没排完
             draw = _measure()
             cta_size = 84
             for size in (84, 78, 72, 66, 60, 56):
                 cta_size = size
-                if draw.textlength(cta_text, font=factcard._font(size)) <= center_w:
+                if draw.textlength(head, font=factcard._font(size)) <= center_w:
                     break
-            layers += _block_layers(cta_text, cta_size, 700, workdir, f"h{i:02d}",
+            layers += _block_layers(head, cta_size, 700, workdir, f"h{i:02d}",
                                     align="center", left=124, max_w=center_w,
                                     fill=(255, 255, 255, 236))
+            if tail:
+                tail_size = max(40, int(cta_size * 0.58))
+                while tail_size > 40 and draw.textlength(
+                        tail, font=factcard._font(tail_size)) > center_w:
+                    tail_size -= 2
+                layers += _block_layers(tail, tail_size, 700 + int(cta_size * 1.42),
+                                        workdir, f"t{i:02d}", align="center", left=124,
+                                        max_w=center_w,
+                                        fill=(*_scene_accent(sc, i, total), 244))
         else:
             layers = _title_layers(str(sc.get("text") or ""), workdir, i)
             body = raw_bodies[i - 1] if 0 < i <= len(raw_bodies) else ""
