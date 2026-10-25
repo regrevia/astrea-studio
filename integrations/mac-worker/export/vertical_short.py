@@ -689,10 +689,14 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         hud_png = factcard.render_hud(
             workdir / f"hud{i:02d}.png", kicker=kicker, progress=i, total=total,
             palette_idx=hud_idx)
+        # 顶栏的编号/进度和卡面同一套色：它晚半拍换，观众就看见「旧色配新卡」
+        hud_shift = 0.0 if i == 0 else XFADE / 2
+        hud_end = (t + dur + (TAIL if i == total - 1 else 0.0)) if i == total - 1 \
+            else t + dur - XFADE / 2
         overlay.append({
             "src": str(hud_png),
-            "start": round(t, 3),
-            "end": round(t + dur + (TAIL if i == total - 1 else 0.0), 3),
+            "start": round(t - hud_shift, 3),
+            "end": round(hud_end, 3),
             "x": 0.0, "y": 0.0, "width": int(spec["width"]),
             "opacity": 1.0, "fade": 0.0,
             "motion": {"type": "none", "amplitude": 0.0, "period": 1.0},
@@ -700,10 +704,15 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         # 标题一律从切点后淡入：旧标题在切点一并消失，中间只留半口气，
         # 叠化中段不会出现两套字压在一起。封面例外，首帧就要有字
         lead = 0.06
+        # 换字必须和换卡同时完成：卡面从切点前 XFADE 就开始叠化，压到一半时
+        # 新卡已经占上风，字还停在上一屏，观众会看到「新卡配旧句」的一闪。
+        # 两边都对齐到叠化的中点，前半程旧卡配旧字、后半程新卡配新字。
+        handoff = XFADE / 2
         # 收尾定住的那一秒里字要还在，否则卡面是空的
-        text_end = t + dur + (TAIL if i == total - 1 else 0.0)
+        text_end = (t + dur + (TAIL if i == total - 1 else 0.0)) if i == total - 1 \
+            else t + dur - handoff
         for n, layer in enumerate(text_layers):
-            at = max(0.0, t - lead + 0.12 * n) if i > 0 else 0.0
+            at = max(0.0, t - handoff + 0.02 * n) if i > 0 else 0.0
             overlay.append({
                 "src": str(layer["png"]),
                 "start": round(at, 3),
@@ -711,7 +720,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 "x": float(layer["x"]), "y": float(layer["y"]),
                 "opacity": 1.0, "width": int(layer["w"]),
                 # 标题从切点淡入 0.20s：口播已经开口，字要跟上，不能再拖半拍
-                "fade": 0.20 if i > 0 else 0.0,
+                "fade": 0.18 if i > 0 else 0.0,
                 "motion": {"type": "none", "amplitude": 0.0, "period": 1.0},
             })
         if char_cfg is not None:
