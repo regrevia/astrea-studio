@@ -595,7 +595,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         z0, z1 = (1.0, 1.07) if i % 2 == 0 else (1.07, 1.0)
         video.append({
             "src": str(card), "out": round(dur, 3), "zoom": [z0, z1],
-            "fade_in": FADE if i == 0 else 0.0,
+            # 封面第一帧就是成片封面：平台取首帧当图，黑起头等于没封面
+            "fade_in": 0.0,
             "fade_out": FADE if i == total - 1 else 0.0,
         })
         # 上一屏末尾把下一张卡整幅叠化上来：两屏之间是融过去的，不是切过去的
@@ -633,15 +634,13 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             "opacity": 1.0, "fade": 0.0,
             "motion": {"type": "none", "amplitude": 0.0, "period": 1.0},
         })
-        # 一行一行落：每行 0.12s 间隔淡入，比整屏切过去更像有人在讲
-        # 叠化中段就把字提上来，否则新屏会先空 0.4 秒
-        # 叠化期间上新标题，会和还没退场的旧标题叠成一团字：
-        # 标题一律从切点起淡入，旧标题在切点一并消失，中间只留半口气
+        # 标题一律从切点后淡入：旧标题在切点一并消失，中间只留半口气，
+        # 叠化中段不会出现两套字压在一起。封面例外，首帧就要有字
         lead = 0.06
         # 收尾定住的那一秒里字要还在，否则卡面是空的
         text_end = t + dur + (TAIL if i == total - 1 else 0.0)
         for n, layer in enumerate(text_layers):
-            at = max(0.0, t - lead + 0.12 * n)
+            at = max(0.0, t - lead + 0.12 * n) if i > 0 else 0.0
             overlay.append({
                 "src": str(layer["png"]),
                 "start": round(at, 3),
@@ -649,7 +648,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 "x": float(layer["x"]), "y": float(layer["y"]),
                 "opacity": 1.0, "width": int(layer["w"]),
                 # 标题从切点淡入 0.20s：口播已经开口，字要跟上，不能再拖半拍
-                "fade": 0.20,
+                "fade": 0.20 if i > 0 else 0.0,
                 "motion": {"type": "none", "amplitude": 0.0, "period": 1.0},
             })
         if char_cfg is not None:
