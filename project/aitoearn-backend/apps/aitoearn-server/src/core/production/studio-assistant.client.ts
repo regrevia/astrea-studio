@@ -55,22 +55,48 @@ interface AnthropicMessage {
  *
  * 内部统一用 OpenAI 形状的消息循环，只在边界做协议转换，所以上层工具循环两种协议通用。
  */
+/** 单次请求的推理端点覆盖：面板上填的地址/密钥/模型，空值不覆盖。 */
+export interface StudioAssistantOverride {
+  baseUrl?: string
+  apiKey?: string
+  model?: string
+  wire?: 'openai' | 'anthropic'
+}
+
+function mergeOverride(override?: StudioAssistantOverride) {
+  const base = config.studioAssistant
+  const clean = Object.fromEntries(
+    Object.entries(override ?? {}).filter(([, v]) => typeof v === 'string' && v.trim()),
+  ) as StudioAssistantOverride
+  return {
+    baseUrl: clean.baseUrl?.trim() || base.baseUrl,
+    apiKey: clean.apiKey?.trim() ?? base.apiKey,
+    model: clean.model?.trim() || base.model,
+    // 自己填的地址多半是 OpenAI 兼容服务；没显式指定协议就按 OpenAI 调，别用平台默认的 anthropic 打过去。
+    wire: clean.wire ?? (clean.baseUrl ? 'openai' : base.wire),
+    thinkingBudget: base.thinkingBudget,
+  }
+}
+
 @Injectable()
 export class StudioAssistantClient {
   async chat(
     messages: AssistantChatMessage[],
     tools: AssistantToolDefinition[],
+    override?: StudioAssistantOverride,
   ): Promise<AssistantChatResponse> {
-    return config.studioAssistant.wire === StudioAssistantWire.Anthropic
-      ? this.chatAnthropic(messages, tools)
-      : this.chatOpenAi(messages, tools)
+    const target = mergeOverride(override)
+    return target.wire === StudioAssistantWire.Anthropic
+      ? this.chatAnthropic(messages, tools, target)
+      : this.chatOpenAi(messages, tools, target)
   }
 
   private async chatOpenAi(
     messages: AssistantChatMessage[],
     tools: AssistantToolDefinition[],
+    target = mergeOverride(),
   ): Promise<AssistantChatResponse> {
-    const { baseUrl, model, apiKey } = config.studioAssistant
+    const { baseUrl, model, apiKey } = target
     const payload = await this.post(
       `${baseUrl.replace(/\/+$/, '')}/chat/completions`,
       { 'authorization': apiKey ? `Bearer ${apiKey}` : '' },
@@ -104,8 +130,15 @@ export class StudioAssistantClient {
   private async chatAnthropic(
     messages: AssistantChatMessage[],
     tools: AssistantToolDefinition[],
+    target = mergeOverride(),
   ): Promise<AssistantChatResponse> {
-    const { baseUrl, model, apiKey, thinkingBudget } = config.studioAssistant
+    const { baseUrl, model, apiKey, thinkingBudget } = target
+    // Anthropic 的 system 是顶层字段，混在 messages 里会被忽略：人设全写在 system，丢了就等于没有规则。
+    const system = messages
+      .filter(message => message.role === 'system')
+      .map(message => message.content)
+      .join('\n\n')
+      .trim()
     const payload = await this.post(
       `${baseUrl.replace(/\/+$/, '')}/messages`,
       {
@@ -116,6 +149,7 @@ export class StudioAssistantClient {
       },
       {
         model,
+        ...(system ? { system } : {}),
         // thinking 预算必须小于 max_tokens，否则网关直接 400。
         max_tokens: thinkingBudget + 8_192,
         messages: toAnthropicMessages(messages),

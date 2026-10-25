@@ -10,8 +10,16 @@ const CreateAssistantSessionSchema = z.object({
 })
 class CreateAssistantSessionDto extends createZodDto(CreateAssistantSessionSchema, 'CreateAssistantSessionDto') {}
 
+const AgentEndpointSchema = z.object({
+  baseUrl: z.string().max(300).optional().describe('用户填的推理地址（OpenAI 兼容）'),
+  apiKey: z.string().max(300).optional().describe('用户填的密钥，只在本请求内存里用，不落库'),
+  model: z.string().max(120).optional().describe('模型名，不填用服务端默认'),
+  wire: z.enum(['openai', 'anthropic']).optional().describe('线协议，不填用服务端默认'),
+})
+
 const SendAssistantMessageSchema = z.object({
   message: z.string().min(1).max(2000).describe('用户这一轮说的话'),
+  agent: AgentEndpointSchema.optional().describe('本轮使用的推理端点'),
 })
 class SendAssistantMessageDto extends createZodDto(SendAssistantMessageSchema, 'SendAssistantMessageDto') {}
 
@@ -43,6 +51,6 @@ export class ProductionAssistantController {
     @Param('id') id: string,
     @Body() body: SendAssistantMessageDto,
   ) {
-    return await this.assistant.sendMessage(token.id, id, body.message)
+    return await this.assistant.sendMessage(token.id, id, body.message, body.agent)
   }
 }

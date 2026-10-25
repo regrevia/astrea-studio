@@ -313,6 +313,28 @@ export interface OutfitInfo {
   complete: boolean
 }
 
+/** 一套衣服的素材状态：动作和口型齐不齐、要不要另叠表情层。 */
+export interface AvatarOutfit {
+  id: string
+  label: string
+  mode: 'baked' | 'split'
+  poses: string[]
+  mouths: string[]
+  has_expression_layer: boolean
+  anchor_count: number
+}
+
+/** 主角素材模型。动作与表情共用一套，服装只提供身体。 */
+export interface AvatarModel {
+  id: string
+  name: string
+  default_outfit: string
+  poses: string[]
+  expressions: string[]
+  outfits: AvatarOutfit[]
+  root?: string
+}
+
 /** 能力快照。 */
 export interface Inventory {
   platforms: PlatformInfo[]
@@ -374,6 +396,14 @@ export interface AssistantSessionDetail {
   id: string
   title: string
   messages: AssistantMessage[]
+}
+
+/** 面板上自己填的推理端点，只在本机保存，随每次发送带给后端。 */
+export interface AssistantAgentEndpoint {
+  baseUrl?: string
+  apiKey?: string
+  model?: string
+  wire?: 'openai' | 'anthropic'
 }
 
 /** 发一条消息的返回。 */

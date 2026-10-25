@@ -375,6 +375,14 @@ export class ProductionService {
         stage: 'starting',
         message: `claimed by ${workerId} (attempt ${job.attempt})`,
       })
+      // 领取即开工：run 要从「排队中」翻到「渲染中」，否则指挥台和列表里
+      // 一直在说排队，实际 worker 已经在跑，用户会以为队列卡死。
+      if (run && run.status === ProductionRunStatus.QUEUED) {
+        await this.runRepo.updateById(job.runId, {
+          status: ProductionRunStatus.RUNNING,
+          currentStage: 'starting',
+        } as never)
+      }
       return job
     }
     return null
@@ -404,6 +412,12 @@ export class ProductionService {
     }
     if (Object.keys(update).length) {
       await this.jobRepo.updateById(jobId, update as never)
+      // 进度同步回 run：任务详情与指挥台都读 run，只更新 job 的话界面永远停在 0%
+      await this.runRepo.updateById(job.runId, {
+        currentStage: stage ?? job.stage,
+        progress: progress ?? job.progress,
+        status: ProductionRunStatus.RUNNING,
+      } as never)
       await this.appendEvent(job.runId, {
         kind: 'job.progress',
         jobId,
@@ -437,6 +451,7 @@ export class ProductionService {
     const update: Record<string, unknown> = {
       status: ProductionRunStatus.SUCCEEDED,
       currentStage: 'done',
+      progress: 100,
       ...runPatch,
     }
     const run = await this.runRepo.getById(job.runId)

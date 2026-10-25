@@ -4,6 +4,7 @@ import { config } from '../../config'
 import { StudioAssistantClient } from './studio-assistant.client'
 
 vi.mock('../../config', () => ({
+  StudioAssistantWire: { Anthropic: 'anthropic', Openai: 'openai' },
   config: {
     studioAssistant: {
       baseUrl: 'http://127.0.0.1:11434/v1',
@@ -80,5 +81,30 @@ describe('studioAssistantClient', () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ choices: [] }), { status: 200 }))
 
     await expect(client.chat([{ role: 'user', content: 'hi' }], TOOLS)).rejects.toThrow('没有返回任何候选结果')
+  })
+})
+
+describe('anthropic 线协议', () => {
+  const client = new StudioAssistantClient()
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      content: [{ type: 'text', text: '好的' }],
+    }), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  it('system 提到顶层字段，不留在 messages 里', async () => {
+    await client.chat(
+      [{ role: 'system', content: '你是指挥台' }, { role: 'user', content: '在吗' }],
+      TOOLS,
+      { baseUrl: 'http://127.0.0.1:3000/v1', apiKey: 'k', model: 'm', wire: 'anthropic' },
+    )
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.system).toBe('你是指挥台')
+    expect(body.messages).toEqual([{ role: 'user', content: [{ type: 'text', text: '在吗' }] }])
+    expect(body.tools[0].input_schema).toEqual({})
   })
 })

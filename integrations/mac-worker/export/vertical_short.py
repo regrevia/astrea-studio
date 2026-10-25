@@ -761,6 +761,30 @@ def _crop_frame(png: Path, workdir: Path, name: str) -> tuple[Path, int, int, in
     return val
 
 
+def _film_glow(workdir: Path, total: float) -> list[dict]:
+    """整片一块环境光：同一条光从开场照到收尾，换屏时不挪位置也不换颜色。
+
+    按屏生成柔光，切点就是「旧灯灭、新灯亮」，位置还左右镜像一次；动作
+    衔接的时候观众先看见背景闪一下，才觉得这一下接得不顺。这里只留两盏，
+    颜色取统一底色那套色温，正弦相位从 0 走到片尾，换屏只是内容在换。
+    """
+    total = max(1.0, float(total))
+    out: list[dict] = []
+    for k, (alpha, amp, per, x, y, axis) in enumerate((
+        (20, 54.0, max(9.0, total / 2.6), -150.0, 520.0, "sway"),
+        (13, 28.0, max(7.0, total / 3.3), -190.0, 880.0, "bob"),
+    )):
+        png = factcard.render_glow(workdir / f"glow_film{k}.png",
+                                   palette_idx=0, alpha=alpha)
+        out.append({
+            "src": str(png), "start": 0.0, "end": round(total, 3),
+            "x": x, "y": y, "opacity": 1.0, "width": 1360,
+            "fade": 0.0,
+            "motion": {"type": axis, "amplitude": amp, "period": per},
+        })
+    return out
+
+
 def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | None = None) -> dict:
     """脚本 → timeline spec（静帧卡 + 立绘 + 逐屏配音）。"""
     workdir.mkdir(parents=True, exist_ok=True)
@@ -905,7 +929,9 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             for lay in _block_layers(cta_copy["head"], cta_copy["size"], cta_copy["top"],
                                      workdir, f"h{i:02d}", align="left", left=140,
                                      max_w=factcard.W - 264, fill=(255, 255, 255, 236)):
-                lay["delay"] = 0.22
+                # 收尾那张板在叠化结束时必须已经有字：以前拖 0.22s 才淡入，
+                # 观众看到的是「一块空板 + 一个栏目名」停半秒，像没加载完。
+                lay["delay"] = 0.08
                 lay["fade"] = 0.26
                 layers.append(lay)
             if cta_copy["tail"]:
@@ -978,38 +1004,15 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             # 封面第一帧就是成片封面：平台取首帧当图，黑起头等于没封面
             "fade_in": 0.0,
             "fade_out": FADE if i == total - 1 else 0.0,
+            "xfade_in": 0.0 if i == 0 else XFADE,
         })
-        # 上一屏末尾把下一张卡整幅叠化上来：两屏之间是融过去的，不是切过去的
-        if i > 0:
-            card_overlays.append({
-                "src": str(cards[i]),
-                "start": round(max(0.0, t - XFADE), 3),
-                "end": round(t, 3),
-                "x": 0.0, "y": 0.0, "width": 0, "opacity": 1.0,
-                "fade": XFADE, "fade_mode": "in",
-                "motion": {"type": "none", "amplitude": 0.0, "period": 1.0},
-            })
-        # 每屏一块会横移的柔光：整屏推近 7% 在 4fps 体检里几乎不动，
-        # 一秒没变化就是一帧定格。光在呼吸，画面才一直在活。
-        glow_idx = i if i not in (0, total - 1) else (0 if i == 0 else len(factcard.PALETTES) - 1)
-        glow_start = round(0.0 if i == 0 else max(0.0, t - XFADE), 3)
-        glow_end = round(t + dur + (TAIL if i == total - 1 else 0.0), 3)
-        # 一横一竖两块光各走一条轴：只用一块正弦光，转过极值那半秒
-        # 整屏像素几乎不动，体检照样判定格。
-        for k, (alpha, amp, per, gx, gy, axis) in enumerate((
-            (19, 46.0 + 11.0 * (i % 3), 5.2 + 0.9 * (i % 2), 60.0, 960.0, "sway"),
-            (12, 34.0 + 9.0 * ((i + 1) % 3), 3.7 + 0.8 * (i % 2), 120.0, 1150.0, "bob"),
-        )):
-            glow = factcard.render_glow(workdir / f"glow{i:02d}{k}.png",
-                                        palette_idx=glow_idx, alpha=alpha)
-            bg_overlay.append({
-                "src": str(glow), "start": glow_start, "end": glow_end,
-                "x": gx if i % 2 == 0 else -gx - 90.0,
-                "y": gy if i % 2 == 0 else gy + 120.0,
-                "opacity": 1.0, "width": 1080,
-                "fade": 0.0 if i == 0 else XFADE,
-                "motion": {"type": axis, "amplitude": amp, "period": per},
-            })
+        # 换屏是引擎里的真交叠（video.xfade_in）：以前用「下一张卡当叠层」模拟，
+        # 叠层是固定 1.0 倍、底图在 1.0~1.07 之间推拉，0.4s 里两张同图案的卡
+        # 对不齐，网格点和光斑就互相咬，看着像背后的光在抖。现在底图自己融，
+        # 缩放也接着上一屏走，切点只剩内容在换。
+        # 这里的柔光原来按屏生成，换屏时旧光淡出、新光从另一侧淡入，
+        # 观众看到的是「背后那盏灯换了位置、还换了颜色」。改成整片一块光，
+        # 见循环外的 _film_glow：位置、颜色、呼吸周期都只跟全片时间有关。
         # 界面层：kicker / 进度条 / 角标。整屏叠化的那 0.4s 里，
         # 卡面和人物在融，这两样必须一动不动，否则就是两层字压在一起。
         # HUD 的强调色要跟卡面色温一致：卡面按语气挑色，这里不能还按第几屏
@@ -1018,10 +1021,11 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         hud_png = factcard.render_hud(
             workdir / f"hud{i:02d}.png", kicker=kicker, progress=i, total=total,
             palette_idx=hud_idx)
-        # 顶栏的编号/进度和卡面同一套色：它晚半拍换，观众就看见「旧色配新卡」
-        hud_shift = 0.0 if i == 0 else XFADE / 2
+        # 底图的叠化是「切点前 0.4s 就已经融完」：到切点画面已经是新卡。
+        # 所以字和 HUD 都该在切点这一刻换，早半拍换就成了「旧卡配新字 + 空板」。
+        hud_shift = 0.0
         hud_end = (t + dur + (TAIL if i == total - 1 else 0.0)) if i == total - 1 \
-            else t + dur - XFADE / 2
+            else t + dur
         overlay.append({
             "src": str(hud_png),
             "start": round(t - hud_shift, 3),
@@ -1033,13 +1037,13 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         # 标题一律从切点后淡入：旧标题在切点一并消失，中间只留半口气，
         # 叠化中段不会出现两套字压在一起。封面例外，首帧就要有字
         lead = 0.06
-        # 换字必须和换卡同时完成：卡面从切点前 XFADE 就开始叠化，压到一半时
-        # 新卡已经占上风，字还停在上一屏，观众会看到「新卡配旧句」的一闪。
-        # 两边都对齐到叠化的中点，前半程旧卡配旧字、后半程新卡配新字。
-        handoff = XFADE / 2
+        # 换字必须和「新卡成为唯一底图」那一帧对齐，也就是切点本身：
+        # 底图从切点前 XFADE 开始融，到切点已经融完。字要是提前半拍换，
+        # 叠化后半程就是「新卡配旧句」，再往后还会剩一屏空板。
+        handoff = 0.0
         # 收尾定住的那一秒里字要还在，否则卡面是空的
         text_end = (t + dur + (TAIL if i == total - 1 else 0.0)) if i == total - 1 \
-            else t + dur - handoff
+            else t + dur
         for n, layer in enumerate(text_layers):
             at = max(0.0, t - handoff + 0.02 * n) if i > 0 else 0.0
             if layer.get("delay"):
@@ -1051,7 +1055,9 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 "x": float(layer["x"]), "y": float(layer["y"]),
                 "opacity": 1.0, "width": int(layer["w"]),
                 # 标题从切点淡入 0.20s：口播已经开口，字要跟上，不能再拖半拍
-                "fade": float(layer.get("fade") or (0.18 if i > 0 else 0.0)),
+                # 文字在切点硬换：底图已经融完，再淡入 0.18s 就会露出
+                # 一屏「有板无字」的空拍；两屏都要淡又会在叠化里压出两层字。
+                "fade": float(layer.get("fade") or 0.0),
                 "motion": {"type": "none", "amplitude": 0.0, "period": 1.0},
             })
         if char_cfg is not None:
@@ -1242,6 +1248,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             char_segs[-1]["fade_out"] = max(float(char_segs[-1].get("fade_out") or 0.0),
                                             round(TAIL * 0.30, 3))
         t += TAIL
+
+    bg_overlay.extend(_film_glow(workdir, round(t, 3)))
 
     char_mov = None
     char_x = char_y = 0

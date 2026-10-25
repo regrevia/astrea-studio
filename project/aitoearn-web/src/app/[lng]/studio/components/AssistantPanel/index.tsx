@@ -13,8 +13,9 @@
 
 import type { KeyboardEvent } from 'react'
 import type { AssistantPanelProps, AssistantQuickPromptKey } from './types'
+import type { AgentEndpoint } from './utils'
 import type { AssistantMessage } from '@/api/production/production.types'
-import { AlertCircle, Loader2, Plus, Send, Sparkles } from 'lucide-react'
+import { AlertCircle, Loader2, Plus, Send, Settings2, Sparkles } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   createAssistantSession,
@@ -24,15 +25,19 @@ import {
 import { useTransClient } from '@/app/i18n/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/utils/className'
 import { AssistantMessageItem } from './components/AssistantMessageItem'
+import { EndpointFields } from './components/EndpointFields'
 import {
   ASSISTANT_QUICK_PROMPTS,
   clearAssistantSessionId,
   createLocalMessageId,
+  readAgentEndpoint,
   readAssistantSessionId,
+  writeAgentEndpoint,
   writeAssistantSessionId,
 } from './utils'
 
@@ -45,6 +50,9 @@ export function AssistantPanel({ className }: AssistantPanelProps) {
   const [sending, setSending] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
   const [errorText, setErrorText] = useState('')
+  const [endpoint, setEndpoint] = useState<AgentEndpoint>({ baseUrl: '', apiKey: '', model: '' })
+  const [endpointDraft, setEndpointDraft] = useState<AgentEndpoint>({ baseUrl: '', apiKey: '', model: '' })
+  const [endpointOpen, setEndpointOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const bootedRef = useRef(false)
@@ -105,6 +113,28 @@ export function AssistantPanel({ className }: AssistantPanelProps) {
       node.scrollTop = node.scrollHeight
   }, [messages])
 
+  // 端点只存在本机：进面板先读回来，不用每次重新填。
+  useEffect(() => {
+    setEndpoint(readAgentEndpoint())
+  }, [])
+
+  const handleEndpointOpen = useCallback((next: boolean) => {
+    if (next)
+      setEndpointDraft(endpoint)
+    setEndpointOpen(next)
+  }, [endpoint])
+
+  const handleEndpointSave = useCallback(() => {
+    const clean: AgentEndpoint = {
+      baseUrl: endpointDraft.baseUrl.trim(),
+      apiKey: endpointDraft.apiKey.trim(),
+      model: endpointDraft.model.trim(),
+    }
+    writeAgentEndpoint(clean)
+    setEndpoint(clean)
+    setEndpointOpen(false)
+  }, [endpointDraft])
+
   const handleSend = useCallback(async () => {
     const text = input.trim()
     if (!text || !sessionId || sending)
@@ -130,7 +160,16 @@ export function AssistantPanel({ className }: AssistantPanelProps) {
     setSending(true)
     setErrorText('')
 
-    const response = await sendAssistantMessage(sessionId, text)
+    const baseUrl = endpoint.baseUrl.trim()
+    // 没填地址就用服务端默认端点；填了才把自己的带上去。
+    const agent = baseUrl
+      ? {
+          baseUrl,
+          apiKey: endpoint.apiKey.trim() || undefined,
+          model: endpoint.model.trim() || undefined,
+        }
+      : undefined
+    const response = await sendAssistantMessage(sessionId, text, agent)
     setSending(false)
 
     if (!response) {
@@ -146,7 +185,7 @@ export function AssistantPanel({ className }: AssistantPanelProps) {
 
     const reply = response.data.reply
     setMessages(prev => prev.map(item => (item.id === placeholder.id ? reply : item)))
-  }, [input, sending, sessionId, t])
+  }, [endpoint, input, sending, sessionId, t])
 
   const handleKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Enter 发送、Shift + Enter 换行；输入法候选框里的回车不算发送。
@@ -194,20 +233,54 @@ export function AssistantPanel({ className }: AssistantPanelProps) {
             </CardTitle>
             <p className="mt-1 text-xs text-muted-foreground">{t('assistant.subtitle')}</p>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="shrink-0"
-            disabled={sending || booting}
-            onClick={handleNewSession}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t('assistant.newSession')}
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <Popover open={endpointOpen} onOpenChange={handleEndpointOpen}>
+              <PopoverTrigger asChild>
+                <Button type="button" variant="ghost" size="sm">
+                  <Settings2 className="h-3.5 w-3.5" />
+                  {endpoint.baseUrl ? t('assistant.endpoint.label') : t('assistant.endpoint.connect')}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-3">
+                <div className="flex flex-col gap-2">
+                  <EndpointFields idPrefix="agent" value={endpointDraft} onChange={setEndpointDraft} />
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <span className="text-[11px] text-muted-foreground">{t('assistant.endpoint.hint')}</span>
+                    <Button type="button" size="sm" onClick={handleEndpointSave}>
+                      {t('assistant.endpoint.save')}
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={sending || booting}
+              onClick={handleNewSession}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t('assistant.newSession')}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+        {!endpoint.baseUrl && (
+          <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3">
+            <div>
+              <p className="text-sm font-medium">{t('assistant.endpoint.firstRun')}</p>
+              <p className="text-xs text-muted-foreground">{t('assistant.endpoint.hint')}</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <EndpointFields idPrefix="first-run" value={endpointDraft} onChange={setEndpointDraft} />
+            </div>
+            <Button type="button" size="sm" className="self-start" onClick={handleEndpointSave}>
+              {t('assistant.endpoint.save')}
+            </Button>
+          </div>
+        )}
         {unavailable && (
           <div role="status" className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
             <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />

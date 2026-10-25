@@ -32,7 +32,12 @@ export const createProjectArgsSchema = z.object({
 export const createRunArgsSchema = z.object({
   title: z.string().min(1).max(60).describe('任务标题'),
   script: z.array(z.string().min(1)).min(1).describe('分句文案，一句一条'),
-  materials: z.array(z.string().min(1)).describe('素材路径或 URL，必须是用户给过的真实素材'),
+  materials: z.array(z.string().min(1)).default([]).describe('素材路径或 URL；不用用户素材时省略，卡面、配音、立绘由流水线自己出'),
+  topic: z.string().min(1).max(40).optional().describe('顶栏主题，省略就用标题'),
+  hook: z.string().min(1).max(40).optional().describe('首屏钩子，一行一个反差，省略就用第一句文案'),
+  points: z.array(z.string().min(1)).optional().describe('要点，每项「标题::卡面正文::口播」；卡面正文写短句，口播写完整说法，省略就按文案粗排'),
+  cta: z.string().min(1).max(40).optional().describe('收尾一句动作，省略就用最后一句文案'),
+  voice: z.string().min(1).optional().describe('音色标识，省略用默认音色'),
   assetBase: z.string().optional().describe('素材是相对路径时的根目录'),
   canvas: z.enum(['portrait', 'landscape', 'square']).default('portrait').describe('画幅朝向'),
   platforms: z.array(z.string().min(1)).optional().describe('目标平台标识'),
@@ -129,7 +134,7 @@ export const ASSISTANT_TOOLS: AssistantToolDefinition[] = [
     type: 'function',
     function: {
       name: AssistantToolName.CREATE_RUN,
-      description: '创建一条渲染任务并入队。materials 与 script 必须都是用户真实提供过的素材和文案，缺任何一项都不要调用。',
+      description: '创建一条渲染任务并入队。script 是从模型自己或用户写的分句文案；materials 可省，省了就用卡面+鲸鱼娘立绘+自动配音出片，只有用户指定自己的图片/视频时才传。',
       parameters: {
         type: 'object',
         properties: {

@@ -174,6 +174,43 @@ describe('productionAssistantService', () => {
     expect(result.reply.actions?.[0].label).toContain('已创建任务')
   })
 
+  it('不给素材时走竖屏脚本通道：materials 退场，三段式要点与口播稿一起落到 spec', async () => {
+    client.chat
+      .mockResolvedValueOnce({
+        content: '',
+        toolCalls: [toolCall('create_run', {
+          title: 'Envoy 凭什么读完一篇长文',
+          script: ['给 AI 一个链接，它只读了三行', '整篇读完再开口', '装上 Envoy，链接就是材料'],
+          points: ['整篇读完再开口::216 秒，109 段::整篇读完再开口。两分多钟，一百零九段字幕，全在手上。'],
+          hook: '给 AI 一个链接，它只读到标题',
+          cta: '装上 Envoy，链接就是材料',
+          voice: 'sami:BV405_streaming',
+        })],
+      })
+      .mockResolvedValueOnce({ content: '已开渲，等我汇报。', toolCalls: [] })
+
+    await service.sendMessage('user-1', SESSION_ID, '出一条讲 Envoy 的竖屏，文案你写')
+
+    expect(production.createRun).toHaveBeenCalledTimes(1)
+    const [, input] = production.createRun.mock.calls[0]
+    expect(input.spec).toMatchObject({
+      engine: 'timeline',
+      mode: 'vertical_short',
+      topic: 'Envoy 凭什么读完一篇长文',
+      hook: '给 AI 一个链接，它只读到标题',
+      points: ['整篇读完再开口::216 秒，109 段::整篇读完再开口。两分多钟，一百零九段字幕，全在手上。'],
+      cta: '装上 Envoy，链接就是材料',
+      voice: 'sami:BV405_streaming',
+      character: true,
+    })
+    const spec = input.spec as Record<string, unknown>
+    expect(spec).not.toHaveProperty('materials')
+    expect(spec.narration).toMatchObject({
+      intro: '给 AI 一个链接，它只读到标题',
+      outro: '装上 Envoy，链接就是材料',
+    })
+  })
+
   it('工具循环最多 6 轮，超限即停下并说明原因', async () => {
     client.chat.mockResolvedValue({ content: '', toolCalls: [toolCall('list_runs', {})] })
 
@@ -262,7 +299,7 @@ describe('productionAssistantService', () => {
 
     const result = await service.sendMessage('user-1', SESSION_ID, '在吗')
 
-    expect(result.reply.content).toContain('Ollama')
+    expect(result.reply.content).toContain('请求地址')
     expect(result.reply.content).toContain('ECONNREFUSED')
     expect(sessionRepo.appendMessage).toHaveBeenCalledTimes(2)
   })

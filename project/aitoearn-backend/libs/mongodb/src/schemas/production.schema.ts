@@ -135,6 +135,10 @@ export class ProductionRun extends WithTimestampSchema {
   @Prop({ default: '' })
   currentStage: string
 
+  /** 0-100，跟 job 的心跳同步：列表和指挥台都不该只看到「排队中」。 */
+  @Prop({ default: 0 })
+  progress: number
+
   @Prop({ default: '' })
   lastError: string
 

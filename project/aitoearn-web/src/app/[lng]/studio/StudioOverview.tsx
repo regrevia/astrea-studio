@@ -15,7 +15,7 @@
 'use client'
 
 import type { CharacterInfo, Inventory, ProductionRun, ProductionWorker, PublicationAttempt } from '@/api/production/production.types'
-import { AlertCircle, CheckCircle2, Clock, Loader2, Mic, Plus, QrCode, RotateCw, Send, UserRound, Video } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronDown, Clock, Loader2, Mic, Plus, QrCode, RotateCw, Send, UserRound, Video } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getCharacters, getHealth, getInventory, getProjects, getPublications, getRun, getRuns } from '@/api/production/production.api'
 import { Badge } from '@/components/ui/badge'
@@ -24,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/utils/className'
 import AssistantPanel from './components/AssistantPanel'
+import AvatarPanel from './components/AvatarPanel'
 import FactCardForm from './components/FactCardForm'
 import NewRunForm from './components/NewRunForm'
 import { formatKib, PLATFORM_LABELS } from './studioConstants'
@@ -398,6 +399,8 @@ export default function StudioOverview() {
   const [runs, setRuns] = useState<ProductionRun[]>([])
   const [publications, setPublications] = useState<PublicationAttempt[]>([])
   const [workers, setWorkers] = useState<ProductionWorker[]>([])
+  // 手动出片是给不想对话的人留的备用路径，默认收起，别让它挡住对话。
+  const [showManual, setShowManual] = useState(false)
   const [projects, setProjects] = useState<Record<string, string>>({})
   const [inventory, setInventory] = useState<Inventory | null>(null)
   const [characters, setCharacters] = useState<CharacterInfo[]>([])
@@ -552,63 +555,76 @@ export default function StudioOverview() {
 
       <AssistantPanel />
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Send className="h-4 w-4" />
-            发布平台
-            {inventory && (
-              <Badge variant="secondary">
-                {inventory.summary.ready}
-                /
-                {inventory.summary.total}
-              </Badge>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PlatformMatrix inventory={inventory} />
-        </CardContent>
-      </Card>
+      <button
+        type="button"
+        onClick={() => setShowManual(value => !value)}
+        className="flex cursor-pointer items-center gap-1.5 self-start text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ChevronDown className={cn('h-4 w-4 transition-transform', showManual && 'rotate-180')} />
+        {showManual ? '收起手动出片' : '手动出片'}
+      </button>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <UserRound className="h-4 w-4" />
-            主角
-            <Badge variant="secondary">{characters.length}</Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PresenterPanel characters={characters} />
-        </CardContent>
-      </Card>
+      {showManual && (
+        <div className="flex flex-col gap-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Send className="h-4 w-4" />
+              发布平台
+              {inventory && (
+                <Badge variant="secondary">
+                  {inventory.summary.ready}
+                  /
+                  {inventory.summary.total}
+                </Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PlatformMatrix inventory={inventory} />
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Mic className="h-4 w-4" />
-            配音音色
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <VoicePanel inventory={inventory} />
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <UserRound className="h-4 w-4" />
+              主角
+              <Badge variant="secondary">{characters.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PresenterPanel characters={characters} />
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Plus className="h-4 w-4" />
-            新建时间轴任务
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <NewRunForm projects={projects} onCreated={handleCreated} />
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Mic className="h-4 w-4" />
+              配音音色
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <VoicePanel inventory={inventory} />
+          </CardContent>
+        </Card>
 
-      <FactCardForm projects={projects} onCreated={handleCreated} />
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Plus className="h-4 w-4" />
+              新建时间轴任务
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <NewRunForm projects={projects} onCreated={handleCreated} />
+          </CardContent>
+        </Card>
+
+        <FactCardForm projects={projects} onCreated={handleCreated} />
+        </div>
+      )}
 
       <Card>
         <CardHeader className="pb-2">

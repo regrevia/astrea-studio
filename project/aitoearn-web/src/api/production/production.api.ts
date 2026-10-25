@@ -1,7 +1,9 @@
 import type {
+  AssistantAgentEndpoint,
   AssistantReply,
   AssistantSession,
   AssistantSessionDetail,
+  AvatarModel,
   CharacterInfo,
   OutfitInfo,
   CreateFactCardRunInput,
@@ -127,10 +129,14 @@ export function getAssistantSession(id: string) {
 }
 
 /** 发一条用户消息，返回指挥台的回复。 */
-export function sendAssistantMessage(id: string, message: string) {
+export function sendAssistantMessage(
+  id: string,
+  message: string,
+  agent?: AssistantAgentEndpoint,
+) {
   return http.post<AssistantReply>(
     `production/assistant/sessions/${id}/messages`,
-    { message },
+    agent ? { message, agent } : { message },
     true,
   )
 }
@@ -184,5 +190,62 @@ export async function getCharacters(base = 'http://127.0.0.1:8899'): Promise<Cha
   catch {
     // 服务没起来就当没有主角可选，面板其余部分照常。
     return []
+  }
+}
+
+/** 主角素材模型：动作全集、表情全集、每套服装的状态。 */
+export async function getCharacterModel(
+  id = 'whale',
+  base = 'http://127.0.0.1:8899',
+): Promise<AvatarModel | null> {
+  try {
+    const res = await fetch(`${base}/characters/${id}`, { cache: 'no-store' })
+    if (!res.ok) {
+      return null
+    }
+    return await res.json() as AvatarModel
+  }
+  catch {
+    return null
+  }
+}
+
+/** 装一套衣服：给了身体动作图就能上，表情沿用共用那一套。 */
+export async function importCharacterOutfit(
+  payload: { src: string, id: string, label?: string, force?: boolean },
+  id = 'whale',
+  base = 'http://127.0.0.1:8899',
+): Promise<{ ok: boolean, message?: string }> {
+  try {
+    const res = await fetch(`${base}/characters/${id}/outfits`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const body = await res.json().catch(() => ({})) as { error?: string }
+    return res.ok ? { ok: true } : { ok: false, message: body.error || `${res.status}` }
+  }
+  catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : 'offline' }
+  }
+}
+
+/** 换默认服装：只改一个字段，不动任何一张图。 */
+export async function setCharacterOutfit(
+  outfit: string,
+  id = 'whale',
+  base = 'http://127.0.0.1:8899',
+): Promise<{ ok: boolean, message?: string }> {
+  try {
+    const res = await fetch(`${base}/characters/${id}/default-outfit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ outfit }),
+    })
+    const body = await res.json().catch(() => ({})) as { error?: string }
+    return res.ok ? { ok: true } : { ok: false, message: body.error || `${res.status}` }
+  }
+  catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : 'offline' }
   }
 }

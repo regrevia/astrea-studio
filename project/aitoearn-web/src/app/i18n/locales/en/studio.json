@@ -34,6 +34,16 @@
       "ok": "Done",
       "failed": "Failed"
     },
+    "endpoint": {
+      "label": "Endpoint",
+      "connect": "Connect",
+      "baseUrl": "Request URL",
+      "apiKey": "API key",
+      "model": "Model",
+      "save": "Save",
+      "hint": "Stored on this device",
+      "firstRun": "Connect a model: endpoint, key, model name."
+    },
     "error": {
       "unavailable": "The console backend is not ready yet (no response or 404). It will work once the endpoints ship; other panels are unaffected.",
       "sendFailed": "Send failed: {{message}}",

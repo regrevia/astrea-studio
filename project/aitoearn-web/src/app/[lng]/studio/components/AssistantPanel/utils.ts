@@ -8,6 +8,41 @@ import type { AssistantQuickPromptKey } from './types'
 /** 会话 id 的 localStorage key：刷新页面后要能接着上次的对话。 */
 export const ASSISTANT_SESSION_STORAGE_KEY = 'studio.assistant.sessionId'
 
+/** 推理端点的 localStorage key：填一次，之后每次发送都带上。 */
+export const AGENT_ENDPOINT_STORAGE_KEY = 'studio.agent.endpoint'
+
+export interface AgentEndpoint { baseUrl: string, apiKey: string, model: string }
+
+const EMPTY_ENDPOINT: AgentEndpoint = { baseUrl: '', apiKey: '', model: '' }
+
+/** 读本机保存的端点；没填过或存储不可用都返回空值。 */
+export function readAgentEndpoint(): AgentEndpoint {
+  if (typeof window === 'undefined')
+    return { ...EMPTY_ENDPOINT }
+  try {
+    const raw = window.localStorage.getItem(AGENT_ENDPOINT_STORAGE_KEY)
+    if (!raw)
+      return { ...EMPTY_ENDPOINT }
+    const parsed = JSON.parse(raw) as Partial<AgentEndpoint>
+    return { baseUrl: parsed.baseUrl ?? '', apiKey: parsed.apiKey ?? '', model: parsed.model ?? '' }
+  }
+  catch {
+    return { ...EMPTY_ENDPOINT }
+  }
+}
+
+/** 保存端点。写不进去（无痕模式）不影响本次对话用的还是内存里这份。 */
+export function writeAgentEndpoint(value: AgentEndpoint) {
+  if (typeof window === 'undefined')
+    return
+  try {
+    window.localStorage.setItem(AGENT_ENDPOINT_STORAGE_KEY, JSON.stringify(value))
+  }
+  catch {
+    // 存不下就算了：本次对话仍然用内存里的值。
+  }
+}
+
 /** 空态快捷提示的展示顺序。 */
 export const ASSISTANT_QUICK_PROMPTS: AssistantQuickPromptKey[] = ['news', 'tweak', 'export', 'publish']
 

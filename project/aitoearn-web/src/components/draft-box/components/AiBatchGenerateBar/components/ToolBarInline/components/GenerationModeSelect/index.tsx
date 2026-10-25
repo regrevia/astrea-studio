@@ -4,6 +4,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/utils/className'
 import { pillClass } from '../../utils/styles'
 
+// 视频生成还没接进这条链路，选择器里留着「生成草稿(视频)」只会把人带到
+// 一屏用不上的模型/时长/比例上。先只留图文，接好再放回来。
+const VIDEO_GENERATION_ENABLED = false
+
 export function GenerationModeSelect({
   contentType,
   hideNonDraftModes,
@@ -14,9 +18,10 @@ export function GenerationModeSelect({
   onContentTypeChange,
   onDraftModeChange,
 }: GenerationModeSelectProps) {
+  const videoOn = isVideoMode && VIDEO_GENERATION_ENABLED
   const currentLabel = isDraftMode
-    ? `${labels.draftModeOn}(${isVideoMode ? labels.contentTypeVideo : labels.contentTypeImageText})`
-    : isVideoMode
+    ? `${labels.draftModeOn}(${videoOn ? labels.contentTypeVideo : labels.contentTypeImageText})`
+    : videoOn
       ? labels.draftModeOffVideo
       : labels.draftModeOffImage
 
@@ -26,7 +31,7 @@ export function GenerationModeSelect({
         <button data-testid="draftbox-ai-gen-mode" type="button" className={pillClass}>
           {isDraftMode ? (
             <FileText className="h-3.5 w-3.5" />
-          ) : isVideoMode ? (
+          ) : videoOn ? (
             <Video className="h-3.5 w-3.5" />
           ) : (
             <Image className="h-3.5 w-3.5" />
@@ -44,13 +49,15 @@ export function GenerationModeSelect({
               isDraft: true,
               contentType: 'image_text' as const,
             },
-            {
-              key: 'draft_video',
-              label: `${labels.draftModeOn}(${labels.contentTypeVideo})`,
-              icon: FileText,
-              isDraft: true,
-              contentType: 'video' as const,
-            },
+            ...(VIDEO_GENERATION_ENABLED
+              ? [{
+                  key: 'draft_video',
+                  label: `${labels.draftModeOn}(${labels.contentTypeVideo})`,
+                  icon: FileText,
+                  isDraft: true as const,
+                  contentType: 'video' as const,
+                }]
+              : []),
           ].map(({ key, label, icon: Icon, contentType: nextContentType }) => {
             const isActive = isDraftMode && contentType === nextContentType
             return (
@@ -85,12 +92,14 @@ export function GenerationModeSelect({
                   icon: Image,
                   contentType: 'image_text' as const,
                 },
-                {
-                  key: 'video',
-                  label: labels.draftModeOffVideo,
-                  icon: Video,
-                  contentType: 'video' as const,
-                },
+                ...(VIDEO_GENERATION_ENABLED
+                  ? [{
+                      key: 'video',
+                      label: labels.draftModeOffVideo,
+                      icon: Video,
+                      contentType: 'video' as const,
+                    }]
+                  : []),
               ].map(({ key, label, icon: Icon, contentType: nextContentType }) => {
                 const isActive = !isDraftMode && contentType === nextContentType
                 return (

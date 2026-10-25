@@ -169,9 +169,19 @@ def load_spec(path, base: Path | None = None) -> dict:
             "still": still, "zoom": zoom,
             "fade_in": float(c.get("fade_in") or 0.0),
             "fade_out": float(c.get("fade_out") or 0.0),
+            "xfade_in": float(c.get("xfade_in") or 0.0),
         })
     if not clips:
         raise SpecError("video 至少要有 1 段")
+
+    # 真转场：xfade 会吃掉两段交叠的时长。为不让后面每一屏的绝对时间错位，
+    # 让前一段多渲染一段过渡（内容不变，多出的部分全被交叠吃掉）。
+    # 于是 total 仍是各屏时长之和，叠层/字幕/配音的 start 一个都不用改。
+    for i, clip in enumerate(clips):
+        nxt = clips[i + 1]["xfade_in"] if i + 1 < len(clips) else 0.0
+        if nxt and nxt > clip["dur"] - 0.05:
+            raise SpecError(f"video[{i}] 的下一段 xfade_in({nxt}) 超过本段时长")
+        clip["render"] = clip["dur"] + nxt
 
     total = sum(c["dur"] / (c["speed"] or 1.0) for c in clips)
 
@@ -414,7 +424,7 @@ class RenderPlan:
                 cmd += ["-i", str(clip["src"])]
             else:
                 cmd += ["-ss", f"{clip['in']:g}",
-                        "-t", f"{clip['dur'] / (clip['speed'] or 1):g}",
+                        "-t", f"{clip['render'] / (clip['speed'] or 1):g}",
                         "-i", str(clip["src"])]
 
         n_video = len(self.spec["video"])
@@ -450,7 +460,7 @@ class RenderPlan:
         parts = []
         for i, clip in enumerate(self.spec["video"]):
             speed = clip["speed"] or 1.0
-            dur = clip["dur"] / speed
+            dur = clip["render"] / speed
             label = f"[{i}:v]"
             if clip.get("still"):
                 z0, z1 = clip.get("zoom") or (1.0, 1.0)
@@ -478,8 +488,26 @@ class RenderPlan:
             if fo > 0:
                 chain += f",fade=t=out:st={max(0.0, dur - fo):g}:d={fo:g}"
             parts.append(f"{label}{chain},setsar=1,format=yuv420p[v{i}]")
-        concat_in = "".join(f"[v{i}]" for i in range(n_video))
-        parts.append(f"{concat_in}concat=n={n_video}:v=1:a=0[vc]")
+        # 拼成一条时间线：有 xfade 就真交叠（背景是一层层融过去的，不会在切点
+        # 抖一下光），没有就硬切。两种都要求后面每屏的绝对起点仍是各屏时长之和。
+        xf = [clip["xfade_in"] for clip in self.spec["video"]]
+        if any(x > 0 for x in xf):
+            if any(x <= 0 for x in xf[1:]):
+                raise SpecError("video 一旦启用 xfade_in，就必须每段都设置（第一段可为 0）")
+            starts, acc = [], 0.0
+            for clip in self.spec["video"]:
+                starts.append(acc)
+                acc += clip["dur"] / (clip["speed"] or 1.0)
+            last_v = "[v0]"
+            for i in range(1, n_video):
+                d = xf[i]
+                parts.append(f"{last_v}[v{i}]xfade=transition=fade:"
+                             f"duration={d:g}:offset={starts[i] - d:g}[xf{i}]")
+                last_v = f"[xf{i}]"
+            parts.append(f"{last_v}null[vc]")
+        else:
+            concat_in = "".join(f"[v{i}]" for i in range(n_video))
+            parts.append(f"{concat_in}concat=n={n_video}:v=1:a=0[vc]")
 
         last = "[vc]"
         for k, (png, w, h, item) in enumerate(self.text_pngs):

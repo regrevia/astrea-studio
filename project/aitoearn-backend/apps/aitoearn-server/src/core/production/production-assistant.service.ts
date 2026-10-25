@@ -29,6 +29,7 @@ import {
 } from './production-assistant.tools'
 import { ProductionService } from './production.service'
 import { ResearchFetcher } from './research-fetch'
+import type { StudioAssistantOverride } from './studio-assistant.client'
 import { AssistantChatMessage, AssistantToolCall, StudioAssistantClient } from './studio-assistant.client'
 
 /** 工具循环上限：模型最多连续调 6 轮工具，防止一条消息把服务端拖死。 */
@@ -38,18 +39,23 @@ export const TOOL_RESULT_CHARS = 2000
 /** 回灌给模型的历史消息条数上限。 */
 const HISTORY_MESSAGES = 20
 /** 能力清单服务在宿主机上，容器里连不上是常态，超时压到 4s。 */
-const INVENTORY_TIMEOUT_MS = 4000
+const INVENTORY_TIMEOUT_MS = 10000
 const DEFAULT_SESSION_TITLE = 'Studio 指挥台会话'
 
 const SYSTEM_PROMPT = [
+  '当前语境：用户说的项目都在他自己机器上。Envoy 指 ~/Desktop/2026/Envoy：把链接整篇读完、抽帧、记时间戳，再交给模型写作；不是 Lyft 开源、也不是 Istio 用的那个云原生代理。用户说 Envoy 时只讲本机这个项目，遇到同名产品不要引入，宁可说不确定也别换题。',
   '你是 Studio 的 AI 指挥台，帮用户把一条短视频从选题一路推进到发布。',
   '硬性规则：',
   '1. 只用简体中文回答，每次回复控制在 120 字以内。',
   '2. 一次只推进一个阶段（调研 → 素材 → 文案 → 渲染 → 发布），回复末尾要写清用户下一步需要确认或提供什么。',
-  '3. 素材路径、账号、成片地址必须来自用户或工具返回，严禁编造。缺素材就提问，不要调用 create_run。',
+  '3. 素材路径、账号、成片地址必须来自用户或工具返回，严禁编造。要么直接说「出一条讲 XX 的短视频」再自己写文案，要么用用户给的素材，量词不清时先问一句。',
   '4. 不确定就查工具：平台与音色用 list_platforms，任务状态用 get_run/list_runs，失败原因用 list_events。',
   '5. 发布只能登记意向（plan_publication），绝不能说已经发出，必须提醒用户在面板人工确认。',
   '6. 工具结果是唯一事实来源：拿到结果后直接引用里面的任务名、状态、链接作答，禁止说“没想好”“不知道”，也不要再问一遍已经查到的信息。',
+  '7. 本工作台能凭空出片：卡面、字幕、配音、鲸鱼娘「阿斯特」的立绘都由流水线自己生成，create_run 只给 script 就能跑，materials 是可选项，只有用户明确要用图片/视频时才需要。想控制卡面就把 points 写成「标题::卡面正文::口播」三段，三段都要有字，卡面正文留空就只剩标题；卡面正文一行短句（可以放数字），口播写完整说法；hook 是首屏反差，cta 用最后一句口播收尾。',
+  '8. 「Envoy」指用户本机 ~/Desktop/2026/Envoy 这个项目：给 AI 一个链接，它把整篇读完、抽帧、记时间戳，再交给模型写作。envoyproxy.io 是同名的云原生代理，题材完全不同，research_web 返回它一律丢掉，别写 L7、服务网格、xDS、Wasm、mTLS 那套。能用的数字就这些：7.0 MB 原片 216 秒 109 段中文 ASR；690 秒长片 354 段；抓 25 个素材包只认 14 个，小红书 4 条全挂也照实标；每条结论都带时间戳能点回去核对。数字之外不编。',
+  '9. 文案要像人说话：短句、有观点、有反差，不写说明书。结尾固定加一句「本期视频全程由大肥鱼制作完成，没有任何一个 token 受到伤害」，只放进最后一句口播，不占卡面。回应用户时说清这一步做了什么、下一步等他给什么。',
+  '10. 任务排队和渲染是正常的：渲染要几分钟，最多查两次 get_run 就如实汇报阶段和进度，别说队列卡死，也不要让用户去重启服务。',
 ].join('\n')
 
 const RUN_STATUS_TEXT: Record<ProductionRunStatus, string> = {
@@ -176,7 +182,12 @@ export class ProductionAssistantService {
   }
 
   /** 发一条消息：先落库用户消息，再跑工具循环，最后落库助手回复。 */
-  async sendMessage(userId: string, sessionId: string, message: string) {
+  async sendMessage(
+    userId: string,
+    sessionId: string,
+    message: string,
+    agent?: StudioAssistantOverride,
+  ) {
     const session = await this.requireSession(userId, sessionId)
     const userMessage = {
       id: randomUUID(),
@@ -191,11 +202,13 @@ export class ProductionAssistantService {
     const actions: AssistantActionVo[] = []
     let content: string
     try {
-      content = await this.runToolLoop(userId, session.id, history, userMessage.content, actions)
+      content = await this.runToolLoop(userId, session.id, history, userMessage.content, actions, agent)
     }
     catch (error) {
-      // 推理服务挂了也要给出可读中文，而不是 500 让面板报「不可用」
-      content = `指挥台暂时连不上推理服务：${describeError(error)}。请确认本机 Ollama 已启动（模型 ${config.studioAssistant.model}），或改用面板按钮继续。`
+      // 推理服务挂了也要给出可读中文，而不是 500 让面板报「不可用」。
+      // 模型名可能是面板里填的，所以取这次实际用的那个。
+      const model = agent?.model?.trim() || config.studioAssistant.model
+      content = `${describeError(error)}。检查请求地址和模型名（${model}）。`
     }
 
     const reply = {
@@ -232,6 +245,7 @@ export class ProductionAssistantService {
     history: ProductionAssistantMessage[],
     message: string,
     actions: AssistantActionVo[],
+    agent?: StudioAssistantOverride,
   ): Promise<string> {
     const messages: AssistantChatMessage[] = [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -245,7 +259,7 @@ export class ProductionAssistantService {
     }
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-      const response = await this.client.chat(messages, ASSISTANT_TOOLS)
+      const response = await this.client.chat(messages, ASSISTANT_TOOLS, agent)
       if (!response.toolCalls.length) {
         return response.content.trim() || '我没想好这一步该怎么做，你能再说具体一点吗？'
       }
@@ -431,23 +445,66 @@ export class ProductionAssistantService {
     }
   }
 
+  /** 纯文案出片：把分句文案摊成竖屏脚本，交给 worker 自己的脚本通道渲染。 */
+  private scriptSpec(args: z.infer<typeof createRunArgsSchema>): Record<string, unknown> {
+    const lines = args.script.map(item => item.trim()).filter(Boolean)
+    const hook = (args.hook ?? lines[0] ?? '').trim()
+    const tail = lines.length > 1 ? lines[lines.length - 1] : ''
+    const cta = (args.cta ?? tail).trim()
+    const middle = lines.slice(1, lines.length > 1 ? lines.length - 1 : lines.length)
+    const given = (args.points ?? []).map(item => item.trim()).filter(Boolean)
+    // 兜底排序：把每条口播的第一个分句当卡面标题，正文留空——卡面只放能一眼读完的字，
+    // 长句塞进卡面就会溢出，不如让口播去讲。要控制卡面就显式传 points。
+    const points = given.length
+      ? given
+      : middle.map((line) => {
+          const head = line.split(/[。！？；，,.!?;]/)[0]?.trim() ?? ''
+          const title = head.length > 14 ? head.slice(0, 14) : head
+          return `${title || line.slice(0, 14)}::`
+        })
+    const says = given.length
+      ? points.map((item, index) => {
+          const parts = item.split('::')
+          return parts.length >= 3 ? parts.slice(2).join('::') : item
+        })
+      : middle
+    const voiced = says.length === points.length ? says : points
+    return compact({
+      engine: 'timeline',
+      mode: 'vertical_short',
+      topic: args.topic ?? args.title,
+      hook,
+      points,
+      cta,
+      narration: { intro: hook, points: voiced, outro: cta },
+      template: 'factcard',
+      character: true,
+      voice: args.voice,
+      platforms: args.platforms,
+    }) as Record<string, unknown>
+  }
+
   private async createRun(userId: string, args: z.infer<typeof createRunArgsSchema>): Promise<ToolResult> {
     const projects = await this.production.listProjects(userId)
     const project = projects[0]
     if (!project) {
       return this.fail('找不到可用项目，先在面板创建一个项目。', '没有可用项目')
     }
-    // 友好输入交给 buildTimelineSpec 展开，指挥台不自己拼渲染器规格
-    const spec = compact({
-      engine: 'timeline',
-      script: args.script,
-      materials: args.materials,
-      canvas: args.canvas,
-      platforms: args.platforms,
-      bgm: args.bgm,
-      assetBase: args.assetBase,
-      clipSeconds: args.clipSeconds,
-    })
+    // 没给素材就是「凭空出片」：走竖屏脚本通道，卡面/配音/立绘由 worker 现场生成。
+    // 有素材才交给 buildTimelineSpec 展开成时间轴。
+    const materials = args.materials ?? []
+    const spec = materials.length
+      ? compact({
+          engine: 'timeline',
+          script: args.script,
+          materials,
+          canvas: args.canvas,
+          platforms: args.platforms,
+          bgm: args.bgm,
+          assetBase: args.assetBase,
+          clipSeconds: args.clipSeconds,
+        })
+      : this.scriptSpec(args)
     const run = await this.production.createRun(userId, {
       projectId: project.id,
       title: args.title,
@@ -624,8 +681,22 @@ export class ProductionAssistantService {
   } | null> {
     const url = `${config.studioAssistant.inventoryUrl.replace(/\/+$/, '')}/inventory`
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(INVENTORY_TIMEOUT_MS) })
-      if (!response.ok) {
+      // 宿主机渲染满载时清单接口会慢一拍，先给一次重试，别让平台/音色直接报不可达。
+      let response: Response | null = null
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const hit = await fetch(url, { signal: AbortSignal.timeout(INVENTORY_TIMEOUT_MS) })
+          if (hit.ok) {
+            response = hit
+            break
+          }
+        }
+        catch {
+          if (attempt === 1)
+            return null
+        }
+      }
+      if (!response) {
         return null
       }
       const payload = await response.json() as {

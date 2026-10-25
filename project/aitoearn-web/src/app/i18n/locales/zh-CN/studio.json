@@ -34,6 +34,16 @@
       "ok": "完成",
       "failed": "失败"
     },
+    "endpoint": {
+      "label": "推理端点",
+      "connect": "接端点",
+      "baseUrl": "请求地址",
+      "apiKey": "密钥",
+      "model": "模型",
+      "save": "保存",
+      "hint": "只存在这台设备",
+      "firstRun": "先连上模型：请求地址、密钥、模型名。"
+    },
     "error": {
       "unavailable": "指挥台后端未就绪（接口未响应或返回 404）。后端上线后刷新页面即可用，其它面板不受影响。",
       "sendFailed": "发送失败：{{message}}",

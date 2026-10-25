@@ -20,7 +20,9 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-RUN pnpm build
+# 不走 pnpm/corepack：corepack 每次都要去 registry 拉 pnpm 二进制，这台机器只有宿主代理，
+# 构建容器经常拉不到。node_modules 已经在 deps 阶段装好，直接用里面的 next。
+RUN ./node_modules/.bin/next build
 
 FROM base AS production
 WORKDIR /app

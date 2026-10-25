@@ -93,6 +93,8 @@ function createService() {
     finish: vi.fn().mockResolvedValue(true),
     updateById: vi.fn(),
     listByStatus: vi.fn().mockResolvedValue([]),
+    claimNext: vi.fn().mockResolvedValue(null),
+    renewLease: vi.fn().mockResolvedValue(null),
     findExpired: vi.fn().mockResolvedValue([]),
     listByRun: vi.fn().mockResolvedValue([]),
     nextAttempt: vi.fn().mockResolvedValue(2),
@@ -124,10 +126,10 @@ function createService() {
 describe('createRun', () => {
   it('入库前把友好输入展开成时间轴规格', async () => {
     const { service, projectRepo, runRepo } = createService()
-    projectRepo.getByIdForUser.mockResolvedValue({ id: 'project-1' })
+    projectRepo.getByIdForUser.mockResolvedValue({ id: '6adc2161656a13996166bbfc' })
 
     await service.createRun('user-1', {
-      projectId: 'project-1',
+      projectId: '6adc2161656a13996166bbfc',
       title: '演示',
       brief: '三秒一句',
       spec: { ...FRIENDLY_INPUT },
@@ -434,5 +436,31 @@ describe('reapExpiredLeases', () => {
     expect(runUpdate.status).toBe('failed')
     expect(runUpdate.lastError).toContain('停止自动重试')
     expect(jobRepo.create).not.toHaveBeenCalled()
+  })
+})
+
+describe('任务领取与心跳', () => {
+  it('领取后 run 从排队翻成渲染中', async () => {
+    const { service, runRepo, jobRepo } = createService()
+    jobRepo.claimNext.mockResolvedValue({
+      id: 'job-1',
+      runId: 'run-1',
+      attempt: 1,
+      stage: 'queued',
+      payload: {},
+    })
+    runRepo.getById.mockResolvedValue({ id: 'run-1', status: 'queued' })
+    const job = await service.claimJob('worker-1', 'render')
+    expect(job).not.toBeNull()
+    const runUpdate = runRepo.updateById.mock.calls.find(call => call[0] === 'run-1')
+    expect(runUpdate?.[1]).toMatchObject({ status: 'running', currentStage: 'starting' })
+  })
+
+  it('心跳把阶段和进度同步回 run', async () => {
+    const { service, runRepo, jobRepo } = createService()
+    jobRepo.renewLease.mockResolvedValue({ id: 'job-1', runId: 'run-1', stage: 'timeline:script', progress: 4, leaseExpiresAt: new Date() })
+    await service.heartbeatJob('worker-1', 'job-1', 1, 12, 'timeline:rendering')
+    const runUpdate = runRepo.updateById.mock.calls.find(call => call[0] === 'run-1')
+    expect(runUpdate?.[1]).toMatchObject({ status: 'running', currentStage: 'timeline:rendering', progress: 12 })
   })
 })

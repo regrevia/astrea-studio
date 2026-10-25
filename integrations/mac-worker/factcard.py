@@ -357,15 +357,18 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
     img = _vgrad((W, H), top, bottom).convert("RGBA")
     draw = ImageDraw.Draw(img, "RGBA")
 
-    # 光斑：制造纵深，避免"纯色 PPT 味"
+    # 光斑：制造纵深，避免"纯色 PPT 味"。颜色锚在第一套色上，不跟语气走：
+    # 语气色只留给前景（强调条 / HUD / 进度点），换屏时整块背景的色温才不会跟着变，
+    # 观众看到的是内容在换，不是背后那盏灯在换。
     rnd = _seed(slug)
+    spot = PALETTES[0][2]
     glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     gd = ImageDraw.Draw(glow, "RGBA")
     for i in range(3):
         cx = int((0.2 + 0.6 * ((rnd + i * 37) % 100) / 100) * W)
         cy = int((0.15 + 0.5 * ((rnd + i * 61) % 100) / 100) * H)
         r = int(220 + 160 * ((rnd + i * 17) % 100) / 100)
-        gd.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(*accent, 30))
+        gd.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(*spot, 30))
     img = Image.alpha_composite(img, glow.filter(ImageFilter.GaussianBlur(120)))
     # 半透明元素必须画在独立图层再合成：直接在 RGBA 上 draw 会把 alpha 覆盖掉，
     # convert("RGB") 后就变成一坨纯白（卡片曾经整个糊成白板）。
