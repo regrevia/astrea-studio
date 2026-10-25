@@ -117,13 +117,17 @@ if paths:
             gap = "bad(" + gap + ")"
     except Exception:
         pass
-print("%s dur=%s qa=%s findings=%d md5=%s gap=%s" % (
-    run["status"], out.get("duration"), qa.get("ok"), len(qa.get("findings") or []), h, gap))
+# 文案判据：读起来像人写的这一条是平台自己算的，不绿就是套模板腔
+cc = out.get("copyCheck") or {}
+copy_state = "ok" if cc.get("ok") else ("bad" if cc else "n/a")
+print("%s dur=%s qa=%s findings=%d md5=%s gap=%s copy=%s" % (
+    run["status"], out.get("duration"), qa.get("ok"),
+    len(qa.get("findings") or []), h, gap, copy_state))
 ' 2>/dev/null) || line="解析失败"
   echo "  $id $line"
   case "$line" in
-    succeeded*dur=*qa=True*findings=0*gap=bad*) fail=1 ;;
-    succeeded*dur=*qa=True*findings=0*) ;;
+    succeeded*dur=*qa=True*findings=0*gap=bad*|*copy=bad*) fail=1 ;;
+    succeeded*dur=*qa=True*findings=0*gap=*copy=ok*) ;;
     *) fail=1 ;;
   esac
   hashes+=("$(echo "$line" | sed -n 's/.*md5=//p')")
