@@ -26,10 +26,14 @@ function readToken() {
   } catch {
     pw = require('playwright-core')
   }
-  const launchOpts = { headless: true }
+  // 用系统 Chrome：playwright 自带的 headless shell 未必装着，下载一次几百 MB。
+  // --use-mock-keychain：无头也会弹「找不到钥匙串」，弹窗会跑到用户屏幕上。
+  const launchOpts = { headless: true, channel: 'chrome',
+    args: ['--use-mock-keychain', '--disable-gpu'] }
   try {
-    await pw.chromium.launch({ ...launchOpts, channel: 'chrome' }).then((b) => b.close())
+    await pw.chromium.launch(launchOpts).then((b) => b.close())
   } catch {
+    delete launchOpts.channel
     launchOpts.executablePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
   }
   const { chromium } = pw
@@ -56,33 +60,35 @@ function readToken() {
   })
   page.on('pageerror', (e) => console.log('pageerror:', e.message))
 
-  await page.goto(`${BASE}/zh-CN/studio`, { waitUntil: 'domcontentloaded', timeout: 45000 })
+  await page.goto(`${BASE}/zh-CN/studio`, { waitUntil: 'networkidle', timeout: 45000 })
+  // 默认落在「AI 指挥台」会话页，出片表单收在「手动出片」后面
+  const manual = page.getByRole('button', { name: '手动出片' })
+  if (await manual.count()) await manual.first().click()
   const submit = page.getByRole('button', { name: '一键出片' })
   await submit.waitFor({ state: 'visible', timeout: 45000 })
 
-  await page.getByPlaceholder('KV Cache 是什么').fill('KV Cache 是什么')
-  await page.getByPlaceholder(/显存不够时/).fill('显存不够时，它替你续命')
-  const pointBoxes = page.getByPlaceholder(/只存 K 和 V/)
-  const n = await pointBoxes.count()
+  // 字段按 id 定位：占位符是提示文案，改一句文案脚本就断了
+  await page.fill('#fact-card-topic', 'KV Cache 是什么')
+  await page.fill('#fact-card-kicker', '显存不够时')
+  await page.fill('#fact-card-hook', '显存不够时，它替你续命')
+  await page.fill('#fact-card-narration', [
+    '先说结论。它不是技巧。',
+    '它只记得 K 和 V，别的一概不留。',
+    '代价很直白。缓存越长越占卡，你也躲不掉。',
+    '所以先跑一遍 prefill，把缓存铺好再开跑。',
+    '你选省显存，还是省时间？',
+  ].join('\n'))
   // 卡面只落结论、口播另写一句：两处写一样的话，读卡就等于听完了。
   const lines = [
     '只留 K 和 V::Q 用完就扔',
     '记住换速度::越长越吃显存',
     '先铺缓存::prefill 先跑一遍',
   ]
-  for (let i = 0; i < Math.min(n, lines.length); i += 1)
-    await pointBoxes.nth(i).fill(lines[i])
-
-  const narration = page.getByPlaceholder(/一行一屏/)
-  if (await narration.count()) {
-    await narration.fill([
-      '先说结论。它不是技巧。',
-      '它只记得 K 和 V，别的一概不留。',
-      '代价很直白。缓存越长越占卡，你也躲不掉。',
-      '所以先跑一遍 prefill，把缓存铺好再开跑。',
-      '你选省显存，还是省时间？',
-    ].join('\n'))
+  for (let i = 0; i < lines.length; i += 1) {
+    const box = page.locator(`#fact-card-point-${i}`)
+    if (await box.count()) await box.fill(lines[i])
   }
+  const n = lines.length
   // 条数下拉：平台上的「一次出 2~3 条挑一条发」必须能在界面里点出来，
   // 只验接口等于没验到用户手上那一层。
   if (COUNT > 1) {
