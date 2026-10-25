@@ -102,21 +102,40 @@ def _text_layer(line: str, size: int, workdir: Path | None, name: str, *,
 
 
 def _block_layers(text: str, size: int, top: int, workdir: Path, prefix: str, *,
-                  align: str, left: int, max_w: int, fill, spacing: float = 1.42) -> list[dict]:
+                  align: str, left: int, max_w: int, fill, spacing: float = 1.42,
+                  center_in: tuple[int, int] | None = None) -> list[dict]:
     """一段正文按 factcard 的排版规则切成逐行贴片（行高、断句、对齐都跟卡面一致）。"""
     text = " ".join(str(text or "").split())
     if not text:
         return []
     draw = _measure()
     font = factcard._font(size)
+    rows = [ln for ln in factcard._wrap_text(draw, text, font, max_w) if ln]
+    if center_in is not None and rows:
+        # 封面空出一整片：字块在「进度条下沿到人物头顶」之间居中，
+        # 避免一屏里上半截挤着字、下半截空着人
+        lo, hi = center_in
+        block_h = int(len(rows) * size * spacing)
+        top = max(lo, int(lo + (hi - lo - block_h) / 2))
     out: list[dict] = []
     y = top
-    for n, ln in enumerate([ln for ln in factcard._wrap_text(draw, text, font, max_w) if ln]):
+    for n, ln in enumerate(rows):
         (w, _h), png = _text_layer(ln, size, workdir, f"{prefix}_l{n}.png", fill=fill)
         x = left + (max_w - w) // 2 if align == "center" else left
         out.append({"png": png, "x": int(x), "y": int(y), "w": int(w)})
         y += int(size * spacing)
     return out
+
+
+def _cover_hook_size(text: str) -> int:
+    """封面钩子取能排进三行的最大字号：字大才有钩子，行数多了就不像标题。"""
+    draw = _measure()
+    for size in (76, 72, 66, factcard.HOOK_SIZE):
+        rows = [ln for ln in factcard._wrap_text(draw, " ".join(str(text or "").split()),
+                                                 factcard._font(size), 700) if ln]
+        if len(rows) <= 3:
+            return size
+    return factcard.HOOK_SIZE
 
 
 def _stage(cfg: dict, idx: int, total: int) -> dict:
@@ -532,10 +551,11 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 total=total, slug="cta", hook=False, draw_body=False, hud=False)
         cards.append(card)
         if i == 0:
-            # 封面：标题靠左压在进度条下，人物占右下，两者拼成一条对角线
-            layers = _block_layers(hook_text, factcard.HOOK_SIZE, 470, workdir, f"h{i:02d}",
-                                   align="left", left=124, max_w=640,
-                                   fill=(255, 255, 255, 214))
+            # 封面：标题靠左压在进度条下，人物占右下，两者拼成一条对角线。
+            # 字号按断行反选，字块在进度条到人头顶之间居中
+            layers = _block_layers(hook_text, _cover_hook_size(hook_text), 470, workdir,
+                                   f"h{i:02d}", align="left", left=124, max_w=700,
+                                   fill=(255, 255, 255, 214), center_in=(440, 906))
         elif i == total - 1:
             # 卡面左上角是空的强调条，配一句栏目名才不像是漏排了
             label = script.get("cta_label")
