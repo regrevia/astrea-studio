@@ -469,12 +469,15 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     # 口播稿可能是文件路径（和 make_episode 一样）：不认路径就会退回要点里的说明句，
     # 同一份脚本出的 mp4 比剪映草稿长几秒，听起来还不像人写的
     narration = script.get("narration")
+    points_raw = list(script.get("points") or [])
     if isinstance(narration, str) and narration.strip():
-        lines = Path(os.path.expanduser(narration.strip())).read_text(
-            encoding="utf-8").splitlines()
-        points_raw, narration = MEP.apply_narration(list(script.get("points") or []), lines, None)
-    else:
-        points_raw = script.get("points") or []
+        raw = narration.strip()
+        # 口播稿两种来源：make_episode 传文件路径，平台表单直接传文本框里的多行稿。
+        # 只认路径的话，表单发来的稿子会被当成文件名，出片当场 FileNotFoundError。
+        path = Path(os.path.expanduser(raw))
+        lines = (path.read_text(encoding="utf-8").splitlines()
+                 if "\n" not in raw and path.is_file() else raw.splitlines())
+        points_raw, narration = MEP.apply_narration(points_raw, lines, None)
     spec = factcard.build_spec(
         topic=str(script.get("topic") or "").strip(),
         hook=str(script.get("hook") or factcard.DEFAULT_HOOK),
