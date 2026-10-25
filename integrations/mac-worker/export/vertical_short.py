@@ -924,6 +924,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     motion_audit: list[float] = []
     char_widths: list[int] = []
     prev_pose = ""
+    prev2_pose = ""
     for i, sc in enumerate(scenes):
         card = Path(str(sc["image"]))
         if i == 0:
@@ -1134,8 +1135,9 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             # 一屏一张立绘就是贴图：按口型拍点切成几段，手势在中段换一次，
             # 角色才是在"讲这句话"，而不是被贴上来定格。
             pose = str(char_cfg.get("pose")
-                       or JE._scene_pose(char_cfg, i, total, scene, avoid=prev_pose))
-            prev_pose = pose
+                       or JE._scene_pose(char_cfg, i, total, scene, avoid=prev_pose,
+                                         avoid_extra=prev2_pose))
+            prev2_pose, prev_pose = prev_pose, pose
             # 作者用 poses 列表指定了整条片的手势，那是意图不是错配；显式 pose 同理
             if not char_cfg.get("pose") and not char_cfg.get("poses"):
                 # 记下「这句话该做什么动作」和「实际做了什么」，交给成片体检核对

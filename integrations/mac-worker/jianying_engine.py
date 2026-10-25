@@ -1055,13 +1055,15 @@ _POSE_RULES = (
     # 新立绘多出来四个表情：惊、鼓、怯、赞。只在句子里真有这层意思时才用，
     # 不然就是给每句话硬配表情包。
     ("surprise", ("没想到", "原来", "才发现", "突然", "一下子", "真没想到",
-                  "开眼", "翻车", "这么夸张", "全挂", "全军覆没")),
+                  "开眼", "翻车", "这么夸张", "全军覆没")),
+    ("pout", ("全挂", "挂了", "白挂")),
     ("pout", ("白等", "吃亏", "不划算", "折腾", "难受", "背锅", "凭什么",
               "懒得", "又是", "反复", "零弹窗", "靠脑补")),
     ("shy", ("不好意思", "抱歉", "小声", "偷偷", "害羞", "其实我",
              "说句实话", "说实话")),
     ("approve", ("没错", "就是这样", "就这么查", "稳妥", "靠谱", "信得过",
-                 "照做", "对得上", "只认", "照实")),
+                 "照做", "对得上", "只认", "照实", "核对", "别信我", "自己看",
+                 "查一遍", "查一下", "对一下")),
 )
 # 每个姿态的动幅：(上下起伏倍数, 摆动倍数)。想事情就该比挥手安静。
 _MOTION = {"idle": (1.0, 1.0), "wave": (1.3, 1.8), "point": (0.9, 0.7),
@@ -1103,7 +1105,8 @@ def _keyword_pose(text: str) -> str:
 
 
 def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
-                scene: dict[str, Any], avoid: str = "") -> str:
+                scene: dict[str, Any], avoid: str = "",
+                avoid_extra: str = "") -> str:
     """场景自带 pose 最优先，其次按讲述内容挑，最后才按首尾/奇偶兜底。
 
     avoid 是上一屏已经用过的姿势：连着三屏都在"想事情"，观众看到的是定格的
@@ -1121,9 +1124,10 @@ def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
     # 语义命中会因为「跟上一屏撞了」被让位；让不出去时还得回到它，
     # 否则就落进奇偶兜底，选出一个这句话根本没说过的动作（体检会判错配）。
     semantic = hit
-    if avoid and hit == avoid:
-        # 同分线索里挑一个跟上一屏不同的；都没有就当作没有线索，交给兜底
-        scores = {k: v for k, v in _keyword_scores(text).items() if k != avoid}
+    recent = {x for x in (avoid, avoid_extra) if x}
+    if recent and hit in recent:
+        # 同分线索里挑一个跟前两屏都不同的；都没有就当作没有线索，交给兜底
+        scores = {k: v for k, v in _keyword_scores(text).items() if k not in recent}
         hit = max(scores, key=lambda k: round(scores[k], 3)) if scores else ""
     # 开场挥手、收尾高兴是默认礼数；但这句话本身在发问或在说缺口，
     # 还挥手/傻笑就假了——语义优先于礼数。
