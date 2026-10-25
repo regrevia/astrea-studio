@@ -522,7 +522,8 @@ def _punctuation_anchor(say: str) -> float | None:
     return (cut / len(text)) if cut > 0 else None
 
 
-def _clause_switch(mp3: Path, dur: float, cfg: dict, say: str = "") -> float | None:
+def _clause_switch(mp3: Path, dur: float, cfg: dict, say: str = "",
+                   lo_frac: float = 0.0) -> float | None:
     """手势换在句内停顿处，而不是死板的 55%：人换手势总在说完半句的时候。"""
     try:
         levels = _energy_states(mp3, dur)
@@ -561,7 +562,7 @@ def _clause_switch(mp3: Path, dur: float, cfg: dict, say: str = "") -> float | N
             continue
         mid = levels[min(start + length // 2, len(levels) - 1)][0]
         frac = mid / max(0.4, dur)
-        if not 0.25 <= frac <= 0.78:
+        if not max(0.25, lo_frac + 0.10) <= frac <= 0.78:
             continue
         # 有标点锚点就以它为准：停在哪不重要，重要的是停在那个逗号后
         score = (length - abs(frac - anchor) * 22) if anchor else (length - abs(frac - 0.5) * 10)
@@ -1215,7 +1216,15 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                         and char_cfg.get("gesture_sync", True)):
                     alt2 = JE._third_pose(char_cfg, i, total, scene, pose, alt_pose)
                     if alt2:
-                        at2 = min(0.72, round(switch_at + 0.22, 2))
+                        heard2 = None
+                        if say:
+                            try:
+                                heard2 = _clause_switch(mp3, dur, char_cfg, say,
+                                                        lo_frac=switch_at)
+                            except Exception:   # noqa: BLE001 - 没音频就按位置切
+                                heard2 = None
+                        at2 = min(0.80, round(heard2 if heard2 and heard2 > switch_at + 0.15
+                                              else switch_at + 0.22, 2))
                         plan.append((at2, alt2))
                         switch_audit.append(at2)
                         if not char_cfg.get("poses"):

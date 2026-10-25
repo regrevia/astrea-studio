@@ -968,11 +968,27 @@ def _third_pose(cfg: dict[str, Any], idx: int, total: int,
     # 12 字已经够两个动作讲完一句话，门槛降到跟换势逻辑一致。
     if len(say) < 12:
         return None
+    # 第三次换势演的是最后一句：从结尾那句话自己的线索里挑，动作才落在
+    # 正在说的那半句上；整句剩下的分数是前面用过的重心，换上去等于往回演。
+    tail = _tail_clause(say)
+    if tail:
+        for name, score in sorted(_keyword_scores(tail).items(), key=lambda kv: -kv[1]):
+            if name in (first, second) or float(score) <= 0:
+                continue
+            return str(name)
     for name, score in sorted(_keyword_scores(say).items(), key=lambda kv: -kv[1]):
         if name in (first, second) or float(score) <= 0:
             continue
         return str(name)
     return None
+
+
+def _tail_clause(say: str) -> str:
+    """最后一句话（不含句末标点的尾巴）。"""
+    text = str(say or "").strip().rstrip("。！？!?…")
+    cut = max(text.rfind(ch) for ch in "，,；;。.！!？?：:、") if text else -1
+    tail = text[cut + 1:].strip() if cut >= 0 else text
+    return tail if len(tail) >= 4 else ""
 
 
 def _clause_wants(say: str) -> tuple[str, str]:
