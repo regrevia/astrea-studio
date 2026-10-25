@@ -234,16 +234,38 @@ def _cta_copy(script: dict, cta_text: str) -> dict:
 def _cta_tail_at(mp3: Path | None, dur: float) -> float:
     """收尾卡补白那行什么时候出现：口播念到第二句才落字。
 
-    没有音频就按屏长 55% 估：先让主张站住，再补这一刀。
+    以前按整段时长乘 0.52 估，补白句第三秒多才落，观众先看到一块只写了两行的板。
+    改成量第一句念完的那条静音：补白句一开口，字已经在。
     """
     if mp3:
         try:
             hold = _dur(mp3)
             if hold > 0.4:
+                brk = _first_break(mp3)
+                if brk:
+                    return round(min(max(0.45, brk + 0.12), max(0.45, dur - 0.9)), 2)
                 return round(min(max(0.55, hold * 0.52), max(0.55, dur - 0.9)), 2)
         except Exception:  # noqa: BLE001 - 量不出就按屏长估
             pass
     return round(max(0.55, dur * 0.55), 2)
+
+
+def _first_break(mp3: Path) -> float:
+    """念白里最长那条停顿结束在哪：句号比逗号停得久，最长的就是换句处。"""
+    r = subprocess.run(
+        [TR.FFMPEG, "-hide_banner", "-nostats", "-i", str(mp3), "-af",
+         "silencedetect=noise=-38dB:d=0.18", "-f", "null", "-"],
+        capture_output=True, text=True, timeout=120)
+    log = r.stderr or ""
+    starts = [float(m) for m in re.findall(r"silence_start:\s*([0-9.]+)", log)]
+    ends = [float(m) for m in re.findall(r"silence_end:\s*([0-9.]+)", log)]
+    spans = [(ends[i] - starts[i], ends[i]) for i in range(min(len(starts), len(ends)))]
+    # 句尾那条静音不算换句：它后面没有下一句
+    if len(spans) > 1:
+        spans = spans[:-1]
+    if not spans:
+        return 0.0
+    return max(spans)[1]
 
 
 def _stage(cfg: dict, idx: int, total: int) -> dict:
