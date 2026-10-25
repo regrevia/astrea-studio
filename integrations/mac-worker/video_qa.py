@@ -18,6 +18,7 @@ import numpy as np
 from PIL import Image
 
 FFMPEG = "/opt/homebrew/bin/ffmpeg"
+FFPROBE = "/opt/homebrew/bin/ffprobe"
 STEP = 0.25
 # 整帧标准差低于这个值，等于画面没有内容（黑场、纯色、还是导出的空镜）
 FLAT_STD = 6.0
@@ -60,6 +61,89 @@ def _box_std(frames: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
     sx, sy = 270 / 1080, 480 / 1920
     part = frames[:, int(y0 * sy):int(y1 * sy), int(x0 * sx):int(x1 * sx)]
     return part.reshape(len(part), -1).std(axis=1)
+
+
+# 人物层采样步长：每 6 帧取一帧，20 秒的片子概 100 个点，够抓住一次闪断
+LAYER_STRIDE = 6
+# 人物发透：叠化时两边都乘权重，实心像素会整段掉到 0；亮过这个值的像素算实心
+SOLID_MIN = 0.40
+# 人物大小：全片轮廓高度极差。素材本身只差 0.2%，超过 3% 就是换屏换姿势时人在缩放
+RESIZE_MAX = 1.03
+# 片头片尾各自淡入淡出，不算缺陷
+LAYER_GUARD = 1.0
+
+
+def _char_layer_metrics(meta: dict) -> dict | None:
+    """把人物层单独解一遍：发灰、忽大忽小这两件事在成片里被背景糊住，
+    只有拆开这一层才量得准。"""
+    ovs = [o for o in (meta.get("overlay") or [])
+           if str(o.get("src", "")).endswith("char_layer.webm")]
+    if not ovs:
+        return None
+    src = Path(str(ovs[0]["src"]))
+    if not src.exists():
+        return None
+    probe = subprocess.run(
+        [FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries",
+         "stream=width,height,r_frame_rate,nb_frames", "-of", "json", str(src)],
+        capture_output=True, text=True, check=True).stdout
+    info = (json.loads(probe).get("streams") or [{}])[0]
+    w, h = int(info.get("width") or 0), int(info.get("height") or 0)
+    if not w or not h:
+        return None
+    num, _, den = str(info.get("r_frame_rate") or "0/1").partition("/")
+    fps = float(num) / float(den or 1) if float(num or 0) else 0.0
+    raw = subprocess.run(
+        [FFMPEG, "-v", "error", "-c:v", "libvpx-vp9", "-i", str(src),
+         "-vf", f"select='not(mod(n,{LAYER_STRIDE}))',format=rgba",
+         "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "rgba", "-"],
+        capture_output=True, check=True).stdout
+    arr = np.frombuffer(raw, dtype=np.uint8)
+    if arr.size < w * h * 4:
+        return None
+    arr = arr[: (arr.size // (w * h * 4)) * w * h * 4].reshape(-1, h, w, 4)
+    a = arr[..., 3]
+    on = a > 8
+    mass = on.sum(axis=(1, 2))
+    mean = np.where(on, a, 0).sum(axis=(1, 2)) / np.maximum(1, mass)
+    solid = ((a > 240) & on).sum(axis=(1, 2)) / np.maximum(1, mass)
+    # 身高只按实心像素算：带 alpha 的 vp9 是有损的，头发丝和尾巴边缘每帧
+    # 会有一两行在「半透明/全透明」之间晃，按 >8 量出来是 3% 的假抖动
+    rows = (a > 128).any(axis=2)
+    tall = rows.sum(axis=1)
+    ts = np.arange(len(arr)) * LAYER_STRIDE / (fps or 30.0)
+    keep = (ts > LAYER_GUARD) & (ts < (ts[-1] if len(ts) else 0) - LAYER_GUARD)
+    if keep.sum() < 3:
+        return None
+    return {"mean": mean[keep], "solid": solid[keep], "tall": tall[keep],
+            "t": ts[keep], "w": w, "h": h}
+
+
+def _layer_findings(meta: dict, findings: list) -> None:
+    got = _char_layer_metrics(meta)
+    if not got:
+        return
+    mean, solid, tall, ts = got["mean"], got["solid"], got["tall"], got["t"]
+    # 换姿态时新的一段本来就从半透明盖上去，那一瞬实心必然掉一半。
+    # 连着一秒以上都透才是真的漏了底，所以只在「连着几帧都透」时才报。
+    thin = np.where((mean < 150) | (solid < SOLID_MIN))[0]
+    if thin.size:
+        runs, cur = [], [int(thin[0])]
+        for i in thin[1:]:
+            if i - cur[-1] <= 1:
+                cur.append(int(i))
+            else:
+                runs.append(cur); cur = [int(i)]
+        runs.append(cur)
+        thin = np.array([i for run in runs if len(run) >= 3 for i in run])
+    for i in thin[:3]:
+        findings.append({"code": "character_thin", "level": "warn",
+                         "at": round(float(ts[i]), 2),
+                         "detail": f"{ts[i]:.1f}s 人物发透（实心 {solid[i]:.2f}）"})
+    live = tall[tall > 0]
+    if live.size >= 3 and float(live.max()) / float(max(1, live.min())) > RESIZE_MAX:
+        findings.append({"code": "character_resize", "level": "warn",
+                         "detail": f"人物忽大忽小：身高 {int(live.min())}→{int(live.max())}"})
 
 
 def check(video: Path, spec: Path) -> dict:
@@ -159,6 +243,8 @@ def check(video: Path, spec: Path) -> dict:
             at = (gesture.get("clash_at") or [None])[0]
             findings.append({"code": "gesture_offtext", "level": "warn", "at": at,
                              "detail": f"{clash}/{checked} 屏的手势和这句话对不上"})
+    if isinstance(meta, dict):
+        _layer_findings(meta, findings)
     return {"video": str(video), "duration": got, "findings": findings,
             "ok": not [f for f in findings if f["level"] == "error"]}
 

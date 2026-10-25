@@ -281,14 +281,14 @@ def prune_tts_cache(keep: Path | None = None) -> None:
         pass
 
 
-def _tts_cache(text: str, voice: str) -> Path | None:
-    """配音缓存键：音色 + 原文。稿子改一个字就重新合成，不改就复用。"""
-    key = hashlib.sha1(f"{voice}\x00{text}".encode()).hexdigest()[:20]
+def _tts_cache(text: str, voice: str, rate: float = 1.0) -> Path | None:
+    """配音缓存键：音色 + 语速 + 原文。稿子改一个字就重新合成，不改就复用。"""
+    key = hashlib.sha1(f"{voice}\x00{rate:.3f}\x00{text}".encode()).hexdigest()[:20]
     slug = re.sub(r"[^0-9A-Za-z]+", "-", voice).strip("-") or "voice"
     return TTS_CACHE / slug / f"{key}.mp3"
 
 
-def _tts(text: str, mp3: Path, voice: str) -> None:
+def _tts(text: str, mp3: Path, voice: str, rate: float = 1.0) -> None:
     """调 SAMI 配音。
 
     worker 跑在系统 python3 上，没有 MPT venv 的依赖（loguru/websockets），
@@ -304,20 +304,20 @@ def _tts(text: str, mp3: Path, voice: str) -> None:
     code = (
         "import sys\n"
         "from app.services.sami_tts import sami_tts\n"
-        "sami_tts(sys.argv[1], sys.argv[2], 1.0, sys.argv[3])\n"
+        "sami_tts(sys.argv[1], sys.argv[2], float(sys.argv[4]), sys.argv[3])\n"
     )
     env = dict(os.environ)
     env["MPT_HOME"] = str(MPT_HOME)
     env["PYTHONPATH"] = str(MPT_HOME)
     # 同音色同文本只合成一次：SAMI 流式音色每次采样的停顿、尾音都有细微差别，
     # 不缓存的话同一份稿子两次出片口型与时长两样，批量出片没法比母版。
-    cached = _tts_cache(text, voice)
+    cached = _tts_cache(text, voice, rate)
     if cached is not None:
         if cached.exists() and cached.stat().st_size >= 1000:
             shutil.copyfile(cached, mp3)
             return
     r = subprocess.run(
-        [str(python), "-c", code, text, voice, str(mp3)],
+        [str(python), "-c", code, text, voice, str(mp3), f"{rate:.3f}"],
         capture_output=True, text=True, cwd=str(MPT_HOME), env=env, timeout=180,
     )
     if not mp3.exists() or mp3.stat().st_size < 1000:

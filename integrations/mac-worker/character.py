@@ -260,7 +260,37 @@ _TILT = {"idle": 0.0, "wave": -6.0, "point": 4.0, "think": -5.0,
 # 生成方的文件名约定见 deploy/presenter/ART-BRIEF-whale-girl.md
 ASSET_ROOT = Path(os.environ.get("WHALE_ASSET_ROOT")
                    or "~/CreatorStudio/state/characters/whale").expanduser()
-_ASSET_CACHE: dict[tuple[str, float], Image.Image] = {}
+_ASSET_CACHE: dict[tuple, Image.Image] = {}
+# 素材包里 pose_x_open.png 与 pose_x_closed.png 是同一张图（嘴都是张的），
+# 直接按文件名当口型用，人物说话时嘴一动不动。这里记住哪些 pose 是「真差分」，
+# 假差分就用 mouth_art 现场补出半开/闭/圆三种嘴。
+_ART_MOUTH: dict[str, str] = {}
+
+
+def _art_mouth_state(path: Path) -> str:
+    """这张图真实的口型：文件名说 closed 但和 open 逐字节相同，就按 open 算。"""
+    name = path.stem
+    state = "open"
+    for st in ("open", "closed", "half", "round"):
+        if name.endswith("_" + st):
+            state = st
+            break
+    cached = _ART_MOUTH.get(str(path))
+    if cached is not None:
+        return cached
+    real = state
+    if state in ("open", "closed"):
+        sib_name = name[: -len(state) - 1] + ("_closed" if state == "open" else "_open") + ".png"
+        sib = path.with_name(sib_name)
+        try:
+            if sib.is_file() and sib.stat().st_size == path.stat().st_size:
+                if sib.read_bytes() == path.read_bytes():
+                    # 两张一样：嘴只有张着那一份，closed 版不存在
+                    real = "open"
+        except Exception:  # noqa: BLE001
+            real = state
+    _ART_MOUTH[str(path)] = real
+    return real
 
 
 def _key_green(img: Image.Image) -> Image.Image:
@@ -310,7 +340,8 @@ def outfit_root(outfit: str | None = None) -> Path:
     return ASSET_ROOT
 
 
-def _asset_candidates(root: Path, pose: str, mouth: str, eyes: str) -> list[Path]:
+def _asset_candidates(root: Path, pose: str, mouth: str, eyes: str,
+                      allow_body: bool = False) -> list[Path]:
     """同一套服装内部按「动作说话版 → 动作闭口版 → 该套站姿」降级。
 
     只在本套里找：从女仆装降级到水手裙的图，人会突然换衣服。
@@ -324,6 +355,10 @@ def _asset_candidates(root: Path, pose: str, mouth: str, eyes: str) -> list[Path
         if st not in uniq:
             uniq.append(st)
     cands: list[Path] = []
+    if allow_body:
+        # 分离模式：body 只有身体，脸靠表情层叠上去。没有表情层就不用它，
+        # 否则会出一张没脸的立绘。
+        cands.append(root / f"body/pose_{pose or 'idle'}.png")
     if pose in ("", "idle", "neutral"):
         for st in uniq:
             if eyes == "closed":
@@ -342,21 +377,72 @@ def _asset_candidates(root: Path, pose: str, mouth: str, eyes: str) -> list[Path
     return cands
 
 
-def _asset_png(pose: str, mouth: str, eyes: str, outfit: str | None = None) -> Image.Image | None:
+def _expression_png(outfit: str | None, expression: str | None) -> Image.Image | None:
+    """表情层是独立一张，和身体同尺寸贴上去，不重画整个身体。
+
+    服装只提供身体，表情跨服装共用：换装时才不用把表情重画一遍。
+    """
+    name = str(expression or "").strip()
+    if not name:
+        return None
+    root = outfit_root(outfit)
+    if not root.is_dir():
+        return None
+    split = root.parent.name == "outfits"
+    croot = root.parent.parent if split else root
+    try:
+        import character_assets as CA
+        path = CA.expression_path(croot, root.name if split else None, name)
+        if path is None:
+            return None
+        key = ("expr", str(path), path.stat().st_mtime)
+        hit = _ASSET_CACHE.get(key)
+        if hit is None:
+            # 表情层本来就是透明的，不再抠绿：别把画里的绿色高光一起抠掉
+            hit = Image.open(path).convert("RGBA").resize((DES, DES), Image.LANCZOS)
+            _ASSET_CACHE[key] = hit
+        return hit
+    except Exception:  # noqa: BLE001 - 表情缺了就当没有，别拦着出片
+        return None
+
+
+def _asset_png(pose: str, mouth: str, eyes: str, outfit: str | None = None,
+               expression: str | None = None) -> Image.Image | None:
     """按「服装 + 动作 + 口型」挑一张差分；眼睛闭只对站姿有专门的一张。"""
     root = outfit_root(outfit)
     if not root.is_dir():
         return None
-    for path in _asset_candidates(root, pose, mouth, eyes):
+    layer = _expression_png(outfit, expression)
+    # 分离模式的 body 图优先于烘焙图，哪怕这次没叠表情：退回程序化占位图是换了个
+    # 角色，远不如「这套衣服还没画脸」来得诚实。
+    want = str(mouth or "closed")
+    for path in _asset_candidates(root, pose, mouth, eyes, allow_body=bool(root.joinpath("body").is_dir())):
         if not path.is_file():
             continue
+        if want != "open" and not path.stem.endswith("_open"):
+            # 闭口稿是真的，但它的身体阴影/描边和张口稿差了一点点：一说话就
+            # 在两张"同一姿势"之间来回切，脖子和头发会跟着闪。口型一律在张口
+            # 那张上就地改，身体像素整片一帧不换。
+            alt = path.with_name(path.stem[: -len(path.stem.split("_")[-1]) - 1] + "_open.png")
+            if alt.is_file():
+                path = alt
         try:
             stamp = path.stat().st_mtime
-            key = (str(path), stamp)
+            key = (str(path), stamp, str(expression or ""), want)
             hit = _ASSET_CACHE.get(key)
             if hit is None:
                 hit = _key_green(Image.open(path).convert("RGBA"))
+                if want != "open":
+                    try:
+                        import mouth_art
+                        hit = mouth_art.apply(hit, want, key=(str(path), stamp))
+                    except Exception:  # noqa: BLE001 - 补嘴失败就退回原图
+                        pass
                 hit = hit.resize((DES, DES), Image.LANCZOS)
+                if layer is not None:
+                    hit = hit.copy()
+                    # 表情图与身体同为 DES×DES 画布，锚点已画在图内，直接整层叠
+                    hit.alpha_composite(layer)
                 _ASSET_CACHE[key] = hit
             return hit.copy()
         except Exception:  # noqa: BLE001 - 真图坏了不该让整条片挂掉
@@ -365,8 +451,8 @@ def _asset_png(pose: str, mouth: str, eyes: str, outfit: str | None = None) -> I
 
 
 def render(pose="idle", mouth="closed", eyes="open", sway=0.0, tilt=None,
-           outfit: str | None = None) -> Image.Image:
-    real = _asset_png(pose, mouth, eyes, outfit)
+           outfit: str | None = None, expression: str | None = None) -> Image.Image:
+    real = _asset_png(pose, mouth, eyes, outfit, expression)
     if real is not None:
         return real
     img = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))

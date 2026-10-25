@@ -62,6 +62,61 @@ def outfits() -> list:
         return []
 
 
+def _assets_mod():
+    import character_assets as CA
+    return CA
+
+
+def character_model(cid: str = "whale") -> dict:
+    """形象的完整素材模型：动作全集、表情全集、每套服装能不能挂表情层。"""
+    CA = _assets_mod()
+    ch = CA.load_character(cid)
+    data = ch.to_public()
+    data["root"] = str(ch.root)
+    return data
+
+
+def character_check(cid: str = "whale") -> dict:
+    return _assets_mod().check(cid=cid)
+
+
+def import_outfit(cid: str, payload: dict) -> dict:
+    """装一套衣服：只要身体动作图，表情沿用共用那一套。"""
+    CA = _assets_mod()
+    src = str(payload.get("src") or "").strip()
+    oid = str(payload.get("id") or "").strip()
+    if not src or not oid:
+        raise ValueError("src 和 id 都要给")
+    src_path = Path(src).expanduser().resolve()
+    home = Path.home().resolve()
+    if not (src_path.is_dir() or src_path.suffix.lower() == ".zip"):
+        raise ValueError(f"只接受目录或 zip：{src_path}")
+    if home not in src_path.parents and not str(src_path).startswith("/tmp/"):
+        raise ValueError("素材要放在本机用户目录或 /tmp 下")
+    return CA.import_outfit(src_path, oid, str(payload.get("label") or ""), cid=cid,
+                            force=bool(payload.get("force")))
+
+
+def set_default_outfit(cid: str, outfit: str) -> dict:
+    """换默认服装只改一个字段，不动任何一张图。"""
+    CA = _assets_mod()
+    ch = CA.load_character(cid)
+    oid = str(outfit or "").strip()
+    if oid not in {o.id for o in ch.outfits}:
+        raise ValueError(f"没有这套服装：{oid}")
+    cfg_path = ch.root / "character.json"
+    cfg = {}
+    if cfg_path.is_file():
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8") or "{}")
+    cfg.setdefault("id", ch.id)
+    cfg.setdefault("name", ch.name)
+    cfg["default_outfit"] = oid
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n",
+                        encoding="utf-8")
+    return {"default_outfit": oid}
+
+
 def snapshot(force: bool = False) -> dict:
     with _lock:
         now = time.time()
@@ -105,10 +160,47 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.dumps({"characters": characters()},
                                   ensure_ascii=False).encode()
                 self._send(200, body)
+            elif path.startswith("/characters/"):
+                parts = [x for x in path.split("/") if x]
+                cid = parts[1] if len(parts) > 1 else "whale"
+                tail = parts[2] if len(parts) > 2 else ""
+                if tail == "check":
+                    body = json.dumps(character_check(cid), ensure_ascii=False).encode()
+                elif tail in ("", "assets"):
+                    body = json.dumps(character_model(cid), ensure_ascii=False).encode()
+                else:
+                    body = b'{"error":"not found"}'
+                    self._send(404, body)
+                    return
+                self._send(200, body)
             elif path == "/healthz":
                 self._send(200, b'{"ok":true}')
             else:
                 self._send(404, b'{"error":"not found"}')
+        except Exception as exc:  # noqa: BLE001
+            payload = json.dumps({"error": f"{type(exc).__name__}: {exc}"[:300]}).encode()
+            self._send(500, payload)
+
+    def do_POST(self):  # noqa: N802
+        path = self.path.split("?", 1)[0].rstrip("/") or "/"
+        parts = [x for x in path.split("/") if x]
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b"{}"
+            payload = json.loads(raw.decode("utf-8") or "{}")
+            if len(parts) >= 3 and parts[0] == "characters" and parts[2] == "outfits":
+                body = json.dumps(import_outfit(parts[1], payload),
+                                  ensure_ascii=False).encode()
+                self._send(200, body)
+            elif len(parts) >= 3 and parts[0] == "characters" and parts[2] == "default-outfit":
+                body = json.dumps(set_default_outfit(parts[1], payload.get("outfit")),
+                                  ensure_ascii=False).encode()
+                self._send(200, body)
+            else:
+                self._send(404, b'{"error":"not found"}')
+        except ValueError as exc:
+            self._send(400, json.dumps({"error": str(exc)[:300]},
+                                       ensure_ascii=False).encode())
         except Exception as exc:  # noqa: BLE001
             payload = json.dumps({"error": f"{type(exc).__name__}: {exc}"[:300]}).encode()
             self._send(500, payload)

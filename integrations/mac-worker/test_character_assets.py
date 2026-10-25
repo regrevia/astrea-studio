@@ -61,6 +61,38 @@ def main() -> int:
         assert character.outfit_root("99_nope") == root
         assert character.list_outfits() == ["01_sailor", "02_maid"]
 
+        # 分离模式：身体图只画身体，表情层另存一张，叠上去才出完整的脸
+        split = root / "outfits/09_split"
+        _fake(split / "body/pose_idle.png", (0, 0, 255))
+        (split / "meta.json").write_text('{"label":"分离测试","mode":"split"}', encoding="utf-8")
+        expr_dir = root / "expressions"
+        expr_dir.mkdir(parents=True, exist_ok=True)
+        layer = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+        for y in range(246, 266):
+            for x in range(246, 266):
+                layer.putpixel((x, y), (255, 0, 0, 255))
+        layer.save(expr_dir / "blush.png")
+        base_plain = character.render(pose="idle", mouth="closed", outfit="09_split")
+        x0 = int(256 * character.DES / 512)
+        assert base_plain.getpixel((x0, x0))[:3] == (0, 0, 255), base_plain.getpixel((x0, x0))
+        dressed = character.render(pose="idle", mouth="closed", outfit="09_split",
+                                   expression="blush")
+        assert dressed.getpixel((x0, x0))[:3] == (255, 0, 0), dressed.getpixel((x0, x0))
+        far = int(100 * character.DES / 512)
+        assert dressed.getpixel((far, far))[:3] == (0, 0, 255), dressed.getpixel((far, far))
+        # 这套服装自己的脸覆盖共用表情：同一个人不同衣服可以各有一张脸
+        face = split / "face"
+        face.mkdir(parents=True, exist_ok=True)
+        own = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+        for y in range(246, 266):
+            for x in range(246, 266):
+                own.putpixel((x, y), (255, 0, 255, 255))
+        own.save(face / "blush.png")
+        character._ASSET_CACHE.clear()
+        own_dressed = character.render(pose="idle", mouth="closed", outfit="09_split",
+                                      expression="blush")
+        assert own_dressed.getpixel((x0, x0))[:3] == (255, 0, 255), own_dressed.getpixel((x0, x0))
+
         # 没有真图的姿势退回程序化占位图，不能抛异常
         character.ASSET_ROOT = root / "nope"
         fallback = character.render(pose="shrug", mouth="round")

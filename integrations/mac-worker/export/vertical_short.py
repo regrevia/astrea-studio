@@ -32,6 +32,8 @@ sys.path.insert(0, str(WORKER))
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(WORKER / "tools"))
 
+import char_layer as CL  # noqa: E402
+import character  # noqa: E402
 import factcard  # noqa: E402
 import jianying_engine as JE  # noqa: E402
 import make_episode as MEP  # noqa: E402
@@ -44,7 +46,10 @@ TAIL_HOLD = 0.35
 FADE = 0.22
 XFADE = 0.40
 # 换手势的交叉长度：太短是「跳一下」，太长两只手同时在画面里像重影
-POSE_XFADE = 0.22
+# 换手势的叠化只有 0.1 秒：0.22 秒的线性叠化里，人物有三分之一时间处在
+# 两张立绘互相透着的状态，体检判「发透」，眼睛也看得出鬼影。0.1 秒读起来
+# 仍是「接住」，但透的那一两帧一闪就过。
+POSE_XFADE = 0.10
 # 换手势躲开眨眼：两个动作贴在一起，观众看到的是抽搐
 POSE_BLINK_GUARD = 0.35
 TAIL = 1.00  # 话说完再定一秒：立刻黑屏是最廉价的收尾  # 相邻两屏叠化时长：整屏硬切是「PPT 翻页」最重的一笔
@@ -168,6 +173,61 @@ def _cover_hook_size(text: str) -> int:
     return factcard.HOOK_SIZE
 
 
+def _cta_copy(script: dict, cta_text: str) -> dict:
+    """收尾卡的字：一句主张压一句补白，字号按行宽反选。
+
+    面板高度得跟着这块字走：字到哪卡面到哪。原来卡底一律压在 1000，
+    字只写到 880，收尾屏下半截空一大块，卡框下缘还正好横切在人物头上。
+    """
+    raw = str((script.get("narration") or {}).get("outro")
+              or (script.get("narration") or {}).get("cta")
+              or cta_text).strip()
+    raw = " ".join(raw.split())
+    parts = [x.strip() for x in re.split(r"(?<=[。！？])", raw) if x.strip()]
+    head = parts[0] if parts else raw
+    tail = "".join(parts[1:])
+    draw = _measure()
+    center_w = factcard.W - 248
+    size = 84
+    for cand in (84, 78, 72, 66, 60, 56):
+        size = cand
+        if draw.textlength(head, font=factcard._font(cand)) <= center_w:
+            break
+    head_rows = len([ln for ln in factcard._wrap_text(
+        draw, head, factcard._font(size), center_w) if ln]) or 1
+    tail_size, tail_rows = 0, 0
+    if tail:
+        tail_size = max(40, int(size * 0.58))
+        while tail_size > 40 and draw.textlength(
+                tail, font=factcard._font(tail_size)) > center_w:
+            tail_size -= 2
+        tail_rows = len([ln for ln in factcard._wrap_text(
+            draw, tail, factcard._font(tail_size), center_w) if ln]) or 1
+    top = 700
+    bottom = top + int(size * 1.42) * head_rows + int(tail_size * 1.35) * tail_rows
+    label = script.get("cta_label")
+    return {"head": head, "tail": tail, "size": size, "tail_size": tail_size,
+            "top": top, "bottom": bottom, "card_bottom": bottom + 66,
+            # 面板顶比左边那条强调条低 30px：贴着圆角画会像两块没对齐的板
+            "card_top": 500,
+            "label": "轮到你了" if label is None else str(label)}
+
+
+def _cta_tail_at(mp3: Path | None, dur: float) -> float:
+    """收尾卡补白那行什么时候出现：口播念到第二句才落字。
+
+    没有音频就按屏长 55% 估：先让主张站住，再补这一刀。
+    """
+    if mp3:
+        try:
+            hold = _dur(mp3)
+            if hold > 0.4:
+                return round(min(max(0.55, hold * 0.52), max(0.55, dur - 0.9)), 2)
+        except Exception:  # noqa: BLE001 - 量不出就按屏长估
+            pass
+    return round(max(0.55, dur * 0.55), 2)
+
+
 def _stage(cfg: dict, idx: int, total: int) -> dict:
     """按屏给人物换机位：整片钉死在一个角上，再灵的口型也像贴图。
 
@@ -175,16 +235,14 @@ def _stage(cfg: dict, idx: int, total: int) -> dict:
     脚本里显式给了 width/x/y 就照用，这里只补空位。
     """
     out = dict(cfg)
-    # 竖屏里人物占宽太小就只是贴纸：开场到收尾都在画面 1/3 以上
-    if idx == 0:
-        # 封面比正文近一档，但底边跟正文对齐：换屏时人只在原地长一点，
-        # 不会从画面上半截滑到下半截。三行标题的封面也压不到她的头
-        want = {"width": 720, "x": 500, "y": 940}
-    elif idx == total - 1:
-        want = {"width": 700, "x": 505, "y": 1014}
-    else:
-        # 卡底压在 1000：人物头顶再往上就穿进卡框，看着像贴纸压边
-        want = {"width": 680, "x": 520, "y": 1014}
+    # 人物尺寸整片只有一个：换屏、换手势时大小一跳，观众立刻看出是拼的。
+    # 素材里十几种姿态的轮廓高度本身只差 0.2%，所以固定宽度就等于固定身高
+    out.setdefault("width", 696)
+    # 竖屏里人物占宽太小就只是贴纸：整片都落在画面 1/3 以上
+    # 二十几屏里人物从 x500/y940 挪到 x520/y1014，两次切点各跳一次：
+    # 观众读到的不是「机位换了」，是「她被挪了一下」。整片钉同一处，
+    # 变化交给呼吸、倾斜和手势，位置一动不动。
+    want = {"x": 520, "y": 1014}
     for k, v in want.items():
         if not out.get(k):
             out[k] = v
@@ -305,6 +363,50 @@ def _gesture_summary(audit: list[dict], switches: list[float] | None = None,
         # 每屏动作幅度系数：问句更活、结论更稳，全片才是同一个人在讲
         "gains": list(gains or []),
     }
+
+
+# 动作已经表达态度，表情层只补一个不占地方的符号；两套动作共用同一张表情，
+# 换服装时不用重画表情，加表情也不用碰任何一张立绘。
+_EXPRESSION_BY_POSE = {
+    "happy": "sparkle",
+    "approve": "sparkle",
+    "shy": "blush",
+    "pout": "anger",
+    "surprise": "sweat",
+}
+
+
+def _char_anim_name(pose: str, speaking: bool) -> str:
+    """序列帧只给「动作本身就是动画」的姿态用。
+
+    talk/idle_blink 两套序列是按站姿烘的：一旦挂上，char_layer 就用序列帧顶掉
+    当前姿态的立绘，八张手势稿全部退化成垂手站桩——片子看着像只有嘴在动。
+    挥手序列带抬臂动作，仍走 wave；其余姿态直接用姿态稿本身，口型靠 open/closed
+    差分，身体起伏交给 char_layer 的 bob/sway/lean。
+    """
+    if pose == "wave":
+        return "wave"
+    if pose in ("idle", ""):
+        return "idle_blink"
+    return ""
+
+
+def _pose_expression(pose: str) -> str:
+    return _EXPRESSION_BY_POSE.get(str(pose or "").strip(), "")
+
+
+# 一屏四五秒只给一个姿势，观众看到的就是贴图。句子后半句必须换一次身体：
+# 但只能换「中性讲解类」姿势——情绪类（笑、惊、羞）文本里没有线索就换出来，
+# 讲缺口时突然笑，比定格还假。
+_NEUTRAL_ALT = {"wave": "think", "think": "point", "point": "think",
+                "approve": "point", "happy": "approve", "surprise": "think",
+                "shy": "think", "pout": "think", "idle": "think", "": "think"}
+
+
+def _fallback_alt_pose(pose: str) -> str | None:
+    """文本没有给出两种动作时，用一个不打架的中性姿势接过后半句。"""
+    alt = _NEUTRAL_ALT.get(str(pose or ""))
+    return alt if alt and alt != pose else None
 
 
 def _pose_motion(pose: str, say: str = "") -> dict:
@@ -474,6 +576,121 @@ def _audio_beats(mp3: Path, dur: float, cfg: dict) -> list[tuple[str, float]]:
     return [(st, sec * scale) for st, sec in eased if st]
 
 
+_SENT_END = "。！？!?；;…"
+_CLAUSE_END = "，,、：:"
+
+
+def _say_parts(say: str) -> list[tuple[str, float]]:
+    """把一屏的口播拆成句子，句末留一口气、逗号留半口。
+
+    TTS 一口气念完一整段时，句号之间几乎不留缝，听着像在赶稿。
+    拆开各合成一次再补静音，停顿多长才是我们能定的。
+    """
+    text = " ".join(str(say or "").split())
+    if not text:
+        return []
+    parts: list[tuple[str, float]] = []
+    for sent in re.split(r"(?<=[。！？!?；;…])", text):
+        sent = sent.strip()
+        if not sent:
+            continue
+        # 二十多个字一口气读完，中间没有换气点，按逗号再断一次
+        chunks = ([c.strip() for c in re.split(r"(?<=[，,、：:])", sent) if c.strip()]
+                  if len(sent) > 16 else [sent])
+        for k, chunk in enumerate(chunks):
+            gap = 0.34 if chunk[-1] in _SENT_END else 0.15
+            if k == len(chunks) - 1 and chunk is not sent and chunk[-1] in _CLAUSE_END:
+                gap = 0.0     # 半句落在句尾，交给句子那一下停顿
+            parts.append((chunk, gap))
+    if len(parts) < 2:
+        return [(text, 0.0)]
+    parts[-1] = (parts[-1][0], 0.0)
+    return parts
+
+
+# 铺垫句照常录，只把包袱那一句放慢：整段一起拉慢，「由大肥鱼制作完成」
+# 也会跟着拖成念稿腔，梗反而更不像随口说的。
+_GAG_RE = re.compile(r"大肥鱼|token\s*受到伤害|没有任何一个")
+_GAG_SETUP = re.compile(r"大肥鱼|制作完成")
+_GAG_PUNCH = re.compile(r"token\s*受到伤害|没有任何一个|没受伤")
+# SAMI 没有语速参数（voice_rate 传进去也只是签名占位），只能在合成后拉伸。
+# 0.95/0.86 用 atempo 走、不改音高：铺垫略缓，包袱慢半拍。
+_GAG_SETUP_TEMPO = 0.95
+_GAG_PUNCH_TEMPO = 0.86
+_GAG_LEAD = 0.45
+
+
+def _gag_tempo(text: str) -> float:
+    if _GAG_PUNCH.search(text):
+        return _GAG_PUNCH_TEMPO
+    if _GAG_SETUP.search(text):
+        return _GAG_SETUP_TEMPO
+    return 1.0
+
+
+def _gag_lead(text: str) -> float:
+    """包袱前面多留一口气，才像「顺口一提」；铺陈句不用。"""
+    return _GAG_LEAD if _GAG_PUNCH.search(text) else 0.0
+
+
+def _slow(src: Path, tempo: float) -> Path:
+    """把一句配音拉慢（保持音高）。失手就返回原文件，别为语气把整屏弄没声。"""
+    if not (0.5 <= tempo <= 1.0):
+        return src
+    out = src.with_name(src.stem + "_slow.mp3")
+    r = subprocess.run(
+        ["ffmpeg", "-v", "error", "-y", "-i", str(src),
+         "-filter:a", f"atempo={tempo:.3f}", "-c:a", "libmp3lame", "-q:a", "3", str(out)],
+        capture_output=True, text=True, timeout=120)
+    if r.returncode != 0 or not out.exists() or out.stat().st_size < 800:
+        return src
+    return out
+
+
+def _say(mp3: Path, say: str, voice: str, workdir: Path, stem: str) -> None:
+    """一屏的配音：逐句合成、补静音、拼回一条。
+
+    每句各自走配音缓存，片子重出时只有改过的那句重新合成。
+    """
+    parts = _say_parts(say)
+    if len(parts) < 2:
+        _tts(say, mp3, voice)
+        tempo = _gag_tempo(say)
+        if tempo < 1.0:
+            shutil.copyfile(_slow(mp3, tempo), mp3)
+        return
+    parts = [(text, gap + (_gag_lead(text) if k else 0.0))
+             for k, (text, gap) in enumerate(parts)]
+    inputs: list[str] = []
+    filters: list[str] = []
+    for k, (text, _gap) in enumerate(parts):
+        part = workdir / f"{stem}_p{k}.mp3"
+        _tts(text, part, voice)
+        tempo = _gag_tempo(text)
+        if tempo < 1.0:
+            part = _slow(part, tempo)
+        inputs += ["-i", str(part)]
+        filters.append(f"[{k}:a]aresample=44100,"
+                       "aformat=sample_fmts=fltp:channel_layouts=mono["
+                       f"a{k}]")
+    chain: list[str] = []
+    for k, (_text, gap) in enumerate(parts):
+        chain.append(f"[a{k}]")
+        if gap > 0.01:
+            filters.append(f"aevalsrc=0:d={gap:.2f}:s=44100,"
+                           "aformat=sample_fmts=fltp:channel_layouts=mono["
+                           f"g{k}]")
+            chain.append(f"[g{k}]")
+    filters.append("".join(chain) + f"concat=n={len(chain)}:v=0:a=1[out]")
+    cmd = ["ffmpeg", "-v", "error", "-y", *inputs,
+           "-filter_complex", ";".join(filters), "-map", "[out]",
+           "-c:a", "libmp3lame", "-q:a", "3", str(mp3)]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    if r.returncode != 0 or not mp3.exists() or mp3.stat().st_size < 800:
+        # 拼接失手就退回整段合成：停顿差一点，总比这一屏没声音强
+        _tts(say, mp3, voice)
+
+
 def _beats(say: str, dur: float, last: bool, cfg: dict,
            mp3: Path | None = None) -> list[tuple[str, float]]:
     """把一屏切成若干口型段；不说话的屏给一段闭口静止。"""
@@ -574,13 +791,48 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 say = fallback[i] if i < len(fallback) else ""
                 merged.append(raw if (has_say or not say) else f"{raw}::{say}")
             points_raw = merged
+    # 顶部小标题和首屏正文说的是同一句话时，同一句在画面上出现两遍，
+    # 第一屏就成了目录页。按「小标题的字在正文里按序出现多少」判断重复。
+    kicker = " ".join(str(script.get("kicker") or "").split())
+    if not kicker:
+        # 没给顶栏就取主题的第一个分句；主题过长或缺失时宁可不显示，
+        # 别把模板默认的「大模型面试题」印到跟它无关的片上。
+        _topic_line = " ".join(str(script.get("topic") or "").split())
+        for _sep in ("，", "。", "！", "？", "；", ",", "：", ":"):
+            if _sep in _topic_line:
+                _topic_line = _topic_line.split(_sep)[0]
+                break
+        kicker = _topic_line if 0 < len(_topic_line) <= 18 else ""
+    _first = ""
+    if points_raw:
+        _p0 = str(points_raw[0]).split("::")
+        _first = _p0[1] if len(_p0) > 1 else _p0[0]
+    _body_src = " ".join(f"{script.get('hook') or ''} {_first}".split())
+
+    def _dup(a: str, b: str) -> bool:
+        # 按字集合算覆盖：顺序无关，长短不同也不吃亏。逐字在 b 里找会一失败就吞掉后文，
+        # 短标题反而被判成不重复。
+        ka = set(" ".join(a.split()).replace(" ", ""))
+        kb = set(b)
+        return bool(ka) and len(ka & kb) / len(ka) >= 0.8
+
+    if kicker and _body_src and _dup(kicker, _body_src):
+        # 重复时换成主题名：顶栏本来就该说「这条讲什么」，重复正文只是废话
+        _topic = " ".join(str(script.get("topic") or "").split())
+        # topic 常被写成一句完整的话（还带逗号），顶栏就变成第二句钩子。
+        # 顶栏是标签位：只取第一个分句，超过 18 字就不要了。
+        for _sep in ("，", "。", "！", "？", "；", ","):
+            if _sep in _topic:
+                _topic = _topic.split(_sep)[0]
+                break
+        kicker = "" if (not _topic or len(_topic) > 18 or _dup(_topic, _body_src)) else _topic
     spec = factcard.build_spec(
         topic=str(script.get("topic") or "").strip(),
         hook=str(script.get("hook") or factcard.DEFAULT_HOOK),
         points_raw=points_raw,
         cta=str(script.get("cta") or factcard.DEFAULT_CTA),
         voice=voice,
-        kicker=str(script.get("kicker") or factcard.DEFAULT_KICKER),
+        kicker=kicker,
         narration=narration if isinstance(narration, dict) else None,
         logo=logo,
         out_dir=workdir,
@@ -603,7 +855,6 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     center_w = factcard.W - 248
     cards: list[Path] = []
     layer_sets: list[list[dict]] = []
-    kicker = str(script.get("kicker") or factcard.DEFAULT_KICKER)
     gesture_audit: list[dict] = []
     switch_audit: list[float] = []
     motion_audit: list[float] = []
@@ -618,12 +869,14 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 workdir / "cover.png", kicker=kicker, index="", palette_idx=0,
                 progress=0, total=total, slug="cover", plain=True, draw_body=False,
                 hud=False)
+        cta_copy = _cta_copy(script, cta_text) if i == total - 1 else None
         if i == total - 1 and not script.get("cta_card"):
             # 收尾空卡 + 一句飘着的字，最容易读成「没做完」：给收尾也铺一块卡面
             card = factcard.render_card(
                 workdir / f"cta{i:02d}.png", kicker=kicker, index="",
                 palette_idx=len(factcard.PALETTES) - 1, progress=total - 1,
-                total=total, slug="cta", hook=False, draw_body=False, hud=False)
+                total=total, slug="cta", hook=False, draw_body=False, hud=False,
+                card_top=cta_copy["card_top"], card_bottom=cta_copy["card_bottom"])
         cards.append(card)
         if i == 0:
             # 封面：标题靠左压在进度条下，人物占右下，两者拼成一条对角线。
@@ -633,43 +886,39 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                                    fill=(255, 255, 255, 214), center_in=(440, 906))
         elif i == total - 1:
             # 卡面左上角是空的强调条，配一句栏目名才不像是漏排了
-            label = script.get("cta_label")
-            if label is None:
-                label = "轮到你了"
+            label = cta_copy["label"]
             # 收尾卡是整条的落点：栏目名退成一行小字，那句话当标题居中，
             # 两句同一字号会互相抢，读起来像没排完。
-            layers = (_block_layers(str(label), 48, 592, workdir, f"l{i:02d}",
-                                    align="center", left=124, max_w=center_w,
-                                    fill=(255, 255, 255, 168)) if str(label).strip() else [])
+            # 收尾卡以前是整块居中：跟前面左对齐的要点卡摆在一起，
+            # 一眼就看得出是另一套版式（像片尾字幕接错了）。统一到同一网格。
+            layers = (_block_layers(label, 48, 592, workdir, f"l{i:02d}",
+                                    align="left", left=140, max_w=factcard.W - 264,
+                                    fill=(255, 255, 255, 205)) if label.strip() else [])
             # 收尾念的是 outro，卡面却只写 cta：耳朵多听到半句，眼睛对不上。
             # 卡面改成同一句，按句号拆成「主张 / 补一句」，主次分两级而不是硬塞一屏。
-            close_say = str(
-                (script.get("narration") or {}).get("outro")
-                or (script.get("narration") or {}).get("cta")
-                or cta_text).strip()
-            close_say = " ".join(close_say.split())
-            close_parts = [x.strip() for x in re.split(r"(?<=[。！？])", close_say) if x.strip()]
-            head = close_parts[0] if close_parts else close_say
-            tail = "".join(close_parts[1:])
-            # 收尾那句要一行读完：掉到第二行只剩半行，读起来像没排完
-            draw = _measure()
-            cta_size = 84
-            for size in (84, 78, 72, 66, 60, 56):
-                cta_size = size
-                if draw.textlength(head, font=factcard._font(size)) <= center_w:
-                    break
-            layers += _block_layers(head, cta_size, 700, workdir, f"h{i:02d}",
-                                    align="center", left=124, max_w=center_w,
-                                    fill=(255, 255, 255, 236))
-            if tail:
-                tail_size = max(40, int(cta_size * 0.58))
-                while tail_size > 40 and draw.textlength(
-                        tail, font=factcard._font(tail_size)) > center_w:
-                    tail_size -= 2
-                layers += _block_layers(tail, tail_size, 700 + int(cta_size * 1.42),
-                                        workdir, f"t{i:02d}", align="center", left=124,
-                                        max_w=center_w,
-                                        fill=(*_scene_accent(sc, i, total), 244))
+            # 收尾三行分三个节拍落座：同一帧全盖上去，观众一眼看完就等片尾。
+            # 时间从这一屏起点算，最后一行赶上口播的补白那句
+            # 栏目名跟着切点就到：卡面在叠化里先亮起来、字晚半拍，
+            # 中间那几帧就是一块空板，读起来像没加载完
+            for lay in layers:
+                lay["delay"] = 0.0
+            for lay in _block_layers(cta_copy["head"], cta_copy["size"], cta_copy["top"],
+                                     workdir, f"h{i:02d}", align="left", left=140,
+                                     max_w=factcard.W - 264, fill=(255, 255, 255, 236)):
+                lay["delay"] = 0.22
+                lay["fade"] = 0.26
+                layers.append(lay)
+            if cta_copy["tail"]:
+                for lay in _block_layers(cta_copy["tail"], cta_copy["tail_size"],
+                                         cta_copy["top"] + int(cta_copy["size"] * 1.42),
+                                         workdir, f"t{i:02d}", align="left", left=140,
+                                         max_w=factcard.W - 264,
+                                         fill=(*_scene_accent(sc, i, total), 244)):
+                    # 具体几点出现要等这一屏的口播时长，先占位后对表
+                    lay["delay"] = 1.05
+                    lay["_cta_tail"] = True
+                    lay["fade"] = 0.34
+                    layers.append(lay)
         else:
             layers = _title_layers(str(sc.get("text") or ""), workdir, i)
             body = raw_bodies[i - 1] if 0 < i <= len(raw_bodies) else ""
@@ -694,6 +943,13 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     bg_overlay: list[dict] = []
     card_overlays: list[dict] = []
     char_ovs: list[dict] = []
+    # 逐段静帧仍然照生成（体检和回退都要它），成片前若动画层建成，
+    # 这些静帧就整批摘掉，换成一条带 alpha 的人物视频。
+    char_segs: list[dict] = []
+    # 开关放在脚本层：spec 由 factcard 生成，不会替我们透传任意键。
+    # 默认开：动画层和静帧摆位同一套，成片前把静帧整批换掉；
+    # 要退回逐段静帧（老片复现、排障）时传 char_layer: false。
+    char_anim = bool(script.get("char_layer", True))
     pacing: list[dict] = []
     last_ov = None
     t = 0.0
@@ -702,9 +958,12 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         say = str(scene.get("say") or "").strip()
         mp3 = workdir / f"a{i:02d}.mp3"
         if say:
-            _tts(say, mp3, voice)
+            _say(mp3, say, voice, workdir, f"a{i:02d}")
             tts_dur = _dur(mp3)
             dur = _scene_duration(tts_dur, i == total - 1)
+            for lay in text_layers:
+                if lay.get("_cta_tail"):
+                    lay["delay"] = _cta_tail_at(mp3, dur)
             audio.append({"src": str(mp3), "start": round(t, 3), "volume": 1.0})
             # 念白留白：顶到切点就是半句话被切走，拖太长就是画面空等
             pacing.append({"scene": i, "tts": round(tts_dur, 3),
@@ -738,8 +997,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         # 一横一竖两块光各走一条轴：只用一块正弦光，转过极值那半秒
         # 整屏像素几乎不动，体检照样判定格。
         for k, (alpha, amp, per, gx, gy, axis) in enumerate((
-            (64, 84.0 + 20.0 * (i % 3), 5.2 + 0.9 * (i % 2), -10.0, 380.0, "sway"),
-            (40, 62.0 + 16.0 * ((i + 1) % 3), 3.7 + 0.8 * (i % 2), -220.0, 700.0, "bob"),
+            (19, 46.0 + 11.0 * (i % 3), 5.2 + 0.9 * (i % 2), 60.0, 960.0, "sway"),
+            (12, 34.0 + 9.0 * ((i + 1) % 3), 3.7 + 0.8 * (i % 2), 120.0, 1150.0, "bob"),
         )):
             glow = factcard.render_glow(workdir / f"glow{i:02d}{k}.png",
                                         palette_idx=glow_idx, alpha=alpha)
@@ -747,7 +1006,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 "src": str(glow), "start": glow_start, "end": glow_end,
                 "x": gx if i % 2 == 0 else -gx - 90.0,
                 "y": gy if i % 2 == 0 else gy + 120.0,
-                "opacity": 1.0, "width": 1100,
+                "opacity": 1.0, "width": 1080,
                 "fade": 0.0 if i == 0 else XFADE,
                 "motion": {"type": axis, "amplitude": amp, "period": per},
             })
@@ -783,6 +1042,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             else t + dur - handoff
         for n, layer in enumerate(text_layers):
             at = max(0.0, t - handoff + 0.02 * n) if i > 0 else 0.0
+            if layer.get("delay"):
+                at = round(t + float(layer["delay"]), 3)
             overlay.append({
                 "src": str(layer["png"]),
                 "start": round(at, 3),
@@ -790,7 +1051,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 "x": float(layer["x"]), "y": float(layer["y"]),
                 "opacity": 1.0, "width": int(layer["w"]),
                 # 标题从切点淡入 0.20s：口播已经开口，字要跟上，不能再拖半拍
-                "fade": 0.18 if i > 0 else 0.0,
+                "fade": float(layer.get("fade") or (0.18 if i > 0 else 0.0)),
                 "motion": {"type": "none", "amplitude": 0.0, "period": 1.0},
             })
         if char_cfg is not None:
@@ -813,9 +1074,16 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                                       "last": i == total - 1})
             alt_pose = (None if char_cfg.get("pose") else
                         JE._second_half_pose(char_cfg, i, total, scene))
+            # 收尾那屏往往八九秒，闭眼大笑的稿撑过五秒就是贴图。先睁着眼把
+            # 话说完（认可），笑点留给最后一句——情绪落在收尾，不是从头笑到尾。
+            if i == total - 1 and pose == "happy" and dur >= 6.0:
+                pose = "approve"
+                alt_pose = "happy"
             if not char_cfg.get("gesture_sync", True):
                 alt_pose = None
             # 后半句还是同一个动作，就别为了「换」而换：白做一次溶解，观众看不出来
+            if alt_pose is None and dur >= 3.2 and not char_cfg.get("poses"):
+                alt_pose = _fallback_alt_pose(pose)
             if alt_pose == pose:
                 alt_pose = None
             motion = _pose_motion(pose, say)
@@ -829,25 +1097,47 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 heard = _clause_switch(mp3, dur, char_cfg, say)
                 if heard:
                     switch_at = heard
+                # 收尾的笑别从 31 秒一直挂到 35.9：只想让人在最后一句笑，
+                # 所以「笑」只占片尾两秒多，前面都交给认可那个姿势。
+                if i == total - 1 and alt_pose == "happy" and dur > 4.0:
+                    switch_at = max(switch_at, 1.0 - 2.8 / dur)
                 switch_audit.append(round(switch_at, 2))
             elapsed = 0.0
             prev_ov = None      # 上一段口型：换姿态时要和它交叉，不能硬替换
             prev_pose = None
             blinks = _blink_times(dur, char_cfg, i)
-            switched = False
+            # 一屏最多两次换势：句子中间一次、收束前一次。只换一次的话，
+            # 四秒多的句子后半截身体是定住的，嘴动得再准也还是贴图。
+            plan: list[tuple[float, str]] = []
+            if alt_pose:
+                plan.append((switch_at, alt_pose))
+                if (dur >= 3.6 and not char_cfg.get("pose")
+                        and not char_cfg.get("poses")
+                        and char_cfg.get("gesture_sync", True)):
+                    alt2 = JE._third_pose(char_cfg, i, total, scene, pose, alt_pose)
+                    if alt2:
+                        at2 = min(0.72, round(switch_at + 0.22, 2))
+                        plan.append((at2, alt2))
+                        switch_audit.append(at2)
+                        if not char_cfg.get("poses"):
+                            gesture_audit.append({"at": round(t + dur * at2, 2),
+                                                  "idx": i, "pose": alt2,
+                                                  "want": want, "supported": supported,
+                                                  "last": False})
+            seat = 0
             for mouth, seg in beats:
-                use_pose = alt_pose if switched else pose
-                if (not switched and alt_pose and dur > 0
-                        and (elapsed / dur) >= switch_at
-                        and all(abs(elapsed - b) >= POSE_BLINK_GUARD for b in blinks)):
-                    switched = True
-                    use_pose = alt_pose
+                use_pose = plan[seat - 1][1] if seat else pose
+                while (seat < len(plan) and dur > 0
+                       and (elapsed / dur) >= plan[seat][0]
+                       and all(abs(elapsed - b) >= POSE_BLINK_GUARD for b in blinks)):
+                    seat += 1
+                    use_pose = plan[seat - 1][1]
                 # 眨眼把一段口型切成「睁—眯—睁」：全片瞪着一只大眼不动，就是贴图
                 for s_at, s_seg, s_eyes in _blink_spans(elapsed, seg, blinks):
                     frame = JE._character_frame(
                         char_scene, i, total, workdir, spec["width"], spec["height"],
                         speaking=bool(say), scene=scene, pose=use_pose, mouth=mouth,
-                        eyes=s_eyes,
+                        eyes=s_eyes, expression=_pose_expression(use_pose),
                     )
                     if frame is None:
                         continue
@@ -896,6 +1186,39 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                         prev_ov["fade"] = max(prev_ov["fade"], POSE_XFADE)
                     overlay.append(ov)
                     char_ovs.append(ov)
+                    if char_anim:
+                        char_segs.append({
+                            "start": ov["start"], "end": ov["end"],
+                            "width": char_scene.get("width"),
+                            "x": char_scene.get("x"), "y": char_scene.get("y"),
+                            "pose": use_pose, "mouth": mouth,
+                            "eyes": s_eyes or "open",
+                            "expression": _pose_expression(use_pose),
+                            "outfit": char_scene.get("outfit") or None,
+                            "anim": _char_anim_name(use_pose, bool(say)),
+                            # 挥手是一次性动作：播一遍就停在放手站姿，不能循环
+                            "anim_mode": "once" if use_pose == "wave" else "loop",
+                            # 相位取绝对时间：同一条动画跨段接着播，不每段归零。
+                            # 挥手晚 0.3 秒起：入场还在往上走就抬手，动作是抢的
+                            "anim_t0": round(ov["start"] - (0.30 if use_pose == "wave" else 0.0), 3),
+                            # 段自己的淡入淡出只在片头片尾用：每段末尾都淡一次，
+                            # 换姿势那 0.22 秒人物会整片淡到看不见再跳回来（眨眼式闪断）。
+                            # 段与段之间靠叠化时的权重过渡，这里留 0
+                            "fade_in": 0.0,
+                            "fade_out": 0.0,
+                            "speaking": bool(say),
+                            # 逐帧口型要的是这句配音本身和它在成片里的起点：
+                            # 分段口型（0.1 秒一格）只能说"在动"，对不上字
+                            "lip_audio": str(mp3) if say else None,
+                            "lip_t0": round(t, 3),
+                            # 入场规格从 overlay 带过来：分层模式下运行时
+                            # 只看得到分段表，不带就会整片站桩
+                            "enter": ov.get("enter"),
+                            # 角色根目录只有站姿、没有 anim/：动画得落到具体那套服装，
+                            # 否则人物眨眼一次后就不动了，整条片子后半段是静帧
+                            "_outfit_root": str(character.outfit_root(
+                                char_scene.get("outfit") or character.DEFAULT_OUTFIT)),
+                        })
                     prev_ov, prev_pose = ov, use_pose
                     last_ov = ov
                 elapsed += seg
@@ -914,7 +1237,43 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             last_ov["end"] = round(t + TAIL, 3)
             last_ov["fade"] = max(last_ov.get("fade") or 0.0,
                                   round(TAIL * 0.30, 3))
+        if char_segs:
+            char_segs[-1]["end"] = round(t + TAIL, 3)
+            char_segs[-1]["fade_out"] = max(float(char_segs[-1].get("fade_out") or 0.0),
+                                            round(TAIL * 0.30, 3))
         t += TAIL
+
+    char_mov = None
+    char_x = char_y = 0
+    if char_anim and char_segs:
+        try:
+            char_mov = CL.build(
+                char_segs, width=int(spec["width"]), height=int(spec["height"]),
+                fps=int(spec["fps"]), workdir=workdir, duration=round(t, 3),
+                render=character.render, key_green=character._key_green,
+                log=lambda _m: None)
+            if char_mov is not None:
+                char_mov, char_x, char_y = char_mov
+        except Exception as exc:  # noqa: BLE001 - 动画层崩了也得有成片，退回静帧
+            print(f"char_layer 构建失败，回落逐段静帧: {exc}", file=sys.stderr)
+            char_mov = None
+    lip_info = {}
+    if char_mov is not None:
+        try:
+            lip_info = json.loads(
+                (Path(workdir) / (char_mov.stem + "_lip.json")).read_text())
+            lip_info = {"frames": lip_info.get("frames"),
+                        "mix": lip_info.get("mix") or {}}
+        except Exception:  # noqa: BLE001 - 只是给质检看的附注，读不到不影响出片
+            lip_info = {}
+        drop = {id(o) for o in char_ovs}
+        overlay = [o for o in overlay if id(o) not in drop]
+        overlay.append({
+            "src": str(char_mov), "start": 0.0, "end": round(t, 3),
+            "x": float(char_x), "y": float(char_y), "width": 0,
+            "opacity": 1.0, "fade": 0.0,
+            "motion": {"type": "none", "amplitude": 0.0, "period": 1.0},
+        })
 
     return {
         "canvas": {"width": spec["width"], "height": spec["height"], "fps": spec["fps"]},
@@ -923,10 +1282,12 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         "audio": audio,
         "assetBase": str(workdir),
         "meta": {"engine": "vertical_short", "duration": round(t, 3),
+                 "char_render": ("layer" if char_mov is not None else "stills"),
                  "scenes": total, "voice": voice,
                  "gesture": _gesture_summary(gesture_audit, switch_audit, motion_audit),
                  # 人物占宽：竖屏里缩成一张小贴纸，再准的手势也没人看见
                  "char_widths": char_widths,
+                 "lip": lip_info,
                  "pacing": {"scenes": pacing,
                             "min_gap": min((x["gap"] for x in pacing), default=0.0),
                             "max_gap": max((x["gap"] for x in pacing), default=0.0)}},

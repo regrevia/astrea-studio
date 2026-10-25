@@ -51,6 +51,14 @@ PALETTES = [
 
 # 语气词 → 色温：同一套版式，整条片子是同一个颜色才像模板。
 # 指出缺口用深玫（警示），落到结论用深琥珀（落槌），讲方法用深青（冷静）。
+def _mix(c1, c2, t: float) -> tuple:
+    """按比例把 c1 往 c2 混：每屏换整块底色，切点就像换了套模板。"""
+    return tuple(int(a + (b - a) * t) for a, b in zip(c1, c2))
+
+
+_BG_ANCHOR = 0.74  # 底色统一压向第一套深蓝，只留两成半的色温差
+
+
 _TONE_HINTS = (
     (2, ("不", "没", "别", "缺", "错", "假", "糊")),
     (3, ("结论", "回查", "核对", "出处", "所以", "因此", "最终")),
@@ -186,7 +194,11 @@ def _wrap_text(draw, text: str, font, max_w: float) -> list[str]:
         if best is not None:
             out = [flat[:best], flat[best:]]
     # 在标点后断行时行尾会留一个空格："Value " 挂在行末看着像少打了个字
-    return [ln.rstrip() for ln in out]
+    out = [ln.rstrip() for ln in out]
+    # 行尾挂一个顿号/逗号像话没说完被打断，但这行往往是强调句的落点：
+    # 真正的解法是正文别写成「前半句，后半句」，硬搬标点会把「，」甩到下一行行首，
+    # 跟强调色一起读成排版错误。这里只修句末空格，断点仍交给排版。
+    return [ln for ln in out if ln] or out
 
 
 def _tail_cut(text: str, lo: int = 3, hi: int = 12) -> int:
@@ -328,11 +340,20 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
                 progress: int, total: int, slug: str, hook: bool = False,
                 body: str = "", body_top: int = 640, plain: bool = False,
                 logo: Path | None = None, draw_body: bool = True,
-                hud: bool = True) -> Path:
-    """卡面底图：渐变 + 网格点 + 圆角描边卡 + 编号幽灵字 + 进度点。文字交给剪映。"""
-    from PIL import Image, ImageDraw, ImageFilter
+                hud: bool = True, card_bottom: int | None = None,
+                card_top: int = 470) -> Path:
+    """卡面底图：渐变 + 网格点 + 圆角描边卡 + 编号幽灵字 + 进度点。文字交给剪映。
+
+    ``card_bottom`` / ``card_top`` 只在没有正文时有用：这种卡（封面/收尾）的字由
+    调用方自己排，面板高度就无从得知，不传就按一整屏铺，收尾屏下半截会空一大片。
+    """
+    from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
     top, bottom, accent = PALETTES[palette_idx % len(PALETTES)]
+    # 语气只该改强调色，不该换整块底色：切点从深蓝跳到深琥珀，观众看到的是
+    # 「换了一套模板」，不是「换了一个意思」。底色统一压低到同一条色轴。
+    top = _mix(top, PALETTES[0][0], _BG_ANCHOR)
+    bottom = _mix(bottom, PALETTES[0][1], _BG_ANCHOR)
     img = _vgrad((W, H), top, bottom).convert("RGBA")
     draw = ImageDraw.Draw(img, "RGBA")
 
@@ -366,30 +387,41 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
         patch = Image.new("RGBA", (1080, 1080), (*accent, 0))
         patch.putalpha(glow)
         overlay.alpha_composite(patch, (0, 240))
-        # 一圈很大的细环：推近 7% 时它在动，观众才觉得画面是活的而不是一张图
-        for rad, alpha in ((720, 30), (560, 22)):
-            draw.ellipse((W // 2 - rad, 760 - rad, W // 2 + rad, 760 + rad),
-                         outline=(255, 255, 255, alpha), width=3)
+        # 以前这里画过两圈 3px 的细环，想让推近时画面有动的东西。实际成片里
+        # 它们横穿人脸和立绘，读成「过曝的光圈」而不是纵深——删掉，动态交给
+        # 人物呼吸和卡面 7% 推近。
     measure = ImageDraw.Draw(overlay)
-    body_size, body_lines, body_top, card_bottom = (
+    body_size, body_lines, body_top, panel_bottom = (
         body_layout(body, measure, top=body_top) if body else (BODY_SIZE, [], body_top, 1000))
+    if card_bottom is not None:
+        # 没有正文的卡（封面/收尾）：字由调用方排，面板底只能由调用方给，
+        # 不然默认 1000 会在收尾屏留一截空白，边缘还可能横切在人物头上
+        panel_bottom = max(body_top + 120, min(panel_bottom, int(card_bottom)))
     if not hook and not plain:
         # 卡片高度跟着正文走，避免大片空白（"PPT 味"最主要的来源）；
         # 几何跟贴片共用 body_layout，卡底和字底不会再差出一档留白
-        draw.rounded_rectangle((76, 470, 1004, card_bottom), radius=56,
-                               fill=(255, 255, 255, 14),
-                               outline=(255, 255, 255, 70), width=2)
+        # 硬描边的圆角框 + 右上角编号是「幻灯片」的两大特征：观众一眼看到 03
+        # 就知道这是第几页。改成无描边的玻璃面板，只留一道顶缘高光给出边界。
+        # 面板边缘做羽化：硬边一出，观众看到的就是"一张贴在画面上的卡片"。
+        # 羽化 22px 后边界融进背景，只在文字底下留一层薄薄的提亮。
+        _box = (76, card_top, 1004, panel_bottom)
+        panel = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ImageDraw.Draw(panel).rounded_rectangle(_box, radius=56,
+                                                fill=(255, 255, 255, 11))
+        _mask = Image.new("L", (W, H), 0)
+        ImageDraw.Draw(_mask).rounded_rectangle(_box, radius=56, fill=255)
+        panel.putalpha(ImageChops.multiply(panel.getchannel("A"),
+                                           _mask.filter(ImageFilter.GaussianBlur(60))))
+        overlay.alpha_composite(panel)
+        # 顶缘高光跟着羽化一起收窄，否则它自己会变成新的硬边
+        draw.rounded_rectangle((150, card_top + 4, 930, card_top + 5), radius=1,
+                               fill=(255, 255, 255, 30))
         # 左侧强调条只压标题区。拉到正文底下就是一条长杠，和两行大字的左缘
         # 只隔 12px，读起来像文字压线
-        draw.rounded_rectangle((100, 530, 112, min(body_top - 34, card_bottom - 76)),
+        draw.rounded_rectangle((100, 530, 112, min(body_top - 34, panel_bottom - 76)),
                                radius=6, fill=(*accent, 235))
-        # 编号做成右上角小徽章：幽灵大字会和标题抢视线
-        if index:
-            bf = _font(46)
-            bw = draw.textlength(index, font=bf)
-            draw.rounded_rectangle((950 - bw - 34, 498, 966, 570), radius=36,
-                                   fill=(*accent, 40), outline=(*accent, 150), width=2)
-            draw.text((958 - bw - 17, 534), index, font=bf, fill=(*accent, 245), anchor="mm")
+        # 编号不再上屏：页序号是幻灯片的东西，成片里只会提醒观众「这是一页」。
+        # index 参数保留，剪映工程里还要靠它排序。
     elif hook:
         # 开场：斜切色块。收尾卡是素底，再画一条斜带就成了随机接缝
         draw.polygon([(0, 1200), (W, 980), (W, 1320), (0, 1540)], fill=(*accent, 26))
@@ -464,16 +496,26 @@ def render_glow(path: Path, *, palette_idx: int, alpha: int = 54) -> Path:
     from PIL import Image
 
     _top, _bottom, accent = PALETTES[palette_idx % len(PALETTES)]
-    size = 1100
-    # 圆形衰减自己算：PIL 的 radial_gradient 把四角当最远点，正方形四条边的
-    # 中点还留着半透明，贴上屏幕就是一块看得见直边的方斑。亮斑只铺到半径的
-    # 92%，外面一定全透明。
-    n = 512
-    yy, xx = np.mgrid[0:n, 0:n]
-    r = np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) / ((n - 1) / 2)
-    alpha_map = (np.clip(1.0 - r / 0.92, 0.0, 1.0) ** 2.2 * alpha).astype(np.uint8)
-    mask = Image.fromarray(alpha_map, "L").resize((size, size), Image.LANCZOS)
-    img = Image.new("RGBA", (size, size), (*accent, 0))
+    # 直接用强调色当光，蓝底色上就是一枚看得见的蓝灯泡。光要读成"照亮"，
+    # 就得往白里提、往底色里退：提亮 45% 后只剩一层色偏，不会有人盯着它看。
+    accent = _mix(accent, (255, 255, 255), 0.45)
+    size = (1360, 800)
+    # 衰减自己算：PIL 的 radial_gradient 把四角当最远点，边缘留着半透明，
+    # 贴上屏幕就是一块看得见直边的方斑。这里横宽纵扁压成椭圆——正圆贴在
+    # 人物背后是一轮看得见的圆盘，椭圆才像从画外漫进来的环境光。
+    # 三次方衰减：中心一点亮，边缘彻底化开，不跟卡面的圆角抢边。
+    w, h = size
+    yy, xx = np.mgrid[0:h, 0:w]
+    r = np.hypot((xx - (w - 1) / 2), (yy - (h - 1) / 2) / 0.58) / (min(w, h) / 2)
+    # 衰减两端都要平：先在 512 网格上算再放大，放大后首尾各留一条亮边，贴上暗底
+    # 就是一串同心圆环（8 bit 量化把 1/255 的台阶画成线）。改成原尺寸算、
+    # smoothstep 收边，再叠一层 ±1 的抖动噪声，台阶被打散，读作一层雾。
+    tt = np.clip(1.0 - r / 1.02, 0.0, 1.0)
+    fall = (tt * tt * (3.0 - 2.0 * tt)) ** 1.45
+    rng = np.random.default_rng(7)
+    alpha_map = fall * alpha + rng.uniform(-1.0, 1.0, fall.shape)
+    mask = Image.fromarray(np.clip(alpha_map, 0, 255).astype(np.uint8), "L")
+    img = Image.new("RGBA", size, (*accent, 0))
     img.putalpha(mask)
     path.parent.mkdir(parents=True, exist_ok=True)
     img.save(path, "PNG")

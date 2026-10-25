@@ -956,6 +956,25 @@ def _character_config(spec: dict[str, Any]) -> dict[str, Any] | None:
     return cfg
 
 
+def _third_pose(cfg: dict[str, Any], idx: int, total: int,
+                scene: dict[str, Any], first: str, second: str) -> str | None:
+    """一句话够长再换第三次手势，动作仍然只从这句话命中过的里面挑。
+
+    一屏只换一次，四秒多的时间里身体是不动的；观众看到的就是「一张图在说话」。
+    第三次不引入任何新语义：分数为正、且不是前两个用过的，就都算这句话说得通。
+    """
+    say = str((scene or {}).get("say") or "").strip()
+    # 以前要 18 字才给第三次换势：一屏四秒里身体后半截定住，看着就是贴图。
+    # 12 字已经够两个动作讲完一句话，门槛降到跟换势逻辑一致。
+    if len(say) < 12:
+        return None
+    for name, score in sorted(_keyword_scores(say).items(), key=lambda kv: -kv[1]):
+        if name in (first, second) or float(score) <= 0:
+            continue
+        return str(name)
+    return None
+
+
 def _second_half_pose(cfg: dict[str, Any], idx: int, total: int,
                       scene: dict[str, Any]) -> str | None:
     """一句话里换了话题就换手势：前半句思考、后半句给结论，比整屏一个姿势像在演。
@@ -1026,9 +1045,9 @@ _POSE_RULES = (
                "越占", "换速度", "不够", "吃紧", "卡住", "爆", "扛不住",
                "撑不住")),
     ("think", ("？", "?", "为什么", "怎么", "是不是", "到底", "吗",
-               "只读到", "差不多", "想想", "凭", "取决于", "不一定", "假设",
+               "只读到", "只读了", "差不多", "想想", "凭", "取决于", "不一定", "假设",
                "猜", "原理")),
-    ("point", ("抽帧", "喂给", "挂上", "跳过去", "引用", "记住", "第一条",
+    ("point", ("抽帧", "喂给", "挂上", "跳过去", "引用", "记住", "第一条", "时间戳", "取回", "静默",
                "第二步", "第三步", "关键", "注意", "一定要", "重点",
                "因为", "所以", "先跑", "铺好", "这一步", "分两步")),
     ("happy", ("真的", "太", "最", "居然", "竟然", "惊喜", "爽", "好用",
@@ -1036,13 +1055,13 @@ _POSE_RULES = (
     # 新立绘多出来四个表情：惊、鼓、怯、赞。只在句子里真有这层意思时才用，
     # 不然就是给每句话硬配表情包。
     ("surprise", ("没想到", "原来", "才发现", "突然", "一下子", "真没想到",
-                  "开眼", "翻车", "这么夸张")),
+                  "开眼", "翻车", "这么夸张", "全挂", "全军覆没")),
     ("pout", ("白等", "吃亏", "不划算", "折腾", "难受", "背锅", "凭什么",
-              "懒得", "又是", "反复")),
+              "懒得", "又是", "反复", "零弹窗", "靠脑补")),
     ("shy", ("不好意思", "抱歉", "小声", "偷偷", "害羞", "其实我",
              "说句实话", "说实话")),
     ("approve", ("没错", "就是这样", "就这么查", "稳妥", "靠谱", "信得过",
-                 "照做", "对得上")),
+                 "照做", "对得上", "只认", "照实")),
 )
 # 每个姿态的动幅：(上下起伏倍数, 摆动倍数)。想事情就该比挥手安静。
 _MOTION = {"idle": (1.0, 1.0), "wave": (1.3, 1.8), "point": (0.9, 0.7),
@@ -1099,6 +1118,9 @@ def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
     text = " ".join(str((scene or {}).get(k) or "")
                     for k in ("say", "text", "caption"))
     hit = _keyword_pose(text)
+    # 语义命中会因为「跟上一屏撞了」被让位；让不出去时还得回到它，
+    # 否则就落进奇偶兜底，选出一个这句话根本没说过的动作（体检会判错配）。
+    semantic = hit
     if avoid and hit == avoid:
         # 同分线索里挑一个跟上一屏不同的；都没有就当作没有线索，交给兜底
         scores = {k: v for k, v in _keyword_scores(text).items() if k != avoid}
@@ -1115,6 +1137,8 @@ def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
         return "happy"      # 收尾给情绪高点
     if hit:
         return hit
+    if semantic:
+        return semantic
     return "point" if idx % 2 else "think"
 
 
@@ -1130,27 +1154,14 @@ def _character_mouth(idx: int, speaking: bool, scene: dict[str, Any]) -> str:
     return ("open", "half", "open", "round")[idx % 4]
 
 
-def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
-                     width: int, height: int, speaking: bool,
-                     scene: dict[str, Any] = None,
-                     pose: str = "",
-                     mouth: str = "",
-                     eyes: str = "") -> Path | None:
-    """把立绘贴到一张透明画布上，交回剪映当独立图层（可单独做动效）。"""
+def _stage_canvas(figure: Any, cfg: dict[str, Any], width: int, height: int) -> Any:
+    """把一张立绘摆进整幅透明画布：影子、轮廓柔光、按内容框贴底。
+
+    `_character_frame` 一屏画一张；人物动画层逐帧走同一套摆位——
+    两处只要有一处改歪，动起来的人和停住的人就会错位。
+    """
     from PIL import Image, ImageDraw
 
-    import character
-
-    pose = pose or str(cfg.get("pose") or _scene_pose(cfg, idx, total, scene or {}))
-    mouth = mouth or _character_mouth(idx, speaking, scene or {})
-    # 高兴时眯眼，是这套立绘里唯一能读出情绪的五官开关；眨眼由调用方按时间点传
-    eyes = eyes or ("closed" if pose == "happy" else "open")
-    outfit = str(cfg.get("outfit") or "").strip() or None
-    key = (pose, mouth, eyes, outfit or "", character.outfit_root(outfit).name)
-    figure = _CHAR_FRAME_CACHE.get(key)
-    if figure is None:
-        figure = character.render(pose=pose, mouth=mouth, eyes=eyes, outfit=outfit)
-        _CHAR_FRAME_CACHE[key] = figure
     w = int(float(cfg.get("width") or 620) * width / 1080)
     fig = figure.resize((w, w), Image.LANCZOS)
     # 立绘四周有透明留白：按内容框对齐，否则右边缘会把鲸尾切掉
@@ -1173,9 +1184,14 @@ def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
                fill=(0, 0, 0, 90))
     canvas.alpha_composite(shade.filter(ImageFilter.GaussianBlur(max(6, cw // 22))))
     # 深色卡面上蓝发立绘会和背景糊在一起：沿轮廓扩一圈柔光把她从底上摘出来
-    gw = int(w * 1.10)
-    ga = fig.split()[-1].resize((gw, gw), Image.LANCZOS)
-    ga = ga.filter(ImageFilter.GaussianBlur(max(8, gw // 26)))
+    # 光晕不能跟着每一缕头发走：直接把轮廓高斯模糊，发梢会被描成一圈亮边，
+    # 看着像贴纸。先缩到 1/7 抹掉细节，再放大成一团模糊的云，读起来才是环境光。
+    gw = int(w * 1.16)
+    cut = max(24, gw // 7)
+    ga = fig.split()[-1].resize((cut, cut), Image.LANCZOS)
+    ga = ga.filter(ImageFilter.GaussianBlur(max(3, cut // 9)))
+    ga = ga.resize((gw, gw), Image.LANCZOS)
+    ga = ga.filter(ImageFilter.GaussianBlur(max(6, gw // 30)))
     # 只模糊轮廓会在方形画布边界上留一圈硬边，深色卡面上看就是一个亮方块。
     # 再乘一层径向遮罩，让光晕在边缘自然消失。
     from PIL import ImageChops
@@ -1184,11 +1200,43 @@ def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
     ImageDraw.Draw(mask).ellipse((gw * 0.06, gw * 0.06, gw * 0.94, gw * 0.94), fill=255)
     mask = mask.filter(ImageFilter.GaussianBlur(gw // 9))
     ga = ImageChops.multiply(ga, mask)
-    halo = Image.new("RGBA", (gw, gw), (255, 255, 255, 255))
-    halo.putalpha(ga.point(lambda v: int(v * 0.26)))
+    # 冷白偏蓝的光，压到 0.16：深色卡面上刚够把她从背景里托起来，
+    # 再亮就是脖子上套了个光圈
+    halo = Image.new("RGBA", (gw, gw), (196, 226, 255, 255))
+    halo.putalpha(ga.point(lambda v: int(v * 0.16)))
     canvas.alpha_composite(halo, (int(x + cw * 0.5 - gw * 0.5),
                                  int(y + chh * 0.5 - gw * 0.5)))
     canvas.alpha_composite(fig, (x - bb[0], y - bb[1]))
+    return canvas
+
+
+def _character_frame(cfg: dict[str, Any], idx: int, total: int, job_dir: Path,
+                     width: int, height: int, speaking: bool,
+                     scene: dict[str, Any] = None,
+                     pose: str = "",
+                     mouth: str = "",
+                     eyes: str = "",
+                     expression: str = "") -> Path | None:
+    """把立绘贴到一张透明画布上，交回剪映当独立图层（可单独做动效）。"""
+    from PIL import Image, ImageDraw
+
+    import character
+
+    pose = pose or str(cfg.get("pose") or _scene_pose(cfg, idx, total, scene or {}))
+    mouth = mouth or _character_mouth(idx, speaking, scene or {})
+    # 高兴时眯眼，是这套立绘里唯一能读出情绪的五官开关；眨眼由调用方按时间点传
+    eyes = eyes or ("closed" if pose == "happy" else "open")
+    outfit = str(cfg.get("outfit") or "").strip() or None
+    # 表情是独立一层：服装只出手体，情绪符号跨服装共用，同一个人换装不用重画表情
+    expression = str(expression or cfg.get("expression") or "").strip() or None
+    key = (pose, mouth, eyes, outfit or "", expression or "",
+           character.outfit_root(outfit).name)
+    figure = _CHAR_FRAME_CACHE.get(key)
+    if figure is None:
+        figure = character.render(pose=pose, mouth=mouth, eyes=eyes, outfit=outfit,
+                                  expression=expression)
+        _CHAR_FRAME_CACHE[key] = figure
+    canvas = _stage_canvas(figure, cfg, width, height)
     # 文件名必须带口型/姿态：同一屏要贴好几段不同口型，同名会把前一张覆盖掉
     out = job_dir / f"char_{idx:02d}_{pose}_{mouth}.png"
     canvas.save(out)

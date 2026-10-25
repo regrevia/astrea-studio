@@ -407,6 +407,35 @@ class Worker:
         result["videoUrl"] = f"/oss/{object_key}"
         return result
 
+    def _render_paper(self, script: dict[str, Any], workdir: Path,
+                      progress: Any) -> dict[str, Any]:
+        """纸面母版：逐帧画一张纸，再叠人物层和音轨。
+
+        版式在 paper_short 里，这里只管把它接进 timeline 那条通道：参数、
+        进度、出货字段都跟 factcard 一致，平台侧不用知道换了个引擎。
+        """
+        from export import paper_short as paper
+        out = workdir / "master.mp4"
+        progress(8, "timeline:paper")
+        started = time.time()
+        try:
+            info = paper.render(script, workdir, out,
+                               voice=str(script.get("voice") or ""),
+                               log=lambda msg: log.info("paper: %s", msg))
+        except Exception as exc:
+            raise TimelineError(f"纸面渲染失败: {exc}") from None
+        built = json.loads(Path(info["specPath"]).read_text(encoding="utf-8"))
+        ev = {
+            "output": info["videoPath"],
+            "duration": info["duration"],
+            "canvas": {"width": 1080, "height": 1920, "fps": 30},
+            "clips": info["scenes"],
+            "texts": 0,
+            "audios": len(built.get("audio") or []),
+            "seconds": round(time.time() - started, 1),
+        }
+        return {"ev": ev, "specPath": info["specPath"]}
+
     def do_timeline(self, job_id: str, payload: dict[str, Any],
                     progress: Any) -> dict[str, Any]:
         """C 路线主入口：自有 timeline spec → 母版 mp4（可选各平台规格）。
@@ -443,7 +472,17 @@ class Worker:
         # 竖屏 factcard 走同一条 timeline 通道：worker 自己把脚本展开成静帧卡 +
         # 立绘 + 配音的 spec，平台侧只发脚本文本，不用先算好时间轴
         copy_report = None
-        if isinstance(spec_obj, dict) and spec_obj.get("mode") == "vertical_short":
+        paper_ev: dict[str, Any] | None = None
+        if isinstance(spec_obj, dict) and spec_obj.get("mode") == "vertical_short" \
+                and str(spec_obj.get("template") or "") == "paper":
+            # 纸面版：同一份脚本换画面层。卡面不生成，整条片是一张往上走的
+            # 纸，所以时间点还是先用竖屏那套算（配音、人物层都在里面）。
+            progress(4, "timeline:paper")
+            copy_report = vertical._copy_report(spec_obj)
+            got = self._render_paper(spec_obj, workdir, progress)
+            paper_ev = got["ev"]
+            spec_path = Path(got["specPath"])
+        elif isinstance(spec_obj, dict) and spec_obj.get("mode") == "vertical_short":
             progress(4, "timeline:script")
             # 文案体检跟着母版一起回给平台：写稿的人在 run 详情里就能看到
             copy_report = vertical._copy_report(spec_obj)
@@ -485,10 +524,13 @@ class Worker:
             raise TimelineError(f"timeline spec 不合法: {exc}") from None
 
         progress(10, "timeline:rendering")
-        try:
-            ev = timeline.render(spec, workdir / "master.mp4")
-        except RuntimeError as exc:
-            raise TimelineError(f"母版渲染失败: {exc}") from None
+        if paper_ev is not None:
+            ev = paper_ev
+        else:
+            try:
+                ev = timeline.render(spec, workdir / "master.mp4")
+            except RuntimeError as exc:
+                raise TimelineError(f"母版渲染失败: {exc}") from None
 
         result: dict[str, Any] = {
             "engine": "timeline",
