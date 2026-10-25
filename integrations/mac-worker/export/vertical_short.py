@@ -624,6 +624,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     bg_overlay: list[dict] = []
     card_overlays: list[dict] = []
     char_ovs: list[dict] = []
+    pacing: list[dict] = []
     last_ov = None
     t = 0.0
     for i, (scene, card) in enumerate(zip(scenes, cards)):
@@ -632,8 +633,13 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         mp3 = workdir / f"a{i:02d}.mp3"
         if say:
             _tts(say, mp3, voice)
-            dur = _scene_duration(_dur(mp3), i == total - 1)
+            tts_dur = _dur(mp3)
+            dur = _scene_duration(tts_dur, i == total - 1)
             audio.append({"src": str(mp3), "start": round(t, 3), "volume": 1.0})
+            # 念白留白：顶到切点就是半句话被切走，拖太长就是画面空等
+            pacing.append({"scene": i, "tts": round(tts_dur, 3),
+                           "slot": round(dur, 3),
+                           "gap": round(dur - tts_dur, 3)})
         else:
             dur = 2.0
         # 卡面在讲述期间慢慢推近/拉远：一秒一帧的静卡最像 PPT
@@ -827,7 +833,10 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                  "scenes": total, "voice": voice,
                  "gesture": _gesture_summary(gesture_audit, switch_audit, motion_audit),
                  # 人物占宽：竖屏里缩成一张小贴纸，再准的手势也没人看见
-                 "char_widths": char_widths},
+                 "char_widths": char_widths,
+                 "pacing": {"scenes": pacing,
+                            "min_gap": min((x["gap"] for x in pacing), default=0.0),
+                            "max_gap": max((x["gap"] for x in pacing), default=0.0)}},
     }
 
 

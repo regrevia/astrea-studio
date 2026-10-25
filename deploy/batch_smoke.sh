@@ -104,11 +104,25 @@ paths = [qa.get("video")] if qa.get("video") else []
 paths += glob.glob(os.path.expanduser("~/CreatorStudio/timeline/%s/**/master.mp4" % run["id"]), recursive=True)
 paths = [x for x in paths if x and os.path.exists(x)]
 h = hashlib.md5(open(paths[0], "rb").read()).hexdigest()[:10] if paths else "missing"
-print("%s dur=%s qa=%s findings=%d md5=%s" % (
-    run["status"], out.get("duration"), qa.get("ok"), len(qa.get("findings") or []), h))
+# 念白留白：顶到切点是半句话被切走，拖太久是画面空等。留白要看得见
+gap = "n/a"
+if paths:
+    spec_path = os.path.join(os.path.dirname(paths[0]), "spec.json")
+    try:
+        meta = (json.load(open(spec_path)) or {}).get("meta") or {}
+        pace = meta.get("pacing") or {}
+        lo, hi = float(pace["min_gap"]), float(pace["max_gap"])
+        gap = "%.2f..%.2f" % (lo, hi)
+        if lo < 0.05 or hi > 1.20:
+            gap = "bad(" + gap + ")"
+    except Exception:
+        pass
+print("%s dur=%s qa=%s findings=%d md5=%s gap=%s" % (
+    run["status"], out.get("duration"), qa.get("ok"), len(qa.get("findings") or []), h, gap))
 ' 2>/dev/null) || line="解析失败"
   echo "  $id $line"
   case "$line" in
+    succeeded*dur=*qa=True*findings=0*gap=bad*) fail=1 ;;
     succeeded*dur=*qa=True*findings=0*) ;;
     *) fail=1 ;;
   esac
