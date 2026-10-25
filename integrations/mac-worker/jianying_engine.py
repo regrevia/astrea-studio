@@ -975,6 +975,15 @@ def _third_pose(cfg: dict[str, Any], idx: int, total: int,
     return None
 
 
+def _clause_wants(say: str) -> tuple[str, str]:
+    """一句话按句读劈开，两半各自命中的姿态；断点跟换势共用 _clause_cut。"""
+    text = str(say or "").strip()
+    cut = _clause_cut(text)
+    if cut < 0:
+        return "", ""
+    return _keyword_pose(text[:cut]), _keyword_pose(text[cut:])
+
+
 def _second_half_pose(cfg: dict[str, Any], idx: int, total: int,
                       scene: dict[str, Any], first: str = "",
                       seed: int = 0) -> str | None:
@@ -1137,6 +1146,20 @@ def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
     text = " ".join(str((scene or {}).get(k) or "")
                     for k in ("say", "text", "caption"))
     hit = _keyword_pose(text)
+    # 一句话前半句说结论、后半句说缺口时，整句关键词会把后半句的态度提前演到
+    # 第一秒（「只认十四个」还没说完就叉腰）。两半句语义不同就先演前半句。
+    head_want, tail_want = _clause_wants(str((scene or {}).get("say") or ""))
+    head_first = False
+    if head_want and tail_want and head_want != tail_want:
+        hw = float(_keyword_scores(text).get(head_want) or 0.0)
+        tw = float(_keyword_scores(text).get(tail_want) or 0.0)
+        if hw >= tw * 0.85:
+            hit, head_first = head_want, True
+    # 半句顺序定下来就不再让「别和前两屏撞」把它翻回去：翻了就等于前半句演
+    # 后半句的态度（「只认十四个」还没出口先叉腰）。宁可连演两屏同一个手势，
+    # 也不能把一句话里的先后演反。
+    if head_first and hit not in ("wave", "happy"):
+        return hit
     # 语义命中会因为「跟上一屏撞了」被让位；让不出去时还得回到它，
     # 否则就落进奇偶兜底，选出一个这句话根本没说过的动作（体检会判错配）。
     semantic = hit
