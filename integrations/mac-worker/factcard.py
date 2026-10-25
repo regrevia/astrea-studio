@@ -251,7 +251,8 @@ def _body_size(text: str, measure=None, max_w: float = W - 264) -> tuple[int, in
 def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
                 progress: int, total: int, slug: str, hook: bool = False,
                 body: str = "", body_top: int = 640, plain: bool = False,
-                logo: Path | None = None, draw_body: bool = True) -> Path:
+                logo: Path | None = None, draw_body: bool = True,
+                hud: bool = True) -> Path:
     """卡面底图：渐变 + 网格点 + 圆角描边卡 + 编号幽灵字 + 进度点。文字交给剪映。"""
     from PIL import Image, ImageDraw, ImageFilter
 
@@ -312,18 +313,20 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
         draw.polygon([(0, 1200), (W, 980), (W, 1320), (0, 1540)], fill=(*accent, 26))
         # 开场卡不再单独画强调条：它和正文上方的分隔线只差一百多像素，会读成两道杠
 
-    # 顶部 kicker
-    draw.text((76, TOP_SAFE + 16), kicker, font=_font(40), fill=(255, 255, 255, 205))
+    # 顶部 kicker 与进度条是「界面」，不是「画面」：出片时贴在独立的静态层上，
+    # 卡面推近/叠化都不会带着它一起缩放（缩放中的 HUD 在转场里会重影成两张）
+    if hud:
+        draw.text((76, TOP_SAFE + 16), kicker, font=_font(40), fill=(255, 255, 255, 205))
 
-    # 顶部进度条：一条线取代分页点，读起来是"进度"不是"翻页"
-    bar_y, bar_h = 344, 8
-    # 有品牌标的卡把进度条让开：白底圆角块压在条尾上像画错了
-    bar_right = 1004 - (176 if logo else 0)
-    draw.rounded_rectangle((76, bar_y, bar_right, bar_y + bar_h), radius=4,
-                           fill=(255, 255, 255, 36))
-    filled = 76 + int((bar_right - 76) * (progress + 1) / max(1, total))
-    draw.rounded_rectangle((76, bar_y, filled, bar_y + bar_h), radius=4,
-                           fill=(*accent, 240))
+        # 顶部进度条：一条线取代分页点，读起来是"进度"不是"翻页"
+        bar_y, bar_h = 344, 8
+        # 有品牌标的卡把进度条让开：白底圆角块压在条尾上像画错了
+        bar_right = 1004 - (176 if logo else 0)
+        draw.rounded_rectangle((76, bar_y, bar_right, bar_y + bar_h), radius=4,
+                               fill=(255, 255, 255, 36))
+        filled = 76 + int((bar_right - 76) * (progress + 1) / max(1, total))
+        draw.rounded_rectangle((76, bar_y, filled, bar_y + bar_h), radius=4,
+                               fill=(*accent, 240))
 
     # 正文要点：出图阶段精排（字号/行距/安全区都是像素级控制）
     if body and draw_body:
@@ -360,15 +363,44 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
             pass  # 品牌标失败不该毁掉出片
 
     # 品牌角标
-    draw.text((W - 76, H - 64), "Astrea Studio", font=_font(30),
-              fill=(255, 255, 255, 120), anchor="ra")
-    draw.text((76, H - 64), "AI 指挥台 · 自动生成", font=_font(30),
-              fill=(255, 255, 255, 120))
+    if hud:
+        draw.text((W - 76, H - 64), "Astrea Studio", font=_font(30),
+                  fill=(255, 255, 255, 120), anchor="ra")
+        draw.text((76, H - 64), "AI 指挥台 · 自动生成", font=_font(30),
+                  fill=(255, 255, 255, 120))
 
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.alpha_composite(img, overlay).convert("RGB").save(path, "PNG")
     return path
 
+
+
+def render_hud(path: Path, *, kicker: str, progress: int, total: int,
+               palette_idx: int, logo: Path | None = None) -> Path:
+    """界面层：kicker + 进度条 + 角标，透明底，整条片只贴一次不跟着缩放。
+
+    和 render_card 用同一套坐标，挪动一处就得两处一起改。
+    """
+    from PIL import Image, ImageDraw
+
+    _top, _bottom, accent = PALETTES[palette_idx % len(PALETTES)]
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img, "RGBA")
+    draw.text((76, TOP_SAFE + 16), kicker, font=_font(40), fill=(255, 255, 255, 205))
+    bar_y, bar_h = 344, 8
+    bar_right = 1004 - (176 if logo else 0)
+    draw.rounded_rectangle((76, bar_y, bar_right, bar_y + bar_h), radius=4,
+                           fill=(255, 255, 255, 36))
+    filled = 76 + int((bar_right - 76) * (progress + 1) / max(1, total))
+    draw.rounded_rectangle((76, bar_y, filled, bar_y + bar_h), radius=4,
+                           fill=(*accent, 240))
+    draw.text((W - 76, H - 64), "Astrea Studio", font=_font(30),
+              fill=(255, 255, 255, 120), anchor="ra")
+    draw.text((76, H - 64), "AI 指挥台 · 自动生成", font=_font(30),
+              fill=(255, 255, 255, 120))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(path, "PNG")
+    return path
 
 
 # ---------------------------------------------------------------- 预演
@@ -491,7 +523,7 @@ def _parse_point(raw: object) -> tuple[str, str, str]:
 def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
                voice: str, kicker: str, out_dir: Path,
                narration: dict | None = None, logo: Path | None = None,
-               draw_text: bool = True) -> dict:
+               draw_text: bool = True, hud: bool = True) -> dict:
     """选题/要点 → 完整 scenes spec（含 5 张卡面 PNG）。"""
     scripts = [p for p in (points_raw or []) if str(p).strip()]
     points = [_parse_point(p) for p in scripts]
@@ -505,7 +537,8 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
     # 1) 开场钩子
     hook_img = render_card(out_dir / "s00.png", kicker=kicker, index="00",
                            palette_idx=0, progress=0, total=total, slug=slug, hook=True,
-                           body=hook, body_top=800, logo=logo, draw_body=draw_text)
+                           body=hook, body_top=800, logo=logo, draw_body=draw_text,
+                           hud=hud)
     scenes.append({
         "image": str(hook_img),
         "say": str(narration.get("intro") or f"{topic}。{hook}").strip(),
@@ -528,7 +561,7 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
     # 2) 要点逐屏
     for i, (title, body, say) in enumerate(points, start=1):
         img = render_card(out_dir / f"s{i:02d}.png", kicker=kicker, index=f"0{i}",
-                          palette_idx=i, progress=i, total=total, slug=slug,
+                          palette_idx=i, progress=i, total=total, slug=slug, hud=hud,
                           body=body, body_top=700, draw_body=draw_text)
         scenes.append({
             "image": str(img),
@@ -558,7 +591,7 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
     # 收尾卡也要有正文：空卡配一句飘在中间的字，最容易读成"没做完"
     cta_img = render_card(out_dir / f"s{total - 1:02d}.png", kicker=kicker, logo=logo,
                           index="", palette_idx=len(PALETTES) - 1, progress=total - 1,
-                          total=total, slug=slug, hook=True,
+                          total=total, slug=slug, hook=True, hud=hud,
                           body=re.sub(r"\s+", "", cta), body_top=700, draw_body=draw_text)
     scenes.append({
         "image": str(cta_img),
