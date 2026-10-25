@@ -1222,6 +1222,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             # 屏内逐帧状态（prev_pose）会在下面被改写，跨屏记忆单独存
             scene_prev2, scene_prev = scene_prev, pose
             # 作者用 poses 列表指定了整条片的手势，那是意图不是错配；显式 pose 同理
+            ga_base = None
             if not char_cfg.get("pose") and not char_cfg.get("poses"):
                 # 记下「这句话该做什么动作」和「实际做了什么」，交给成片体检核对
                 said = " ".join(str(scene.get(k) or "")
@@ -1233,6 +1234,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 gesture_audit.append({"at": round(t, 2), "idx": i, "pose": pose,
                                       "want": want, "supported": supported,
                                       "last": i == total - 1})
+                # 末尾姿势还会被收尾规则和换势兜底改写，等定稿再回填这一条
+                ga_base = gesture_audit[-1]
             alt_pose = (None if char_cfg.get("pose") else
                         JE._second_half_pose(char_cfg, i, total, scene, first=pose,
                                              seed=variant_seed))
@@ -1242,13 +1245,14 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                     and not char_cfg.get("poses")
                     and char_cfg.get("gesture_sync", True)):
                 # 一屏里同一个动作只演一次：来回弹（认可→摊手→认可）像抽搐
-                clause_tail = [pp for pp in dict.fromkeys(JE._clause_poses(say))
-                               if pp != pose][:2]
+                cps = list(dict.fromkeys(JE._clause_poses(say)))
+                if len(cps) >= 2 and cps[0] != pose:
+                    # 第一段说什么，这一屏就从什么动作起：按整句搜索挑到的起势
+                    # 可能属于后半句，先演后半句再演前半句，看着像倒放
+                    pose = cps[0]
+                clause_tail = [pp for pp in cps if pp != pose][:2]
                 if clause_tail:
                     alt_pose = clause_tail[0]
-            # 体检要报「这一屏真正演过的姿势」，只记前半句会漏掉换势后的那一个。
-            # 兜底换势也算演过，所以补位之后才记。
-            _ = None
             # 收尾那屏往往八九秒，闭眼大笑的稿撑过五秒就是贴图。先睁着眼把
             # 话说完（认可），笑点留给最后一句——情绪落在收尾，不是从头笑到尾。
             if i == total - 1 and pose == "happy" and dur >= 6.0:
@@ -1262,8 +1266,9 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 alt_pose = _fallback_alt_pose(pose)
             if alt_pose == pose:
                 alt_pose = None
-            if gesture_audit and gesture_audit[-1]["idx"] == i:
-                gesture_audit[-1]["alt"] = alt_pose or ""
+            if ga_base is not None:
+                ga_base["pose"] = pose
+                ga_base["alt"] = alt_pose or ""
             motion = _pose_motion(pose, say)
             motion_audit.append(motion.get("gain", 1.0))
             char_scene = _stage(char_cfg, i, total)
