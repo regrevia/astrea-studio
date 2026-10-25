@@ -1065,8 +1065,12 @@ def _keyword_pose(text: str) -> str:
 
 
 def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
-                scene: dict[str, Any]) -> str:
-    """场景自带 pose 最优先，其次按讲述内容挑，最后才按首尾/奇偶兜底。"""
+                scene: dict[str, Any], avoid: str = "") -> str:
+    """场景自带 pose 最优先，其次按讲述内容挑，最后才按首尾/奇偶兜底。
+
+    avoid 是上一屏已经用过的姿势：连着三屏都在"想事情"，观众看到的是定格的
+    表情包。同样的语义分之下换一个次优线索，实在没有就退回奇偶兜底。
+    """
     poses = cfg.get("poses")
     if isinstance(poses, list) and poses:
         return str(poses[idx % len(poses)])
@@ -1076,6 +1080,10 @@ def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
     text = " ".join(str((scene or {}).get(k) or "")
                     for k in ("say", "text", "caption"))
     hit = _keyword_pose(text)
+    if avoid and hit == avoid:
+        # 同分线索里挑一个跟上一屏不同的；都没有就当作没有线索，交给兜底
+        scores = {k: v for k, v in _keyword_scores(text).items() if k != avoid}
+        hit = max(scores, key=lambda k: round(scores[k], 3)) if scores else ""
     # 开场挥手、收尾高兴是默认礼数；但这句话本身在发问或在说缺口，
     # 还挥手/傻笑就假了——语义优先于礼数。
     if hit in ("think", "shrug"):

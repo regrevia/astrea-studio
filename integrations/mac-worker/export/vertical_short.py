@@ -281,7 +281,8 @@ def _gesture_summary(audit: list[dict], switches: list[float] | None = None,
     """
     # 首屏挥手、末屏高兴是礼数，不参与对齐核算
     checked = [a for a in audit if a["want"] and a["idx"] > 0 and not a["last"]]
-    clash = [a for a in checked if a["pose"] != a["want"]]
+    clash = [a for a in checked
+             if a["pose"] not in (a.get("supported") or [a["want"]])]
     return {
         "scenes": len(audit),
         "checked": len(checked),
@@ -572,6 +573,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     switch_audit: list[float] = []
     motion_audit: list[float] = []
     char_widths: list[int] = []
+    prev_pose = ""
     for i, sc in enumerate(scenes):
         card = Path(str(sc["image"]))
         if i == 0:
@@ -740,15 +742,21 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         if char_cfg is not None:
             # 一屏一张立绘就是贴图：按口型拍点切成几段，手势在中段换一次，
             # 角色才是在"讲这句话"，而不是被贴上来定格。
-            pose = str(char_cfg.get("pose") or JE._scene_pose(char_cfg, i, total, scene))
+            pose = str(char_cfg.get("pose")
+                       or JE._scene_pose(char_cfg, i, total, scene, avoid=prev_pose))
+            prev_pose = pose
             # 作者用 poses 列表指定了整条片的手势，那是意图不是错配；显式 pose 同理
             if not char_cfg.get("pose") and not char_cfg.get("poses"):
                 # 记下「这句话该做什么动作」和「实际做了什么」，交给成片体检核对
                 said = " ".join(str(scene.get(k) or "")
                                 for k in ("say", "text", "caption"))
                 want = JE._keyword_pose(said)
+                # 一句话可能同时有「在指」和「在问」两层线索，挑哪个都算跟上了；
+                # 只要不是跑出这句话的范围，就不该判成贴图
+                supported = sorted(JE._keyword_scores(said))
                 gesture_audit.append({"at": round(t, 2), "idx": i, "pose": pose,
-                                      "want": want, "last": i == total - 1})
+                                      "want": want, "supported": supported,
+                                      "last": i == total - 1})
             alt_pose = (None if char_cfg.get("pose") else
                         JE._second_half_pose(char_cfg, i, total, scene))
             if not char_cfg.get("gesture_sync", True):
