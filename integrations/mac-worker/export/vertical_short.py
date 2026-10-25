@@ -642,7 +642,9 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             })
         # 界面层：kicker / 进度条 / 角标。整屏叠化的那 0.4s 里，
         # 卡面和人物在融，这两样必须一动不动，否则就是两层字压在一起。
-        hud_idx = 0 if i == 0 else (len(factcard.PALETTES) - 1 if i == total - 1 else i)
+        # HUD 的强调色要跟卡面色温一致：卡面按语气挑色，这里不能还按第几屏
+        hud_idx = int(sc.get("palette") if sc.get("palette") is not None else
+                      (0 if i == 0 else (len(factcard.PALETTES) - 1 if i == total - 1 else i)))
         hud_png = factcard.render_hud(
             workdir / f"hud{i:02d}.png", kicker=kicker, progress=i, total=total,
             palette_idx=hud_idx)

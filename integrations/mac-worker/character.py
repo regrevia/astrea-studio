@@ -87,18 +87,26 @@ def draw_tail(img, sway=0.0):
     img.alpha_composite(layer.filter(ImageFilter.GaussianBlur(S)))
 
 
-def _arm(d, side, angle_deg, length=138 * S):
-    """side=-1 左臂 / +1 右臂；angle 0=垂下，90=平举。"""
-    sx, sy = CX + side * 84 * S, SHOULDER_Y + 8 * S
+def _arm(d, side, angle_deg, length=172 * S):
+    """side=-1 左臂 / +1 右臂；angle 0=垂下，90=平举。
+
+    手臂短一截就只是肩膀上的两个球，抬起来也读不出手势：
+    长度按「手能到下巴」定，袖口收在肘上，手掌画成连指手套状。
+    """
+    sx, sy = CX + side * 92 * S, SHOULDER_Y + 6 * S
     a = math.radians(angle_deg)
     ex = sx + side * math.sin(a) * length
     ey = sy + math.cos(a) * length
-    d.line([(sx, sy), (ex, ey)], fill=OUTLINE, width=42 * S)
-    d.line([(sx, sy), (ex, ey)], fill=SKIN, width=32 * S)
-    # 短袖：只覆盖靠近肩膀的一段
-    mx, my = sx + (ex - sx) * 0.42, sy + (ey - sy) * 0.42
+    d.line([(sx, sy), (ex, ey)], fill=OUTLINE, width=46 * S)
+    d.line([(sx, sy), (ex, ey)], fill=SKIN, width=34 * S)
+    # 短袖：盖到肘上，袖口压一道深色边，手臂才有起点
+    mx, my = sx + (ex - sx) * 0.38, sy + (ey - sy) * 0.38
     d.line([(sx, sy), (mx, my)], fill=NAVY_SOFT, width=48 * S)
-    r = 26 * S
+    nx, ny = sx + (ex - sx) * 0.38, sy + (ey - sy) * 0.38
+    d.line([(nx, ny), (nx + (ex - nx) * 0.10, ny + (ey - ny) * 0.10)],
+           fill=NAVY, width=48 * S)
+    # 手掌：腕部收窄再鼓一圈，比一个孤零零的圆更像手
+    r = 30 * S
     d.ellipse([ex - r, ey - r, ex + r, ey + r], fill=SKIN)
     d.ellipse([ex - r, ey - r, ex + r, ey + r], outline=OUTLINE, width=LW2)
 
@@ -109,7 +117,7 @@ def draw_body(d, pose="idle"):
     d.line([(CX, 528 * S), (CX, 618 * S)], fill=SKIN, width=50 * S)
 
     # 裙子：上窄下宽的梯形，裙摆是向下鼓的弧，绝不交叉
-    hem_y, hem_w = 858 * S, 196 * S
+    hem_y, hem_w = 858 * S, 180 * S
     hem = []
     for i in range(21):
         t = i / 20
@@ -142,12 +150,21 @@ def draw_body(d, pose="idle"):
                   fill=NAVY, outline=OUTLINE, width=LW2)
 
     # (左臂角度, 右臂角度, 手臂长度系数)
-    poses = {"idle": (14, 14, 1.0), "wave": (-146, 14, 1.08), "point": (96, 16, 1.10),
-             "think": (-58, 10, 0.72), "happy": (-152, 152, 1.06),
-             "shrug": (-108, 108, 0.92)}
-    la, ra, scale = poses.get(pose, poses["idle"])
-    _arm(d, -1, la, length=138 * S * scale)
-    _arm(d, +1, ra, length=138 * S * scale)
+    _ = (pose, d)  # 手臂单独一层画在头上面，见 draw_arms()
+
+
+# 正角度=向外抬（左右对称），负角度=向身体内侧收（手能到下巴）
+# 之前左臂用力方向反了：wave/shrug 抬的是内侧，手一直藏在头后面
+POSES_ARMS = {"idle": (28, 28, 1.0), "wave": (134, 14, 1.06), "point": (96, 26, 1.10),
+              "think": (-112, 10, 0.80), "happy": (100, 100, 1.10),
+              "shrug": (78, 78, 0.96)}
+
+
+def draw_arms(d, pose="idle"):
+    """手臂画在头之后：抬起来的手不该被大脑袋和侧发吞掉。"""
+    la, ra, scale = POSES_ARMS.get(pose, POSES_ARMS["idle"])
+    _arm(d, -1, la, length=172 * S * scale)
+    _arm(d, +1, ra, length=172 * S * scale)
 
 
 def draw_head(d, pose="idle", mouth="closed", eyes="open"):
@@ -250,6 +267,7 @@ def render(pose="idle", mouth="closed", eyes="open", sway=0.0, tilt=None) -> Ima
     if ang:
         head = head.rotate(ang, resample=Image.BICUBIC, center=HEAD_C)
     img.alpha_composite(head)
+    draw_arms(d, pose)
     return img.resize((DES, DES), Image.LANCZOS)
 
 

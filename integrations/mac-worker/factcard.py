@@ -49,6 +49,29 @@ PALETTES = [
     ((26, 27, 40), (54, 56, 82), (198, 208, 236)),    # 收尾：压太黑会把立绘吞进去
 ]
 
+# 语气词 → 色温：同一套版式，整条片子是同一个颜色才像模板。
+# 指出缺口用深玫（警示），落到结论用深琥珀（落槌），讲方法用深青（冷静）。
+_TONE_HINTS = (
+    (2, ("不", "没", "别", "缺", "错", "假", "糊")),
+    (3, ("结论", "回查", "核对", "出处", "所以", "因此", "最终")),
+    (1, ("先", "再", "然后", "拆", "步骤", "流程", "怎么")),
+)
+
+
+def _tone_palette(*texts: str, fallback: int = 1, avoid: tuple = ()) -> int:
+    """按句子里的语气词挑色温；挑不出来就顺着上一屏轮换，避免相邻两屏撞色。"""
+    joined = "".join(str(t or "") for t in texts)
+    for idx, words in _TONE_HINTS:
+        if any(w in joined for w in words):
+            if idx not in avoid:
+                return idx
+    for step in range(1, len(PALETTES)):
+        cand = 1 + (fallback + step - 1) % (len(PALETTES) - 2)
+        if cand not in avoid:
+            return cand
+    return fallback
+
+
 # 画布：抖音竖屏
 W, H = 1080, 1920
 TOP_SAFE, BOTTOM_SAFE = 240, 430  # 顶部账号栏 / 底部字幕与按钮区
@@ -579,6 +602,7 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
                            hud=hud)
     scenes.append({
         "image": str(hook_img),
+        "palette": 0,
         "say": str(narration.get("intro") or f"{topic}。{hook}").strip(),
         "text": _unwrap(topic, 10),
         "voice": voice,
@@ -597,12 +621,17 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
     })
 
     # 2) 要点逐屏
+    palette_used: list[int] = [0]
     for i, (title, body, say) in enumerate(points, start=1):
+        # 色温跟着这句话的语气走，不是跟着第几屏走
+        pal = _tone_palette(title, body, fallback=i, avoid=tuple(palette_used[-1:]))
+        palette_used.append(pal)
         img = render_card(out_dir / f"s{i:02d}.png", kicker=kicker, index=f"0{i}",
-                          palette_idx=i, progress=i, total=total, slug=slug, hud=hud,
+                          palette_idx=pal, progress=i, total=total, slug=slug, hud=hud,
                           body=body, body_top=700, draw_body=draw_text)
         scenes.append({
             "image": str(img),
+            "palette": pal,
             "say": say,
             "text": _unwrap(title, 11),
             "body": body,
@@ -633,6 +662,7 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
                           body=re.sub(r"\s+", "", cta), body_top=700, draw_body=draw_text)
     scenes.append({
         "image": str(cta_img),
+        "palette": len(PALETTES) - 1,
         "say": str(narration.get("cta") or cta).strip(),
         # 结论句已经画在卡面上，剪映再叠一层就是重影
         "text": "",
