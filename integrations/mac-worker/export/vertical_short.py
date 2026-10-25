@@ -221,14 +221,20 @@ def _cta_copy(script: dict, cta_text: str) -> dict:
             tail_size -= 2
         tail_rows = len([ln for ln in factcard._wrap_text(
             draw, tail, factcard._font(tail_size), center_w) if ln]) or 1
-    top = 700
-    bottom = top + int(size * 1.42) * head_rows + int(tail_size * 1.35) * tail_rows
+    # 字块底不许越过人物头顶：立绘顶边在 838，卡框横切在头上等于把人切开
+    content_h = int(size * 1.42) * head_rows + int(tail_size * 1.35) * tail_rows
+    bottom_pad, char_top = 52, 838
+    top = min(700, char_top - 40 - bottom_pad - content_h)
+    bottom = top + content_h
     label = script.get("cta_label")
     return {"head": head, "tail": tail, "size": size, "tail_size": tail_size,
-            "top": top, "bottom": bottom, "card_bottom": bottom + 66,
+            "top": top, "bottom": bottom,
+            "card_bottom": min(bottom + bottom_pad, char_top - 40),
             # 面板顶比左边那条强调条低 30px：贴着圆角画会像两块没对齐的板
-            "card_top": 500,
-            "label": "轮到你了" if label is None else str(label)}
+            "card_top": top - 104,
+            "label": "轮到你了" if label is None else str(label),
+            # 栏目标签退成小字：和主张同字号会互相抢，读起来像没排完
+            "label_size": min(36, size - 18), "label_top": top - 62}
 
 
 def _cta_tail_at(mp3: Path | None, dur: float) -> float:
@@ -965,7 +971,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             # 两句同一字号会互相抢，读起来像没排完。
             # 收尾卡以前是整块居中：跟前面左对齐的要点卡摆在一起，
             # 一眼就看得出是另一套版式（像片尾字幕接错了）。统一到同一网格。
-            layers = (_block_layers(label, 48, 592, workdir, f"l{i:02d}",
+            layers = (_block_layers(label, cta_copy["label_size"], cta_copy["label_top"],
+                                    workdir, f"l{i:02d}",
                                     align="left", left=140, max_w=factcard.W - 264,
                                     fill=(255, 255, 255, 205)) if label.strip() else [])
             # 收尾念的是 outro，卡面却只写 cta：耳朵多听到半句，眼睛对不上。
