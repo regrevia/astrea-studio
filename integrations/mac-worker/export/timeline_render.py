@@ -554,7 +554,9 @@ class RenderPlan:
 
         cmd += ["-filter_complex", ";".join(parts),
                 "-map", "[vout]", "-map", "[aout]",
-                "-c:v", "libx264", "-preset", "medium", "-crf", "16",
+                # veryfast 对 medium：同一条 20s 片 105s vs 146s，跟 medium 的
+                # 画面差 PSNR 50.7dB（肉眼看不出），文件反而小 8%
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "16",
                 "-profile:v", "high", "-pix_fmt", "yuv420p",
                 "-r", f"{FPS:g}", "-t", f"{total:g}",
                 "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
