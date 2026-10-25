@@ -87,6 +87,9 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9%\.\-\+/]*|.", re.S)
 _ORPHAN_PUNCT = set("，。、；：？！…）」』】》,.;:?!")
 # 换行优先断在这些字后面：它们是词边界，断在词中间就成了「最舍 / 不得删」
 _NATURAL_BREAK = _ORPHAN_PUNCT | set("里的是在把就才也都让给和与这那我你它过到要后前点")
+# 断在引号里会把一句话劈成两半："…一句「挺有意 / 思」"，宁可提前一行收
+_OPEN_BRACKETS = "「『（《【“‘"
+_CLOSE_BRACKETS = "」』）》】”’"
 
 
 def _wrap_text(draw, text: str, font, max_w: float) -> list[str]:
@@ -112,8 +115,22 @@ def _wrap_text(draw, text: str, font, max_w: float) -> list[str]:
                     out.append(buf[:cut])
                     buf = buf[cut:] + tok
                 else:
-                    out.append(buf)
-                    buf = tok
+                    brk = len(buf)
+                    depth = 0
+                    for j in range(len(buf) - 1, -1, -1):
+                        ch = buf[j]
+                        if ch in _CLOSE_BRACKETS:
+                            depth += 1
+                        elif ch in _OPEN_BRACKETS:
+                            if depth:
+                                depth -= 1
+                                continue
+                            # 断点落在引号里就退回引号前，前提是退完这行还不算短
+                            if j > 0 and draw.textlength(buf[:j], font=font) >= max_w * 0.45:
+                                brk = j
+                            break
+                    out.append(buf[:brk])
+                    buf = buf[brk:] + tok
             else:
                 buf = probe
         if buf:

@@ -150,6 +150,11 @@ export class ProductionService {
   }
 
   async getProject(userId: string, projectId: string) {
+    // 传进来的不是 ObjectId 时 Mongo 会抛 CastError，落到接口上就是 500。
+    // 这种输入本来就是「找不到这个项目」，先挡掉再查库。
+    if (!/^[a-f\d]{24}$/i.test(String(projectId || ''))) {
+      throw new AppException(ResponseCode.ProductionProjectNotFound)
+    }
     const project = await this.projectRepo.getByIdForUser(projectId, userId)
     if (!project) {
       throw new AppException(ResponseCode.ProductionProjectNotFound)
