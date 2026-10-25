@@ -74,6 +74,9 @@ def check(video: Path, spec: Path) -> dict:
     text = _box_std(frames, TEXT_BOX)
     char = _box_std(frames, CHAR_BOX)
     findings = []
+    # 收尾是主动压黑收的（最后一屏连人带卡一起淡出）。末尾这段不算缺陷，
+    # 否则每条片子都会在最后一两帧被报「整帧发黑 + 硬切」。
+    tail_guard = 0.45
     if want and abs(got - float(want)) > 0.35:
         findings.append({"code": "duration_mismatch", "level": "warn",
                          "detail": f"{got:.2f}s vs {float(want):.2f}s"})
@@ -85,9 +88,12 @@ def check(video: Path, spec: Path) -> dict:
                          "detail": f"人物最大占宽 {max(widths)}px，不到画面六成，像贴纸"})
     # at 是秒数：界面上直接能跳到那一帧，不然只说「有问题」等于没说。
     for i in np.flatnonzero(whole < FLAT_STD)[:5]:
+        at = float(i) * STEP
+        if at >= got - tail_guard:
+            continue
         findings.append({"code": "blank_frame", "level": "error",
-                         "at": round(float(i) * STEP, 2),
-                         "detail": f"{i * STEP:.2f}s 整帧发黑"})
+                         "at": round(at, 2),
+                         "detail": f"{at:.2f}s 整帧发黑"})
     # 卡面上有字的时间段，应该占满整条片子（叠化时也不该两块同时消失）
     for code, series, label in (("text_gap", text, "卡面没字"),
                                 ("character_gap", char, "画面里没人")):
@@ -104,6 +110,8 @@ def check(video: Path, spec: Path) -> dict:
         diff = np.abs(np.diff(frames.astype(np.int16), axis=0)).mean(axis=(1, 2))
         for i in np.flatnonzero(diff > CUT_DIFF)[:3]:
             at = _refine_cut(video, float(i + 1) * STEP)
+            if at >= got - tail_guard:
+                continue
             findings.append({"code": "hard_cut", "level": "warn", "at": at,
                              "detail": f"{at:.2f}s 硬切"})
         if len(diff) >= FREEZE_WINDOW:
