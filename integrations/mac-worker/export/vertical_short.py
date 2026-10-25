@@ -524,6 +524,20 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         lines = (path.read_text(encoding="utf-8").splitlines()
                  if "\n" not in raw and path.is_file() else raw.splitlines())
         points_raw, narration = MEP.apply_narration(points_raw, lines, None)
+    if isinstance(narration, dict):
+        # 结构化口播稿里每条要点也各有一句 spoken 文本。之前只拿走了 intro/cta，
+        # points 被丢掉：接口直发时口播读的是要点自带那句，配音和稿子对不上，
+        # 文案体检却按稿子打分。要点没显式写口播时，就用稿子这句去配。
+        fallback = [str(x) for x in (narration.get("points") or [])]
+        if fallback:
+            merged = []
+            for i, item in enumerate(points_raw):
+                raw = str(item)
+                has_say = (bool(item.get("say") or item.get("narration"))
+                           if isinstance(item, dict) else raw.count("::") >= 2)
+                say = fallback[i] if i < len(fallback) else ""
+                merged.append(raw if (has_say or not say) else f"{raw}::{say}")
+            points_raw = merged
     spec = factcard.build_spec(
         topic=str(script.get("topic") or "").strip(),
         hook=str(script.get("hook") or factcard.DEFAULT_HOOK),
