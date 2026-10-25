@@ -57,7 +57,40 @@ def main() -> int:
         print(f"配音缓存回归失败：第二次耗时 {warm:.2f}s，像重新合成")
         return 1
     print(f"配音缓存回归通过：冷合成 {cold:.2f}s，同稿复用 {warm * 1000:.0f}ms，字节一致")
-    return 0
+    return 0 if _eviction_ok() else 1
+
+
+def _eviction_ok() -> bool:
+    """缓存要能自己收：过期删掉、超量从最久没用的删起、刚写的留下。"""
+    import os
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        (root / "voice").mkdir()
+        now = time.time()
+        made = []
+        for n, (age, size) in enumerate(((0, 400), (10 * 86400, 400), (60 * 86400, 400))):
+            f = root / "voice" / f"k{n}.mp3"
+            f.write_bytes(b"x" * size)
+            os.utime(f, (now - age, now - age))
+            made.append(f)
+        old_cache, old_cap = S.TTS_CACHE, S.TTS_CACHE_MAX_BYTES
+        try:
+            S.TTS_CACHE, S.TTS_CACHE_MAX_BYTES = root, 300
+            S.prune_tts_cache(made[0])
+            left = {f.name for f in (root / "voice").iterdir()}
+            if "k2.mp3" in left:
+                print("配音缓存回归失败：过期干音没被清掉")
+                return False
+            if "k0.mp3" not in left:
+                print("配音缓存回归失败：刚写入的干音被自己删了")
+                return False
+            if (root / "voice" / "k1.mp3").exists():
+                print("配音缓存回归失败：超量后没删最久没用的")
+                return False
+        finally:
+            S.TTS_CACHE, S.TTS_CACHE_MAX_BYTES = old_cache, old_cap
+    print("配音缓存封顶通过：过期清理、超量淘汰、刚写的保留")
+    return True
 
 
 if __name__ == "__main__":
