@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
@@ -255,8 +256,67 @@ def draw_head(d, pose="idle", mouth="closed", eyes="open"):
 _TILT = {"idle": 0.0, "wave": -6.0, "point": 4.0, "think": -5.0,
          "happy": 6.0, "shrug": 1.5}
 
+# 真立绘落地目录：有同名 PNG 就用真图，没有就地退回程序化占位图。
+# 生成方的文件名约定见 deploy/presenter/ART-BRIEF-whale-girl.md
+ASSET_ROOT = Path(os.environ.get("WHALE_ASSET_ROOT")
+                   or "~/CreatorStudio/state/characters/whale").expanduser()
+_ASSET_CACHE: dict[tuple[str, float], Image.Image] = {}
+
+
+def _key_green(img: Image.Image) -> Image.Image:
+    """绿幕转透明：抠掉 #00FF00，顺带压掉边缘溢出的绿。"""
+    img = img.convert("RGBA")
+    px = img.load()
+    w, h = img.size
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a and g > 90 and g > r * 1.3 and g > b * 1.3:
+                px[x, y] = (r, g, b, 0)
+            elif a and g > max(r, b):
+                # 半透明边缘：把绿压到其余通道的最大值，避免描边泛绿
+                px[x, y] = (r, max(r, b), b, a)
+    return img
+
+
+def _asset_png(pose: str, mouth: str, eyes: str) -> Image.Image | None:
+    """按「pose + 口型」挑一张差分；眼睛闭只对 idle 有专门的一张。"""
+    root = ASSET_ROOT
+    if not root.is_dir():
+        return None
+    if eyes == "closed" and pose in ("idle", ""):
+        cands = [root / "eyes/eyes_closed.png", root / "base/01_base_closed_eyes.png"]
+    else:
+        states = [mouth]
+        if mouth in ("half", "open", "round"):
+            states.append("open")
+        states.append("closed")
+        cands = []
+        for st in states:
+            cands.append(root / f"poses/pose_{pose}_{st}.png")
+        if pose in ("", "idle"):
+            cands += [root / f"base/01_base_{st}.png" for st in states]
+            cands.append(root / "base/01_base.png")
+    for path in cands:
+        if not path.is_file():
+            continue
+        try:
+            stamp = path.stat().st_mtime
+            hit = _ASSET_CACHE.get((str(path), stamp))
+            if hit is None:
+                hit = _key_green(Image.open(path).convert("RGBA"))
+                hit = hit.resize((DES, DES), Image.LANCZOS)
+                _ASSET_CACHE[(str(path), stamp)] = hit
+            return hit.copy()
+        except Exception:  # noqa: BLE001 - 真图坏了不该让整条片挂掉
+            continue
+    return None
+
 
 def render(pose="idle", mouth="closed", eyes="open", sway=0.0, tilt=None) -> Image.Image:
+    real = _asset_png(pose, mouth, eyes)
+    if real is not None:
+        return real
     img = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
     draw_tail(img, sway)
     d = ImageDraw.Draw(img)

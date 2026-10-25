@@ -11,6 +11,8 @@ set -uo pipefail
   echo "文案判据回归未通过，先修判据再出片"; exit 1; }
 /usr/bin/python3 "$(dirname "$0")/../integrations/mac-worker/test_gesture_sync.py" || {
   echo "手势同步回归未通过，先修手势再出片"; exit 1; }
+/usr/bin/python3 "$(dirname "$0")/../integrations/mac-worker/test_character_assets.py" || {
+  echo "立绘接图回归未通过，先修接图再出片"; exit 1; }
 # 配音不稳，同稿两次出片的口型和时长就不一样，母版比对也失去意义
 /usr/bin/python3 "$(dirname "$0")/test_tts_cache.py" || {
   echo "配音缓存回归未通过，先修配音再出片"; exit 1; }
