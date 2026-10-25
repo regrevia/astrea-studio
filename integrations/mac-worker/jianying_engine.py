@@ -976,11 +976,45 @@ def _third_pose(cfg: dict[str, Any], idx: int, total: int,
             if name in (first, second) or float(score) <= 0:
                 continue
             return str(name)
+        # 结尾那句没有动作线索，就不要拿前面半句的线索顶上：那是往回演。
+        return None
     for name, score in sorted(_keyword_scores(say).items(), key=lambda kv: -kv[1]):
         if name in (first, second) or float(score) <= 0:
             continue
         return str(name)
     return None
+
+
+def _clause_split(say: str) -> list[str]:
+    """按句读把一句话劈成段，丢掉过短的碎段。"""
+    text = str(say or "").strip()
+    if not text:
+        return []
+    parts, buf = [], ""
+    for ch in text:
+        if ch in "，,；;。.！!？?：:、":
+            if buf.strip():
+                parts.append(buf.strip())
+            buf = ""
+        else:
+            buf += ch
+    if buf.strip():
+        parts.append(buf.strip())
+    return [x for x in parts if len(x) >= 3]
+
+
+def _clause_poses(say: str) -> list[str]:
+    """一句话里有几段，就有几个按先后排列的姿态（相邻重复合并，最多三个）。
+
+    一句话常常是「先说现象、再说代价、最后反问」：这三段各演各的动作才像人在讲，
+    把整句最高分的姿态全塞给一屏，观众看到的是同一个姿势从头摆到尾。
+    """
+    out: list[str] = []
+    for seg in _clause_split(say):
+        hit = _keyword_pose(seg)
+        if hit and (not out or out[-1] != hit):
+            out.append(hit)
+    return out[:3]
 
 
 def _tail_clause(say: str) -> str:

@@ -522,6 +522,70 @@ def _punctuation_anchor(say: str) -> float | None:
     return (cut / len(text)) if cut > 0 else None
 
 
+def _pause_fracs(mp3: Path, dur: float, cfg: dict) -> list[float]:
+    """整句话里所有够长的停顿位置（占本屏比例），按时间排好。"""
+    try:
+        levels = _energy_states(mp3, dur)
+    except Exception:   # noqa: BLE001 - 没音频就没有停顿
+        return []
+    if len(levels) < 8:
+        return []
+    vals = [v for _, v in levels]
+    floor = max(0.06, sorted(vals)[int(len(vals) * 0.15)])
+    median = sorted(vals)[len(vals) // 2]
+    floor = min(floor * 1.6, median * 0.6)
+    out: list[float] = []
+    run, run_start = 0, None
+    for i in range(int(len(levels) * 0.18), int(len(levels) * 0.86)):
+        if levels[i][1] <= floor:
+            if run_start is None:
+                run_start = i
+            run += 1
+        elif run_start is not None:
+            if run >= 2:
+                out.append(levels[min(run_start + run // 2, len(levels) - 1)][0]
+                           / max(0.4, dur))
+            run, run_start = 0, None
+    if run_start is not None and run >= 2:
+        out.append(levels[min(run_start + run // 2, len(levels) - 1)][0]
+                   / max(0.4, dur))
+    return [f for f in out if 0.20 <= f <= 0.86]
+
+
+def _clause_plan(say: str, poses: list[str], dur: float, mp3: Path | None,
+                 cfg: dict) -> list[tuple[float, str, str]]:
+    """按句读的先后排换势：第几段换到什么姿态、换在第几成的位置。
+
+    位置先按字数算，再被实测停顿拉过去：人是在句读完的那一下换手，不是在
+    「刚好过半」的时候。位置反了或挤在一起就丢掉这一档，宁可少换一次。
+    """
+    segs = JE._clause_split(say)
+    if not segs:
+        return []
+    total = sum(len(x) for x in segs) or 1
+    pauses = _pause_fracs(mp3, dur, cfg) if mp3 else []
+    out: list[tuple[float, str, str]] = []
+    used: list[int] = []
+    for pose in poses:
+        idx = next((k for k, s in enumerate(segs)
+                    if k not in used and JE._keyword_pose(s) == pose), None)
+        if idx is None or idx == 0:
+            continue
+        used.append(idx)
+        # 换在这段话的中间：按段尾算，最后一段会落在八成半，等于后半句没动作
+        frac = (sum(len(x) for x in segs[:idx]) + len(segs[idx]) / 2) / total
+        frac = min(0.78, max(0.28, frac))
+        near = [p for p in pauses if abs(p - frac) <= 0.12]
+        if near:
+            frac = min(near, key=lambda p: abs(p - frac))
+        if out:
+            frac = max(frac, round(out[-1][0] + 0.18, 2))
+        if frac > 0.80:
+            continue
+        out.append((round(frac, 2), pose, segs[idx]))
+    return out
+
+
 def _clause_switch(mp3: Path, dur: float, cfg: dict, say: str = "",
                    lo_frac: float = 0.0) -> float | None:
     """手势换在句内停顿处，而不是死板的 55%：人换手势总在说完半句的时候。"""
@@ -570,7 +634,8 @@ def _clause_switch(mp3: Path, dur: float, cfg: dict, say: str = "",
             best_frac, best_score = frac, score
     # 句子里真有逗号，但那段没测出停顿（气声、连读）时，宁可按字面位置换，
     # 也不要为了「有停顿」把换势甩到半句中间。
-    if anchor and (best_frac is None or abs(best_frac - anchor) > 0.10):
+    if anchor and anchor >= max(0.25, lo_frac + 0.10) and \
+            (best_frac is None or abs(best_frac - anchor) > 0.10):
         return anchor
     return best_frac
 
@@ -1171,9 +1236,19 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             alt_pose = (None if char_cfg.get("pose") else
                         JE._second_half_pose(char_cfg, i, total, scene, first=pose,
                                              seed=variant_seed))
-            # 体检要报「这一屏真正演过的姿势」，只记前半句会漏掉换势后的那一个
-            if gesture_audit and gesture_audit[-1]["idx"] == i:
-                gesture_audit[-1]["alt"] = alt_pose or ""
+            # 一句话里有几段就换几档，按段落的先后演；段数不够才回落到「半句」那套
+            clause_tail: list[str] = []
+            if (say and dur >= 3.6 and not char_cfg.get("pose")
+                    and not char_cfg.get("poses")
+                    and char_cfg.get("gesture_sync", True)):
+                # 一屏里同一个动作只演一次：来回弹（认可→摊手→认可）像抽搐
+                clause_tail = [pp for pp in dict.fromkeys(JE._clause_poses(say))
+                               if pp != pose][:2]
+                if clause_tail:
+                    alt_pose = clause_tail[0]
+            # 体检要报「这一屏真正演过的姿势」，只记前半句会漏掉换势后的那一个。
+            # 兜底换势也算演过，所以补位之后才记。
+            _ = None
             # 收尾那屏往往八九秒，闭眼大笑的稿撑过五秒就是贴图。先睁着眼把
             # 话说完（认可），笑点留给最后一句——情绪落在收尾，不是从头笑到尾。
             if i == total - 1 and pose == "happy" and dur >= 6.0:
@@ -1182,10 +1257,13 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             if not char_cfg.get("gesture_sync", True):
                 alt_pose = None
             # 后半句还是同一个动作，就别为了「换」而换：白做一次溶解，观众看不出来
-            if alt_pose is None and dur >= 3.2 and not char_cfg.get("poses"):
+            if (alt_pose is None and not clause_tail and dur >= 3.2
+                    and not char_cfg.get("poses")):
                 alt_pose = _fallback_alt_pose(pose)
             if alt_pose == pose:
                 alt_pose = None
+            if gesture_audit and gesture_audit[-1]["idx"] == i:
+                gesture_audit[-1]["alt"] = alt_pose or ""
             motion = _pose_motion(pose, say)
             motion_audit.append(motion.get("gain", 1.0))
             char_scene = _stage(char_cfg, i, total)
@@ -1193,7 +1271,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             beats = _beats(say, dur, i == total - 1, char_cfg,
                            mp3=mp3 if say else None)
             switch_at = 0.55
-            if alt_pose and say:
+            if alt_pose and say and not clause_tail:
                 heard = _clause_switch(mp3, dur, char_cfg, say)
                 if heard:
                     switch_at = heard
@@ -1209,7 +1287,22 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             # 一屏最多两次换势：句子中间一次、收束前一次。只换一次的话，
             # 四秒多的句子后半截身体是定住的，嘴动得再准也还是贴图。
             plan: list[tuple[float, str]] = []
-            if alt_pose:
+            if clause_tail:
+                for frac, pp, seg in _clause_plan(say, clause_tail, dur, mp3, char_cfg):
+                    # 收尾的笑别从三十一秒挂到三十五秒：只让最后一句笑
+                    if i == total - 1 and pp == "happy" and dur > 4.0:
+                        frac = max(frac, round(1.0 - 2.8 / dur, 2))
+                    if plan and frac <= plan[-1][0]:
+                        continue
+                    plan.append((frac, pp))
+                    switch_audit.append(round(frac, 2))
+                    seg_want = JE._keyword_pose(seg)
+                    gesture_audit.append({
+                        "at": round(t + dur * frac, 2), "idx": i, "pose": pp,
+                        "want": seg_want,
+                        "supported": sorted(JE._keyword_scores(seg)),
+                        "last": False})
+            elif alt_pose:
                 plan.append((switch_at, alt_pose))
                 if (dur >= 3.6 and not char_cfg.get("pose")
                         and not char_cfg.get("poses")
@@ -1223,8 +1316,10 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                                                         lo_frac=switch_at)
                             except Exception:   # noqa: BLE001 - 没音频就按位置切
                                 heard2 = None
-                        at2 = min(0.80, round(heard2 if heard2 and heard2 > switch_at + 0.15
-                                              else switch_at + 0.22, 2))
+                        at2 = round(heard2 if heard2 and heard2 > switch_at + 0.15
+                                    else switch_at + 0.22, 2)
+                        # 两次换势必须一前一后：位置算反了就等于第三次没演
+                        at2 = min(0.80, max(at2, round(switch_at + 0.15, 2)))
                         plan.append((at2, alt2))
                         switch_audit.append(at2)
                         if not char_cfg.get("poses"):

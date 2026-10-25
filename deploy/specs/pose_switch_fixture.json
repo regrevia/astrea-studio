@@ -1,0 +1,21 @@
+{
+  "engine": "timeline",
+  "template": "factcard",
+  "mode": "vertical_short",
+  "projectId": "6adc2161656a13996166bbfc",
+  "topic": "换势夹具：一句话三个停顿",
+  "kicker": "换势夹具",
+  "hook": "一句话里三个逗号",
+  "points": [
+    "先问一句::这一步为什么要抽帧::这一步为什么要抽帧？抽完才发现，原来帧间是空的。",
+    "再演一遍翻车::三条全挂，只过一条，原来是全军覆没::抽帧要抽在关键帧上；三条全挂，只过一条；原来这一版根本没跑通。"
+  ],
+  "cta": "夹具只为验证换势点，不用来发。",
+  "voice": "sami:BV405_streaming",
+  "character": {
+    "outfit": "01_sailor"
+  },
+  "narration": {
+    "intro": "夹具：一句话里三个停顿，换势要落在逗号上。"
+  }
+}
