@@ -1332,6 +1332,9 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                                                   "idx": i, "pose": alt2,
                                                   "want": want, "supported": supported,
                                                   "last": False})
+            # 审计里的 alt 要记真正会播的第二档：句读计划生效后，候选姿势已经被替换
+            if ga_base is not None:
+                ga_base["alt"] = plan[0][1] if plan else ""
             seat = 0
             for mouth, seg in beats:
                 use_pose = plan[seat - 1][1] if seat else pose
