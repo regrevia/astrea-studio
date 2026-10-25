@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import shutil
 import argparse
 import json
 import os
@@ -491,16 +493,25 @@ def _crop_frame(png: Path, workdir: Path, name: str) -> tuple[Path, int, int, in
     按不透明内容裁到最小框再当叠加层：x/y 仍用画布坐标定位，
     渲染输入小一个数量级，切片再多也不会把 ffmpeg 拖垮。
     """
-    # 缓存要带工作目录和源文件指纹：worker 是常驻进程，只按文件名缓存会让下一条
-    # 成片引用上一条运行目录里的立绘——换了服装却还是旧衣服。
+    # 缓存按「文件名 + 源图内容指纹」：worker 是常驻进程，只按文件名缓存会让
+    # 下一条成片引用上一条的立绘——换了服装还是旧衣服；只按目录又会每条都重裁。
+    # 内容一样就复用裁剪，路径不在本次目录时拷一份过来，叠加层始终落在自己的
+    # 运行目录里。
     try:
         st = png.stat()
-        key = (str(workdir), name, st.st_mtime_ns, st.st_size)
+        head = png.read_bytes()[:262144]
+        key = (name, st.st_size, hashlib.md5(head).hexdigest())
     except OSError:
-        key = (str(workdir), name, 0, 0)
+        key = (name, 0, "")
     cached = _CHAR_CROPS.get(key)
     if cached and cached[0].exists():
-        return cached
+        if cached[0].parent == workdir:
+            return cached
+        local = workdir / name
+        shutil.copy2(cached[0], local)
+        val = (local, cached[1], cached[2], cached[3])
+        _CHAR_CROPS[key] = val
+        return val
     from PIL import Image
 
     src = Image.open(png).convert("RGBA")
@@ -860,12 +871,15 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 elapsed += seg
         t += dur
 
-    # 收尾定住：最后一张卡再推一点、人物留到最后，然后才淡出
+    # 收尾定住：最后一张卡接着往前推、人物留到最后，然后才淡出。
+    # 这里不能再挂一段同图：同一张卡切成两段，缩放值从 1.0 跳回 1.015，
+    # 观众看到的是收尾前一次明显的硬跳（体检里那两条 hard_cut）。
     if cards:
-        video.append({"src": str(cards[-1]), "out": round(TAIL, 3),
-                      "zoom": [1.015, 1.05], "fade_in": 0.0,
-                      # 卡面和人物一起在最后 0.3s 收：卡先走会剩一个人站在黑底上
-                      "fade_out": round(TAIL * 0.30, 3)})
+        last = video[-1]
+        last["out"] = round(float(last["out"]) + TAIL, 3)
+        z0 = float((last.get("zoom") or [1.0, 1.0])[0])
+        last["zoom"] = [round(z0, 3), 1.05]
+        last["fade_out"] = round(TAIL * 0.30, 3)
         if last_ov is not None:
             last_ov["end"] = round(t + TAIL, 3)
             last_ov["fade"] = max(last_ov.get("fade") or 0.0,

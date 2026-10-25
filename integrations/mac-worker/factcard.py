@@ -707,7 +707,9 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
     scenes.append({
         "image": str(cta_img),
         "palette": len(PALETTES) - 1,
-        "say": str(narration.get("cta") or cta).strip(),
+        # 稿子可能写成 outro 而不是 cta：只认 cta 会把收尾那句丢掉，配音改成
+        # 卡面正文念一遍，情绪也退回默认的笑
+        "say": str(narration.get("cta") or narration.get("outro") or cta).strip(),
         # 结论句已经画在卡面上，剪映再叠一层就是重影
         "text": "",
         "no_text": True,
