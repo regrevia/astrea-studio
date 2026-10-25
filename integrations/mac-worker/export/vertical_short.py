@@ -154,6 +154,24 @@ def _block_layers(text: str, size: int, top: int, workdir: Path, prefix: str, *,
     return out
 
 
+def _hero_split(text: str) -> tuple[str, str]:
+    """正文里「开头那个数」值不值得放大成主视觉。
+
+    只在开头分句很短、又带数字时才拆：把「216 秒」提到 100 多号、「，109 段」压成
+    小字，观众一眼先拿数字再读那半句。拆不开就返回空，走原来的整段排版。
+    """
+    text = " ".join(str(text or "").split())
+    if "，" not in text:
+        return "", text
+    lead, rest = text.split("，", 1)
+    lead, rest = lead.strip(), rest.strip().lstrip("，。；,; ")
+    if not rest or not (2 <= len(lead) <= 8):
+        return "", text
+    if not any(ch.isdigit() for ch in lead):
+        return "", text
+    return lead, rest
+
+
 def _scene_accent(scene: dict, idx: int, total: int) -> tuple:
     """这一屏卡面的强调色，跟卡底色温和 HUD 同一套，别让正文亮成另一个牌子。"""
     pal = scene.get("palette")
@@ -950,10 +968,40 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             body = raw_bodies[i - 1] if 0 < i <= len(raw_bodies) else ""
             if body:
                 size, _lines, top, _bottom = factcard.body_layout(body, _measure())
-                layers += _block_layers(body, size, top, workdir, f"b{i:02d}",
-                                        align="left", left=140, max_w=factcard.W - 264,
-                                        fill=(255, 255, 255, 236),
-                                        tail_fill=(*_scene_accent(sc, i, total), 245))
+                accent = (*_scene_accent(sc, i, total), 245)
+                lead, rest = _hero_split(body)
+                if lead:
+                    # 要点屏的正文常常就是「216 秒，109 段」这种一行数据：
+                    # 字号跟标题差不多大，一屏读下来只有一句话的份量，摆六屏就像
+                    # 六张同样的卡。把开头的量化信息提成主视觉，副句退成小字，
+                    # 跟着解说念到哪，眼睛先抓数字再读那半句。
+                    big = 0
+                    for cand in range(104, 76, -6):
+                        if _measure().textlength(lead, font=factcard._font(cand)) <= factcard.W - 420:
+                            big = cand
+                            break
+                    if big:
+                        # 卡面板下沿只到 818：主视觉和副句上下叠会掉出面板外。
+                        # 改成同一行——大数字在左、副句贴着它右下角，横向占位、纵向不出界。
+                        lead_size = max(42, int(big * 0.42))
+                        lead_layers = _block_layers(lead, big, top, workdir, f"g{i:02d}",
+                                                    align="left", left=140,
+                                                    max_w=factcard.W - 264, fill=accent)
+                        layers += lead_layers
+                        right = max((l["x"] + l["w"] for l in lead_layers), default=140)
+                        for lay in _block_layers(rest, lead_size, top + int(big * 0.58),
+                                                 workdir, f"b{i:02d}", align="left",
+                                                 left=140, max_w=factcard.W - 264,
+                                                 fill=(255, 255, 255, 232)):
+                            lay["x"] = int(right + 20)
+                            layers.append(lay)
+                    else:
+                        lead = ""
+                if not lead:
+                    layers += _block_layers(body, size, top, workdir, f"b{i:02d}",
+                                            align="left", left=140, max_w=factcard.W - 264,
+                                            fill=(255, 255, 255, 236),
+                                            tail_fill=accent)
         layer_sets.append(layers)
     char_cfg = script.get("character")
     if char_cfg is True:
