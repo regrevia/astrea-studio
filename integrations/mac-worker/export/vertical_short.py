@@ -128,9 +128,11 @@ def _stage(cfg: dict, idx: int, total: int) -> dict:
     out = dict(cfg)
     # 竖屏里人物占宽太小就只是贴纸：开场到收尾都在画面 1/3 以上
     if idx == 0:
-        want = {"width": 780, "x": 452, "y": 792}
+        # 封面比正文近一档，但底边跟正文对齐：换屏时人只在原地长一点，
+        # 不会从画面上半截滑到下半截。三行标题的封面也压不到她的头
+        want = {"width": 720, "x": 500, "y": 940}
     elif idx == total - 1:
-        want = {"width": 730, "x": 460, "y": 1014}
+        want = {"width": 700, "x": 505, "y": 1014}
     else:
         # 卡底压在 1000：人物头顶再往上就穿进卡框，看着像贴纸压边
         want = {"width": 680, "x": 520, "y": 1014}
@@ -633,18 +635,21 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         })
         # 一行一行落：每行 0.12s 间隔淡入，比整屏切过去更像有人在讲
         # 叠化中段就把字提上来，否则新屏会先空 0.4 秒
-        lead = XFADE * 0.5 if i > 0 else 0.0
+        # 叠化期间上新标题，会和还没退场的旧标题叠成一团字：
+        # 标题一律从切点起淡入，旧标题在切点一并消失，中间只留半口气
+        lead = 0.06
         # 收尾定住的那一秒里字要还在，否则卡面是空的
         text_end = t + dur + (TAIL if i == total - 1 else 0.0)
         for n, layer in enumerate(text_layers):
-            at = max(0.0, t - lead + 0.10 + 0.12 * n)
+            at = max(0.0, t - lead + 0.12 * n)
             overlay.append({
                 "src": str(layer["png"]),
                 "start": round(at, 3),
                 "end": round(text_end, 3),
                 "x": float(layer["x"]), "y": float(layer["y"]),
                 "opacity": 1.0, "width": int(layer["w"]),
-                "fade": 0.30,
+                # 标题从切点淡入 0.20s：口播已经开口，字要跟上，不能再拖半拍
+                "fade": 0.20,
                 "motion": {"type": "none", "amplitude": 0.0, "period": 1.0},
             })
         if char_cfg is not None:
