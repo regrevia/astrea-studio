@@ -45,6 +45,23 @@ def characters() -> list:
         return []
 
 
+def outfits() -> list:
+    """主角能换的服装：动作齐全的排前面，只有主图的照样能选。"""
+    try:
+        import character as C
+        rows = []
+        for oid in C.list_outfits():
+            root = C.outfit_root(oid)
+            poses = root / "poses"
+            full = poses.is_dir() and sum(1 for _ in poses.glob("pose_*_open.png")) >= 5
+            rows.append({"id": oid,
+                         "label": C.OUTFIT_LABELS.get(oid, oid),
+                         "complete": bool(full)})
+        return rows
+    except Exception:  # noqa: BLE001 - 换装是可选能力
+        return []
+
+
 def snapshot(force: bool = False) -> dict:
     with _lock:
         now = time.time()
@@ -52,6 +69,7 @@ def snapshot(force: bool = False) -> dict:
             data = capabilities.capabilities()
             data["generatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%S")
             data["characters"] = characters()
+            data["outfits"] = outfits()
             _cache.update(at=now, data=data)
         return _cache["data"]
 
@@ -78,6 +96,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path in ("/inventory", "/capabilities"):
                 body = json.dumps(snapshot(), ensure_ascii=False).encode()
+                self._send(200, body)
+            elif path == "/outfits":
+                body = json.dumps({"outfits": outfits()},
+                                  ensure_ascii=False).encode("utf-8")
                 self._send(200, body)
             elif path == "/characters":
                 body = json.dumps({"characters": characters()},

@@ -240,6 +240,10 @@ export interface FactCardSpec {
   narration?: {
     intro?: string
   }
+  /** 主角服装：不传就用默认那套动作最全的。 */
+  character?: {
+    outfit?: string
+  }
 }
 
 /** 创建干货卡任务的请求体。 */
@@ -300,6 +304,13 @@ export interface CharacterInfo {
   alpha: boolean
   clips: number
   source: 'builtin' | 'custom'
+}
+
+/** 主角能换的服装：动作齐全的先把动作表用满，只有主图的照样能选。 */
+export interface OutfitInfo {
+  id: string
+  label: string
+  complete: boolean
 }
 
 /** 能力快照。 */

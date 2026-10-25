@@ -3,6 +3,7 @@ import type {
   AssistantSession,
   AssistantSessionDetail,
   CharacterInfo,
+  OutfitInfo,
   CreateFactCardRunInput,
   CreateRunResult,
   Inventory,
@@ -152,6 +153,25 @@ export async function getInventory(base = 'http://127.0.0.1:8899'): Promise<Inve
  * 可用主角清单。宿主上的 capabilities server 顺带读了
  * ~/CreatorStudio/state/characters，面板不需要知道目录结构。
  */
+/**
+ * 可用服装清单。同样来自宿主上的 capabilities server：
+ * 素材目录里多一套，面板就多一个选项。
+ */
+export async function getOutfits(base = 'http://127.0.0.1:8899'): Promise<OutfitInfo[]> {
+  try {
+    const res = await fetch(`${base}/outfits`, { cache: 'no-store' })
+    if (!res.ok) {
+      return []
+    }
+    const payload = await res.json() as { outfits?: OutfitInfo[] }
+    return Array.isArray(payload.outfits) ? payload.outfits : []
+  }
+  catch {
+    // 服务没起来就按默认服装出片，不给表单加阻塞。
+    return []
+  }
+}
+
 export async function getCharacters(base = 'http://127.0.0.1:8899'): Promise<CharacterInfo[]> {
   try {
     const res = await fetch(`${base}/characters`, { cache: 'no-store' })

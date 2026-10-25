@@ -491,7 +491,14 @@ def _crop_frame(png: Path, workdir: Path, name: str) -> tuple[Path, int, int, in
     按不透明内容裁到最小框再当叠加层：x/y 仍用画布坐标定位，
     渲染输入小一个数量级，切片再多也不会把 ffmpeg 拖垮。
     """
-    cached = _CHAR_CROPS.get(name)
+    # 缓存要带工作目录和源文件指纹：worker 是常驻进程，只按文件名缓存会让下一条
+    # 成片引用上一条运行目录里的立绘——换了服装却还是旧衣服。
+    try:
+        st = png.stat()
+        key = (str(workdir), name, st.st_mtime_ns, st.st_size)
+    except OSError:
+        key = (str(workdir), name, 0, 0)
+    cached = _CHAR_CROPS.get(key)
     if cached and cached[0].exists():
         return cached
     from PIL import Image
@@ -509,7 +516,9 @@ def _crop_frame(png: Path, workdir: Path, name: str) -> tuple[Path, int, int, in
     out = workdir / name
     crop.save(out)
     val = (out, left, top, crop.width)
-    _CHAR_CROPS[name] = val
+    if len(_CHAR_CROPS) > 512:
+        _CHAR_CROPS.clear()
+    _CHAR_CROPS[key] = val
     return val
 
 

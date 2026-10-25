@@ -281,20 +281,29 @@ def _key_green(img: Image.Image) -> Image.Image:
 
 OUTFITS_ROOT = ASSET_ROOT / "outfits"
 DEFAULT_OUTFIT = "01_sailor"
+OUTFIT_LABELS = {
+    "01_sailor": "水手裙",
+    "02_maid": "经典女仆装",
+    "03_casual": "鲸鱼卫衣休闲装",
+    "04_winter": "冬日斗篷装",
+    "05_princess": "深海公主礼服",
+}
 
 
 def list_outfits() -> list[str]:
-    """平台上能直接换的服装：根目录那套水手裙 + outfits/ 下每套。"""
-    names = [DEFAULT_OUTFIT]
+    """平台上能直接换的服装：outfits/ 下每套，没分目录时退回根目录那套。"""
+    names: list[str] = []
     if OUTFITS_ROOT.is_dir():
-        names += sorted(p.name for p in OUTFITS_ROOT.iterdir() if p.is_dir())
+        names = sorted(p.name for p in OUTFITS_ROOT.iterdir() if p.is_dir())
+    if DEFAULT_OUTFIT not in names:
+        names.insert(0, DEFAULT_OUTFIT)
     return names
 
 
 def outfit_root(outfit: str | None = None) -> Path:
-    """某套服装的素材目录；不指定就用根目录（水手裙）。"""
+    """某套服装的素材目录；没指定或那套没装，就用根目录（默认水手裙）。"""
     name = str(outfit or os.environ.get("WHALE_OUTFIT") or "").strip()
-    if name and name != DEFAULT_OUTFIT:
+    if name:
         cand = OUTFITS_ROOT / name
         if cand.is_dir():
             return cand
@@ -381,6 +390,10 @@ POSES = {
     "think": dict(pose="think", mouth="closed", eyes="open"),
     "happy": dict(pose="happy", mouth="open", eyes="closed"),
     "shrug": dict(pose="shrug", mouth="round", eyes="open"),
+    "surprise": dict(pose="surprise", mouth="open", eyes="open"),
+    "pout": dict(pose="pout", mouth="closed", eyes="open"),
+    "shy": dict(pose="shy", mouth="half", eyes="open"),
+    "approve": dict(pose="approve", mouth="open", eyes="open"),
 }
 
 

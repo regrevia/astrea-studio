@@ -7,8 +7,8 @@
  * 出片流程逐屏出卡并配音：mp4 后台渲染，草稿直接落进剪映草稿箱。
  */
 
-import type { FactCardVoice } from '@/api/production/production.types'
-import { createFactCardRun, createFactCardRunBatch } from '@/api/production/production.api'
+import type { FactCardVoice, OutfitInfo } from '@/api/production/production.types'
+import { createFactCardRun, createFactCardRunBatch, getOutfits } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,11 +18,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Clapperboard, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { checkCopy } from './copyCheck'
 import type { CopyScope, CopyWarn } from './copyCheck'
 import {
   DEFAULT_FACT_CARD_KICKER,
+  DEFAULT_FACT_CARD_OUTFIT,
   DEFAULT_FACT_CARD_POINTS,
   DEFAULT_FACT_CARD_VOICE,
   FACT_CARD_VOICE_OPTIONS,
@@ -64,6 +65,8 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
     () => Array.from({ length: DEFAULT_FACT_CARD_POINTS }, () => ''),
   )
   const [voice, setVoice] = useState<FactCardVoice>(DEFAULT_FACT_CARD_VOICE)
+  const [outfit, setOutfit] = useState(DEFAULT_FACT_CARD_OUTFIT)
+  const [outfits, setOutfits] = useState<OutfitInfo[]>([])
   const [kicker, setKicker] = useState(DEFAULT_FACT_CARD_KICKER)
   const [output, setOutput] = useState<FactCardOutput>('mp4')
   const [submitting, setSubmitting] = useState(false)
@@ -86,6 +89,18 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
     })
   }, [topic, hook, points, narration])
 
+  // 读不到清单就按默认服装出片。
+  useEffect(() => {
+    let alive = true
+    getOutfits().then((rows) => {
+      if (!alive || !rows.length)
+        return
+      setOutfits(rows)
+      setOutfit(current => rows.some(row => row.id === current) ? current : rows[0].id)
+    })
+    return () => { alive = false }
+  }, [])
+
   const projectIds = Object.keys(projects)
   // 和「新建时间轴任务」一致：没手动选项目时用列表第一个。
   const effectiveProjectId = projectIds[0] ?? ''
@@ -107,7 +122,7 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
     setError(null)
     setCreatedRunId('')
 
-    const values: FactCardFormValues = { topic, hook, points, narration, voice, kicker, output }
+    const values: FactCardFormValues = { topic, hook, points, narration, voice, outfit, kicker, output }
     const invalid = validateFactCardForm(values)
     if (invalid) {
       setError(invalid)
@@ -288,6 +303,22 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
               </SelectContent>
             </Select>
           </div>
+
+          {outfits.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="fact-card-outfit">{t('factCard.outfit')}</Label>
+              <Select value={outfit} onValueChange={setOutfit}>
+                <SelectTrigger id="fact-card-outfit">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {outfits.map(option => (
+                    <SelectItem key={option.id} value={option.id}>{option.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="fact-card-output">{t('factCard.output')}</Label>

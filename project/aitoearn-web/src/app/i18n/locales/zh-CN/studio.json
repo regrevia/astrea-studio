@@ -60,6 +60,7 @@
       "female": "甜美解说（女声）",
       "male": "解说小帅（男声）"
     },
+    "outfit": "服装",
     "kicker": "系列名",
     "kickerHint": "显示在卡面左上角。",
     "submit": "一键出片",

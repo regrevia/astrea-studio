@@ -60,6 +60,7 @@
       "female": "Sweet narration (female)",
       "male": "Narrator Xiaoshuai (male)"
     },
+    "outfit": "Outfit",
     "kicker": "Series name",
     "kickerHint": "Shown at the top left of every card.",
     "submit": "Generate video",

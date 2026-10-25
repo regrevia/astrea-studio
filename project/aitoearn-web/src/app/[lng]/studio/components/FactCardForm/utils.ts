@@ -7,6 +7,8 @@ export const FACT_CARD_VOICE_OPTIONS: Array<{ value: FactCardVoice, labelKey: st
 ]
 
 export const DEFAULT_FACT_CARD_VOICE: FactCardVoice = 'sami:BV405_streaming'
+/** 默认服装：水手裙，动作表情最全的一套。 */
+export const DEFAULT_FACT_CARD_OUTFIT = '01_sailor'
 export const DEFAULT_FACT_CARD_KICKER = '大模型面试题'
 /** 收尾口播：表单不暴露 cta，用固定收尾保证片子结构完整。 */
 export const DEFAULT_FACT_CARD_CTA = '记住这几条，面试能答到点上。下一题想看什么，评论区说'
@@ -26,6 +28,7 @@ export interface FactCardFormValues {
   /** 口播稿：一行一屏。 */
   narration: string
   voice: FactCardVoice // ui-copy-ignore
+  outfit: string // ui-copy-ignore
   kicker: string // ui-copy-ignore
   output: FactCardOutput // ui-copy-ignore
 }
@@ -151,6 +154,7 @@ export function buildFactCardSpec(values: FactCardFormValues): FactCardSpec {
     points: buildFactCardPoints(values.points, narration?.points),
     cta: cta || DEFAULT_FACT_CARD_CTA,
     voice: values.voice, // ui-copy-ignore
+    ...(vertical && values.outfit ? { character: { outfit: values.outfit } } : {}),
     kicker: values.kicker.trim() || DEFAULT_FACT_CARD_KICKER,
     ...(intro ? { narration: { intro } } : {}),
   }
