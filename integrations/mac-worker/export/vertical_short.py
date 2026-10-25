@@ -238,6 +238,11 @@ _POSE_MOTION = {
     "point": {"type": "bob", "amplitude": 5.0, "period": 2.6},
     "think": {"type": "sway", "amplitude": 2.0, "period": 3.4},
     "shrug": {"type": "sway", "amplitude": 1.5, "period": 3.0},
+    # 情绪姿态也得有自己的动幅：掉进 idle 的默认起伏，惊讶和赌气看起来像在发呆
+    "surprise": {"type": "bob", "amplitude": 10.0, "period": 1.7},
+    "pout": {"type": "sway", "amplitude": 2.4, "period": 2.8},
+    "shy": {"type": "sway", "amplitude": 2.0, "period": 3.2},
+    "approve": {"type": "bob", "amplitude": 7.0, "period": 2.2},
     "idle": {"type": "bob", "amplitude": 6.0, "period": 2.4},
 }
 
@@ -305,18 +310,24 @@ def _gesture_summary(audit: list[dict], switches: list[float] | None = None,
 def _pose_motion(pose: str, say: str = "") -> dict:
     """动作幅度跟着语气走：问句摆得活一点，下结论收稳一点。"""
     motion = dict(_POSE_MOTION.get(pose, _POSE_MOTION["idle"]))
-    text = str(say or "")
+    text = str(say or "").strip()
     gain = 1.0
     if "？" in text or "?" in text:
         gain += 0.22
     if "！" in text or "!" in text:
         gain += 0.15
-    if text.rstrip().endswith(("。", ".")) and not any(m in text for m in "？?！!"):
+    # 句子长短本身就是节奏：短句是抛出来的，动作要脆；长句在铺陈，动作得收。
+    # 只看句末标点的话，一整片全是句号，五屏动作幅度一模一样，像按节拍器摆。
+    body = len(text.rstrip("。.？！!?"))
+    if body <= 10:
+        gain += 0.12
+    elif body >= 20:
+        gain -= 0.08
+    if text.endswith(("。", ".")) and not any(m in text for m in "？?！!"):
         gain -= 0.10
     gain = round(min(1.3, max(0.85, gain)), 3)
-    if gain != 1.0:
-        motion["amplitude"] = round(float(motion["amplitude"]) * gain, 2)
-        motion["period"] = round(float(motion["period"]) / (gain if gain > 1 else 1.0), 3)
+    motion["amplitude"] = round(float(motion["amplitude"]) * gain, 2)
+    motion["period"] = round(float(motion["period"]) / gain, 3)
     motion["gain"] = gain
     return motion
 
