@@ -203,7 +203,8 @@ def _blink_times(dur: float, cfg: dict, idx: int) -> list[float]:
     seed = zlib.crc32(f"blink{idx}".encode()) % 1000 / 1000.0
     out: list[float] = []
     at = 0.9 + seed * 0.9
-    while at < dur - 0.35:
+    # 收在换屏前 0.5s 之外：眨眼段自带淡入，压在切点上就是人物先淡掉再冒出来
+    while at < dur - 0.50:
         out.append(round(at, 3))
         at += 2.6 + (1.2 * seed if len(out) % 2 else 1.2 * (1 - seed))
     return out
@@ -543,7 +544,13 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             layers = (_block_layers(str(label), 48, 592, workdir, f"l{i:02d}",
                                     align="center", left=124, max_w=center_w,
                                     fill=(255, 255, 255, 168)) if str(label).strip() else [])
-            cta_size = 84 if len(cta_text) <= 13 else 72
+            # 收尾那句要一行读完：掉到第二行只剩半行，读起来像没排完
+            draw = _measure()
+            cta_size = 84
+            for size in (84, 78, 72, 66, 60, 56):
+                cta_size = size
+                if draw.textlength(cta_text, font=factcard._font(size)) <= center_w:
+                    break
             layers += _block_layers(cta_text, cta_size, 700, workdir, f"h{i:02d}",
                                     align="center", left=124, max_w=center_w,
                                     fill=(255, 255, 255, 236))
@@ -569,6 +576,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     # 下一屏的卡面会盖住上一屏还没收走的人物，叠化中段就成了「人物凭空消失」
     bg_overlay: list[dict] = []
     card_overlays: list[dict] = []
+    char_ovs: list[dict] = []
     last_ov = None
     t = 0.0
     for i, (scene, card) in enumerate(zip(scenes, cards)):
@@ -694,19 +702,19 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                     head = s_at == 0.0
                     if head and i == 0:
                         start = max(0.0, start - FADE)
-                    elif head:
-                        # 人物只在换屏前 0.1s 露面：跟着整屏叠化一起提前 0.2s 上来，
-                        # 两个立绘会在叠化中段并排站成一对重影
-                        start = max(0.0, start - 0.10)
-                        if last_ov is not None:
-                            # 上一屏立绘撑到新立绘露面为止：叠化中段留个空档，
-                            # 人物就是「消失了又冒出来」，比两个立绘重叠更像故障
-                            last_ov["end"] = round(max(float(last_ov["end"]),
-                                                       start), 3)
-                            last_ov["fade"] = max(float(last_ov.get("fade") or 0.0), 0.18)
+                    elif head and char_ovs:
+                        # 人物一直接到切点：上一屏最后一帧撑到 t，下一屏从 t 淡入。
+                        # 提前露面会在叠化中段并排站成一对重影，提前收场则是消失又冒出来。
+                        prev_char = char_ovs[-1]
+                        prev_char["end"] = round(max(float(prev_char["end"]), t), 3)
+                        prev_char["fade"] = 0.0
                     fade_in = FADE if head else 0.0
                     if head and i > 0:
-                        fade_in = max(fade_in, 0.25)
+                        # 上一屏人物撑到切点，新人物在切点整幅出现：中间留半拍透明，
+                        # 就是「人闪了一下」。卡面在这里已经换完，人物硬切反而像一次换镜
+                        fade_in = 0.0
+                    if head and i > 0 and start > t:
+                        start = t
                     fade_out = FADE if (i == total - 1 and end >= t + dur - 1e-6) else 0.0
                     ov = {
                         "src": str(frame),
@@ -730,6 +738,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                         prev_ov["end"] = round(start + 0.15, 3)
                         prev_ov["fade"] = max(prev_ov["fade"], 0.15)
                     overlay.append(ov)
+                    char_ovs.append(ov)
                     prev_ov, prev_pose = ov, use_pose
                     last_ov = ov
                 elapsed += seg
@@ -739,11 +748,12 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     if cards:
         video.append({"src": str(cards[-1]), "out": round(TAIL, 3),
                       "zoom": [1.015, 1.05], "fade_in": 0.0,
-                      "fade_out": round(TAIL * 0.55, 3)})
+                      # 卡面和人物一起在最后 0.3s 收：卡先走会剩一个人站在黑底上
+                      "fade_out": round(TAIL * 0.30, 3)})
         if last_ov is not None:
             last_ov["end"] = round(t + TAIL, 3)
             last_ov["fade"] = max(last_ov.get("fade") or 0.0,
-                                  round(TAIL * 0.55, 3))
+                                  round(TAIL * 0.30, 3))
         t += TAIL
 
     return {
