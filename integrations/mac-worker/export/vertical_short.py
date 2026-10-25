@@ -1157,7 +1157,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                                       "want": want, "supported": supported,
                                       "last": i == total - 1})
             alt_pose = (None if char_cfg.get("pose") else
-                        JE._second_half_pose(char_cfg, i, total, scene))
+                        JE._second_half_pose(char_cfg, i, total, scene, first=pose))
             # 体检要报「这一屏真正演过的姿势」，只记前半句会漏掉换势后的那一个
             if gesture_audit and gesture_audit[-1]["idx"] == i:
                 gesture_audit[-1]["alt"] = alt_pose or ""

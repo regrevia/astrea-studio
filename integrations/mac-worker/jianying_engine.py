@@ -740,7 +740,7 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
             scene = item.get("scene") or {}
             pose = str(char_cfg.get("pose") or _scene_pose(char_cfg, idx, len(plan), scene))
             alt_pose = (None if char_cfg.get("pose") else
-                        _second_half_pose(char_cfg, idx, len(plan), scene))
+                        _second_half_pose(char_cfg, idx, len(plan), scene, first=pose))
             speaking = bool(item["audio"])
             # 说话就按拍点切成几段不同口型，一屏一个定格看着像贴图
             beats: list[tuple[str, float, float]] = []
@@ -976,7 +976,7 @@ def _third_pose(cfg: dict[str, Any], idx: int, total: int,
 
 
 def _second_half_pose(cfg: dict[str, Any], idx: int, total: int,
-                      scene: dict[str, Any]) -> str | None:
+                      scene: dict[str, Any], first: str = "") -> str | None:
     """一句话里换了话题就换手势：前半句思考、后半句给结论，比整屏一个姿势像在演。
 
     只在句读后还剩下实质内容时切换，短句硬切反而像卡顿。
@@ -994,7 +994,9 @@ def _second_half_pose(cfg: dict[str, Any], idx: int, total: int,
     base_want = _keyword_pose(say)
     # 只有两半句的语义真的不同才换：后半句在说另一件事，动作跟着变；
     # 整句一个意思时换来换去只是抽搐。
-    if tail_want and tail_want != base_want:
+    # first 是前半句真正演的那个姿势：它可能因为「别跟前两屏撞」被换过，
+    # 所以换势要躲开 first，而不是躲开整句的 want。
+    if tail_want and tail_want != base_want and tail_want != first:
         return tail_want
     # 后半句没有自己的关键词时，不能就此定格一整屏。从这句话本身已经
     # 命中过的动作里挑一个分数接近、但和前半句不同的换上去：两种动作都有
@@ -1005,7 +1007,9 @@ def _second_half_pose(cfg: dict[str, Any], idx: int, total: int,
         return None
     # 只在「讲解类」动作里换：开心/挥手是情绪和礼数，一句批评话里换成笑脸就假了
     for name, score in sorted(scores.items(), key=lambda kv: -kv[1]):
-        if name == base_want or name in ("happy", "wave") or float(score) <= 0:
+        # 只躲「前半句正在演的那个」：整句 want 本身也是候选，前半句让位演了
+        # 次优线索时，后半句回到整句的重心，正好是一句话里的态度转折。
+        if name == first or name in ("happy", "wave") or float(score) <= 0:
             continue
         if float(score) >= top * 0.55:
             return name
