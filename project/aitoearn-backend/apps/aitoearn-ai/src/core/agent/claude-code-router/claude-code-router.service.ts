@@ -1,4 +1,5 @@
 import type { FSWatcher } from 'node:fs'
+import { connect } from 'node:net'
 import { ChildProcess, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, unlinkSync, watch, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -51,6 +52,9 @@ export class ClaudeCodeRouterService implements OnModuleInit, OnModuleDestroy {
   private readonly configDir = join(this.sessionDir, '.claude-code-router')
   private readonly configPath = join(this.configDir, 'config.json')
   private readonly pidFilePath = join(this.sessionDir, '.claude-code-router.pid')
+  private readonly routerPort = 3456
+  private restartTimer: NodeJS.Timeout | null = null
+  private rapidExits = 0
 
   async onModuleInit() {
     const routerConfig = config.agent
@@ -60,11 +64,49 @@ export class ClaudeCodeRouterService implements OnModuleInit, OnModuleDestroy {
 
     this.startFileWatcher()
     this.generateConfigFile(routerConfig)
+
+    // 上一次 pm2 reload 留下的路由器还在监听，就复用它：再起一个只会因为端口
+    // 被占而立刻退出，然后被无间隔重启，日志刷屏、CPU 打满。
+    if (await this.isRouterServing()) {
+      this.logger.warn(`Claude Code Router 已在 ${this.routerPort} 端口运行，直接复用`)
+      return
+    }
     this.startChildProcess(cliPath)
+  }
+
+  /** 端口已经有人应答就认为路由器活着，不必再起一个。 */
+  private isRouterServing(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const socket = connect({ host: '127.0.0.1', port: this.routerPort })
+      const done = (alive: boolean) => {
+        socket.removeAllListeners()
+        socket.destroy()
+        resolve(alive)
+      }
+      socket.setTimeout(800, () => done(false))
+      socket.once('connect', () => done(true))
+      socket.once('error', () => done(false))
+    })
+  }
+
+  private scheduleRestart(cliPath: string, delayMs: number) {
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer)
+    }
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null
+      this.startChildProcess(cliPath)
+    }, delayMs)
+    this.restartTimer.unref()
   }
 
   async onModuleDestroy() {
     this.shouldRestart = false
+
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer)
+      this.restartTimer = null
+    }
 
     if (this.fileWatcher) {
       this.fileWatcher.close()
@@ -119,6 +161,7 @@ export class ClaudeCodeRouterService implements OnModuleInit, OnModuleDestroy {
 
   private startChildProcess(cliPath: string) {
     this.logger.debug('正在启动 Claude Code Router 子进程...')
+    const startedAt = Date.now()
 
     this.childProcess = spawn('node', [cliPath, 'start'], {
       cwd: this.sessionDir,
@@ -146,10 +189,22 @@ export class ClaudeCodeRouterService implements OnModuleInit, OnModuleDestroy {
       }
       this.childProcess = null
 
-      if (this.shouldRestart) {
-        this.logger.debug('正在重启 Claude Code Router...')
-        this.startChildProcess(cliPath)
+      if (!this.shouldRestart) {
+        return
       }
+      if (Date.now() - startedAt < 5000) {
+        this.rapidExits += 1
+        const delay = Math.min(60_000, 1000 * 2 ** Math.min(this.rapidExits, 6))
+        this.logger.warn(
+          `Claude Code Router 启动后 ${Date.now() - startedAt}ms 就退出，`
+          + `${delay}ms 后重试（连续第 ${this.rapidExits} 次）`,
+        )
+        this.scheduleRestart(cliPath, delay)
+        return
+      }
+      this.rapidExits = 0
+      this.logger.debug('正在重启 Claude Code Router...')
+      this.scheduleRestart(cliPath, 500)
     })
 
     this.childProcess.on('error', (error) => {
