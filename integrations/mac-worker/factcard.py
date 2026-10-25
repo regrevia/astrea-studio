@@ -460,12 +460,19 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
 
 def render_glow(path: Path, *, palette_idx: int, alpha: int = 54) -> Path:
     """一块透明柔光，用来让素底在推近之外还有东西在动（静止 2 秒就是 PPT）。"""
+    import numpy as np
     from PIL import Image
 
     _top, _bottom, accent = PALETTES[palette_idx % len(PALETTES)]
     size = 1100
-    mask = Image.radial_gradient("L").resize((size, size))
-    mask = mask.point(lambda v: max(0, int(alpha * (1 - v / 255))))
+    # 圆形衰减自己算：PIL 的 radial_gradient 把四角当最远点，正方形四条边的
+    # 中点还留着半透明，贴上屏幕就是一块看得见直边的方斑。亮斑只铺到半径的
+    # 92%，外面一定全透明。
+    n = 512
+    yy, xx = np.mgrid[0:n, 0:n]
+    r = np.hypot(xx - (n - 1) / 2, yy - (n - 1) / 2) / ((n - 1) / 2)
+    alpha_map = (np.clip(1.0 - r / 0.92, 0.0, 1.0) ** 2.2 * alpha).astype(np.uint8)
+    mask = Image.fromarray(alpha_map, "L").resize((size, size), Image.LANCZOS)
     img = Image.new("RGBA", (size, size), (*accent, 0))
     img.putalpha(mask)
     path.parent.mkdir(parents=True, exist_ok=True)

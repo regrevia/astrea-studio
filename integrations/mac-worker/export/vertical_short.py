@@ -654,16 +654,26 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 "fade": XFADE, "fade_mode": "in",
                 "motion": {"type": "none", "amplitude": 0.0, "period": 1.0},
             })
-        if i == 0:
-            # 封面没有大块图形，只剩 7% 推近：加一块会横移的柔光，
-            # 画面才有呼吸，不至于推近到一半看着像截图
-            glow = factcard.render_glow(workdir / "glow0.png", palette_idx=0)
+        # 每屏一块会横移的柔光：整屏推近 7% 在 4fps 体检里几乎不动，
+        # 一秒没变化就是一帧定格。光在呼吸，画面才一直在活。
+        glow_idx = i if i not in (0, total - 1) else (0 if i == 0 else len(factcard.PALETTES) - 1)
+        glow_start = round(0.0 if i == 0 else max(0.0, t - XFADE), 3)
+        glow_end = round(t + dur + (TAIL if i == total - 1 else 0.0), 3)
+        # 一横一竖两块光各走一条轴：只用一块正弦光，转过极值那半秒
+        # 整屏像素几乎不动，体检照样判定格。
+        for k, (alpha, amp, per, gx, gy, axis) in enumerate((
+            (64, 84.0 + 20.0 * (i % 3), 5.2 + 0.9 * (i % 2), -10.0, 380.0, "sway"),
+            (40, 62.0 + 16.0 * ((i + 1) % 3), 3.7 + 0.8 * (i % 2), -220.0, 700.0, "bob"),
+        )):
+            glow = factcard.render_glow(workdir / f"glow{i:02d}{k}.png",
+                                        palette_idx=glow_idx, alpha=alpha)
             bg_overlay.append({
-                "src": str(glow), "start": 0.0,
-                "end": round(t + dur + (TAIL if i == total - 1 else 0.0), 3),
-                "x": -10.0, "y": 520.0, "opacity": 1.0, "width": 1100,
-                "fade": 0.0,
-                "motion": {"type": "sway", "amplitude": 52.0, "period": 5.2},
+                "src": str(glow), "start": glow_start, "end": glow_end,
+                "x": gx if i % 2 == 0 else -gx - 90.0,
+                "y": gy if i % 2 == 0 else gy + 120.0,
+                "opacity": 1.0, "width": 1100,
+                "fade": 0.0 if i == 0 else XFADE,
+                "motion": {"type": axis, "amplitude": amp, "period": per},
             })
         # 界面层：kicker / 进度条 / 角标。整屏叠化的那 0.4s 里，
         # 卡面和人物在融，这两样必须一动不动，否则就是两层字压在一起。

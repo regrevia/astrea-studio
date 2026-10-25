@@ -16,8 +16,22 @@ function readToken() {
 }
 
 ;(async () => {
-  const { chromium } = require('playwright')
-  const browser = await chromium.launch({ headless: true })
+  // 机器上装了 Chrome 就不必再拉一份 Chromium：playwright-core + 系统浏览器
+  // 也能无头跑，装包体积从几百 MB 降到几 MB。
+  let pw
+  try {
+    pw = require('playwright')
+  } catch {
+    pw = require('playwright-core')
+  }
+  const launchOpts = { headless: true }
+  try {
+    await pw.chromium.launch({ ...launchOpts, channel: 'chrome' }).then((b) => b.close())
+  } catch {
+    launchOpts.executablePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  }
+  const { chromium } = pw
+  const browser = await chromium.launch(launchOpts)
   const context = await browser.newContext({
     viewport: { width: 1440, height: 1200 },
     locale: 'zh-CN',
