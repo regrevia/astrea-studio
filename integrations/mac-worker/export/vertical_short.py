@@ -489,6 +489,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         logo=logo,
         out_dir=workdir,
         draw_text=False,
+        # 界面层单独贴：卡面要推近、要叠化，HUD 跟着缩放就会在转场里重影
+        hud=False,
     )
     scenes = spec["scenes"]
     total = len(scenes)
@@ -517,13 +519,14 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             # 分隔线就孤零零挂在正文底下，像没删干净的版式零件
             card = factcard.render_card(
                 workdir / "cover.png", kicker=kicker, index="", palette_idx=0,
-                progress=0, total=total, slug="cover", plain=True, draw_body=False)
+                progress=0, total=total, slug="cover", plain=True, draw_body=False,
+                hud=False)
         if i == total - 1 and not script.get("cta_card"):
             # 收尾空卡 + 一句飘着的字，最容易读成「没做完」：给收尾也铺一块卡面
             card = factcard.render_card(
                 workdir / f"cta{i:02d}.png", kicker=kicker, index="",
                 palette_idx=len(factcard.PALETTES) - 1, progress=total - 1,
-                total=total, slug="cta", hook=False, draw_body=False)
+                total=total, slug="cta", hook=False, draw_body=False, hud=False)
         cards.append(card)
         if i == 0:
             # 封面：标题靠左压在进度条下，人物占右下，两者拼成一条对角线
@@ -562,6 +565,10 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         char_cfg = {}
 
     video, overlay, audio = [], [], []
+    # 换屏的整屏卡面必须压在所有文字/人物之下：按场景顺序 append 的话，
+    # 下一屏的卡面会盖住上一屏还没收走的人物，叠化中段就成了「人物凭空消失」
+    bg_overlay: list[dict] = []
+    card_overlays: list[dict] = []
     last_ov = None
     t = 0.0
     for i, (scene, card) in enumerate(zip(scenes, cards)):
@@ -583,7 +590,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         })
         # 上一屏末尾把下一张卡整幅叠化上来：两屏之间是融过去的，不是切过去的
         if i > 0:
-            overlay.append({
+            card_overlays.append({
                 "src": str(cards[i]),
                 "start": round(max(0.0, t - XFADE), 3),
                 "end": round(t, 3),
@@ -591,6 +598,31 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 "fade": XFADE, "fade_mode": "in",
                 "motion": {"type": "none", "amplitude": 0.0, "period": 1.0},
             })
+        if i == 0:
+            # 封面没有大块图形，只剩 7% 推近：加一块会横移的柔光，
+            # 画面才有呼吸，不至于推近到一半看着像截图
+            glow = factcard.render_glow(workdir / "glow0.png", palette_idx=0)
+            bg_overlay.append({
+                "src": str(glow), "start": 0.0,
+                "end": round(t + dur + (TAIL if i == total - 1 else 0.0), 3),
+                "x": -10.0, "y": 520.0, "opacity": 1.0, "width": 1100,
+                "fade": 0.0,
+                "motion": {"type": "sway", "amplitude": 52.0, "period": 5.2},
+            })
+        # 界面层：kicker / 进度条 / 角标。整屏叠化的那 0.4s 里，
+        # 卡面和人物在融，这两样必须一动不动，否则就是两层字压在一起。
+        hud_idx = 0 if i == 0 else (len(factcard.PALETTES) - 1 if i == total - 1 else i)
+        hud_png = factcard.render_hud(
+            workdir / f"hud{i:02d}.png", kicker=kicker, progress=i, total=total,
+            palette_idx=hud_idx)
+        overlay.append({
+            "src": str(hud_png),
+            "start": round(t, 3),
+            "end": round(t + dur + (TAIL if i == total - 1 else 0.0), 3),
+            "x": 0.0, "y": 0.0, "width": int(spec["width"]),
+            "opacity": 1.0, "fade": 0.0,
+            "motion": {"type": "none", "amplitude": 0.0, "period": 1.0},
+        })
         # 一行一行落：每行 0.12s 间隔淡入，比整屏切过去更像有人在讲
         # 叠化中段就把字提上来，否则新屏会先空 0.4 秒
         lead = XFADE * 0.5 if i > 0 else 0.0
@@ -663,8 +695,15 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                     if head and i == 0:
                         start = max(0.0, start - FADE)
                     elif head:
-                        # 人物跟着叠化一起露面，别在换屏瞬间凭空出现
-                        start = max(0.0, start - lead)
+                        # 人物只在换屏前 0.1s 露面：跟着整屏叠化一起提前 0.2s 上来，
+                        # 两个立绘会在叠化中段并排站成一对重影
+                        start = max(0.0, start - 0.10)
+                        if last_ov is not None:
+                            # 上一屏立绘撑到新立绘露面为止：叠化中段留个空档，
+                            # 人物就是「消失了又冒出来」，比两个立绘重叠更像故障
+                            last_ov["end"] = round(max(float(last_ov["end"]),
+                                                       start), 3)
+                            last_ov["fade"] = max(float(last_ov.get("fade") or 0.0), 0.18)
                     fade_in = FADE if head else 0.0
                     if head and i > 0:
                         fade_in = max(fade_in, 0.25)
@@ -710,7 +749,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     return {
         "canvas": {"width": spec["width"], "height": spec["height"], "fps": spec["fps"]},
         "video": video,
-        "overlay": overlay,
+        "overlay": bg_overlay + card_overlays + overlay,
         "audio": audio,
         "assetBase": str(workdir),
         "meta": {"engine": "vertical_short", "duration": round(t, 3),

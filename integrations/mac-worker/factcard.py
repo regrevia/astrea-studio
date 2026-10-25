@@ -275,10 +275,12 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
     overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay, "RGBA")
 
-    # 网格点
+    # 网格点：素底开场没有大块图形，推近时浮点太淡就等于画面定格
+    dot_alpha = 46 if plain else 18
     for y in range(TOP_SAFE, H - BOTTOM_SAFE, 60):
         for x in range(80, W - 80, 60):
-            draw.ellipse((x - 1, y - 1, x + 1, y + 1), fill=(255, 255, 255, 18))
+            draw.ellipse((x - 1, y - 1, x + 1, y + 1),
+                         fill=(255, 255, 255, dot_alpha))
 
     if plain:
         # 开场是素底：原来那条斜切色块正压在立绘身上，像一块没对齐的板。
@@ -288,6 +290,10 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
         patch = Image.new("RGBA", (1080, 1080), (*accent, 0))
         patch.putalpha(glow)
         overlay.alpha_composite(patch, (0, 240))
+        # 一圈很大的细环：推近 7% 时它在动，观众才觉得画面是活的而不是一张图
+        for rad, alpha in ((720, 30), (560, 22)):
+            draw.ellipse((W // 2 - rad, 760 - rad, W // 2 + rad, 760 + rad),
+                         outline=(255, 255, 255, alpha), width=3)
     measure = ImageDraw.Draw(overlay)
     body_size, body_lines, body_top, card_bottom = (
         body_layout(body, measure, top=body_top) if body else (BODY_SIZE, [], body_top, 1000))
@@ -373,6 +379,21 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
     Image.alpha_composite(img, overlay).convert("RGB").save(path, "PNG")
     return path
 
+
+
+def render_glow(path: Path, *, palette_idx: int, alpha: int = 54) -> Path:
+    """一块透明柔光，用来让素底在推近之外还有东西在动（静止 2 秒就是 PPT）。"""
+    from PIL import Image
+
+    _top, _bottom, accent = PALETTES[palette_idx % len(PALETTES)]
+    size = 1100
+    mask = Image.radial_gradient("L").resize((size, size))
+    mask = mask.point(lambda v: max(0, int(alpha * (1 - v / 255))))
+    img = Image.new("RGBA", (size, size), (*accent, 0))
+    img.putalpha(mask)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(path, "PNG")
+    return path
 
 
 def render_hud(path: Path, *, kicker: str, progress: int, total: int,
