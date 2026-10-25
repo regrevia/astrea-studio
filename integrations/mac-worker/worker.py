@@ -454,7 +454,10 @@ class Worker:
                     logo=Path(str(spec_obj["logo"])).expanduser() if spec_obj.get("logo") else None,
                 )
             except Exception as exc:
-                raise TimelineError(f"竖屏脚本展开失败: {exc}") from None
+                # 平台把 lastError 原样显示给写稿的人：「脚本展开失败」是内部说法，
+                # 留在日志里就够了，回给界面的应该是要改什么。
+                log.error("vertical script expand failed: %s", exc)
+                raise TimelineError(str(exc)) from None
             spec_path = workdir / "spec.json"
             spec_path.write_text(json.dumps(built, ensure_ascii=False, indent=2), encoding="utf-8")
             src_spec = built
