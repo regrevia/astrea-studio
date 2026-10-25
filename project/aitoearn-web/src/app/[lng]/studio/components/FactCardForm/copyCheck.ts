@@ -105,9 +105,18 @@ export function checkCopy(input: {
   const hook = squash(input.hook || '')
   const topic = squash(input.topic || '')
   const cta = squash(input.cta || '')
-  const parsed = (input.points || []).map(splitPoint)
-  const bodies = parsed.map(([title, body]) => squash(body || title))
   const spoken = (input.narration || []).map(squash).filter(Boolean)
+  // 口播稿按占位约定对齐到要点：写满 = 开场 + 每点一句 + 收尾，只写要点 = 每点一句。
+  // 不对齐，回声判据就只能拿全篇口播比，同一句话换个说法照样过。
+  const lines = spoken.filter(Boolean)
+  const paired = lines.length === (input.points || []).length + 2
+    ? lines.slice(1, -1)
+    : lines.length === (input.points || []).length ? lines : []
+  const parsed = (input.points || []).map((raw, i) => {
+    const [title, body, said] = splitPoint(raw)
+    return [title, body, said || paired[i] || ''] as [string, string, string]
+  })
+  const bodies = parsed.map(([title, body]) => squash(body || title))
 
   const scoped: Array<[CopyScope, string, number | undefined]> = [
     ['hook', hook, undefined],

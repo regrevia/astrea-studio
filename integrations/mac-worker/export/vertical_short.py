@@ -718,18 +718,36 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     }
 
 
+def _narration_dict(narr, n_points: int) -> dict:
+    """口播稿两种形态：结构化 dict，或表单里的多行文本框（一行一说）。"""
+    if isinstance(narr, str):
+        lines = [x.strip() for x in narr.splitlines() if x.strip()]
+        full = len(lines) == n_points + 2
+        return {"intro": lines[0] if full and lines else "",
+                "points": lines[1:-1] if full else lines,
+                "outro": lines[-1] if full and lines else ""}
+    return narr if isinstance(narr, dict) else {}
+
+
 def _copy_report(script: dict) -> dict | None:
     """竖屏这条链路也要体检文案：写稿的人看的是同一个结论。"""
     try:
         from copy_check import check_copy
     except Exception:  # noqa: BLE001
         return None
-    narr = script.get("narration")
-    narr = narr if isinstance(narr, dict) else {}
+    narr = _narration_dict(script.get("narration"), len(script.get("points") or []))
     pts = [str(x) for x in (script.get("points") or [])]
     says = [x.split("::")[2] if x.count("::") >= 2 else "" for x in pts]
     spoken = [str(narr.get("intro") or "")] if narr.get("intro") else []
     fallback = [str(x) for x in (narr.get("points") or [])]
+    # 平台表单只填「标题::卡面正文」，口播稿另在 narration 里。不按序号拼成三段，
+    # 回声判据就退化成拿全篇口播去比：同一句话换个说法照样过。
+    if fallback and says != fallback:
+        merged = []
+        for i, raw in enumerate(pts):
+            say = says[i] if i < len(says) and says[i] else (fallback[i] if i < len(fallback) else "")
+            merged.append(raw if (not say or raw.count("::") >= 2) else f"{raw}::{say}")
+        pts = merged
     spoken += [x for x in (says or fallback) if x]
     if narr.get("cta"):
         spoken.append(str(narr["cta"]))
