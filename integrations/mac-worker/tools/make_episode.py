@@ -112,7 +112,9 @@ def apply_narration(points: list[str], lines: list[str],
     elif len(keeps) == n:
         body = keeps
     else:
-        raise SystemExit(f"口播稿行数不对：{len(keeps)} 行，需要 {n} 行或 {n + 2} 行")
+        # 抛 ValueError 而不是 SystemExit：SystemExit 不是 Exception，
+        # worker 的 except 抓不到，一条行数写错的稿子能把整个 worker 带走。
+        raise ValueError(f"口播稿行数不对：{len(keeps)} 行，需要 {n} 行或 {n + 2} 行")
     merged = []
     for raw, say in zip(points, body):
         head = str(raw).split("::")[:2]
@@ -205,7 +207,11 @@ def main(argv: list[str]) -> int:
         spec_in["logo"] = args.logo
     if args.narration:
         lines = Path(args.narration).read_text(encoding="utf-8").splitlines()
-        spec_in["points"], narration = apply_narration(args.point, lines)
+        try:
+            spec_in["points"], narration = apply_narration(args.point, lines)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
         if narration:
             spec_in["narration"] = narration
     one(spec_in, args)
