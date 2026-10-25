@@ -67,23 +67,43 @@ function readToken() {
   const submit = page.getByRole('button', { name: '一键出片' })
   await submit.waitFor({ state: 'visible', timeout: 45000 })
 
-  // 字段按 id 定位：占位符是提示文案，改一句文案脚本就断了
-  await page.fill('#fact-card-topic', 'KV Cache 是什么')
-  await page.fill('#fact-card-kicker', '显存不够时')
-  await page.fill('#fact-card-hook', '显存不够时，它替你续命')
-  await page.fill('#fact-card-narration', [
+  // --envoy：用 envoy_intro.json 的真实文案走界面，验证「不碰 spec 也能出这条片」
+  const ENVOY = process.argv.includes('--envoy')
+  let topic = 'KV Cache 是什么'
+  let kicker = '显存不够时'
+  let hook = '显存不够时，它替你续命'
+  let narr = [
     '先说结论。它不是技巧。',
     '它只记得 K 和 V，别的一概不留。',
     '代价很直白。缓存越长越占卡，你也躲不掉。',
     '所以先跑一遍 prefill，把缓存铺好再开跑。',
     '你选省显存，还是省时间？',
-  ].join('\n'))
-  // 卡面只落结论、口播另写一句：两处写一样的话，读卡就等于听完了。
-  const lines = [
+  ]
+  let lines = [
     '只留 K 和 V::Q 用完就扔',
     '记住换速度::越长越吃显存',
     '先铺缓存::prefill 先跑一遍',
   ]
+  if (ENVOY) {
+    const spec = JSON.parse(fs.readFileSync(path.join(__dirname, 'specs/envoy_intro.json'), 'utf8')).spec
+    topic = spec.topic
+    kicker = spec.kicker
+    hook = spec.hook
+    narr = [spec.narration.intro, ...spec.narration.points, spec.narration.outro]
+    lines = spec.points
+  }
+  // 字段按 id 定位：占位符是提示文案，改一句文案脚本就断了
+  await page.fill('#fact-card-topic', topic)
+  await page.fill('#fact-card-kicker', kicker)
+  await page.fill('#fact-card-hook', hook)
+  await page.fill('#fact-card-narration', narr.join('\n'))
+  // 要点条数按文案给：界面上的「加一条要点」得能点出第四条
+  for (let guard = 0; guard < 4; guard += 1) {
+    const add = page.getByRole('button', { name: '加一条要点' })
+    if (!(await add.count()) || (await add.isDisabled())) break
+    if ((await page.locator('[id^="fact-card-point-"]').count()) >= lines.length) break
+    await add.click()
+  }
   for (let i = 0; i < lines.length; i += 1) {
     const box = page.locator(`#fact-card-point-${i}`)
     if (await box.count()) await box.fill(lines[i])
