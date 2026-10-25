@@ -9,6 +9,8 @@ const path = require('node:path')
 
 const BASE = process.env.STUDIO_BASE || 'http://127.0.0.1:8080'
 const SUBMIT = process.argv.includes('--submit')
+const COUNT = Number(process.argv[process.argv.indexOf('--count') + 1]) > 1
+  ? Number(process.argv[process.argv.indexOf('--count') + 1]) : 1
 
 function readToken() {
   const p = path.join(os.homedir(), 'CreatorStudio/config/user.token')
@@ -59,13 +61,14 @@ function readToken() {
   await submit.waitFor({ state: 'visible', timeout: 45000 })
 
   await page.getByPlaceholder('KV Cache 是什么').fill('KV Cache 是什么')
-  await page.getByPlaceholder(/显存不够时/).fill('显存不够时，模型靠它续命')
+  await page.getByPlaceholder(/显存不够时/).fill('显存不够时，它替你续命')
   const pointBoxes = page.getByPlaceholder(/只存 K 和 V/)
   const n = await pointBoxes.count()
+  // 卡面只落结论、口播另写一句：两处写一样的话，读卡就等于听完了。
   const lines = [
-    '只存 K 和 V::因为 Q 只在当前这一步用一次',
-    '显存换速度::缓存越长越占卡，batch 越大越吃显存',
-    '前置一步::推理框架会先跑一遍 prefill 把缓存铺好',
+    '只留 K 和 V::Q 用完就扔',
+    '记住换速度::越长越吃显存',
+    '先铺缓存::prefill 先跑一遍',
   ]
   for (let i = 0; i < Math.min(n, lines.length); i += 1)
     await pointBoxes.nth(i).fill(lines[i])
@@ -73,12 +76,18 @@ function readToken() {
   const narration = page.getByPlaceholder(/一行一屏/)
   if (await narration.count()) {
     await narration.fill([
-      '先说结论，KV Cache 不是优化技巧，是省时间的关键。',
-      '它只存 K 和 V，因为 Q 只在当前这一步用一次。',
-      '代价也很直白，缓存越长越占卡。',
-      '所以推理框架会先跑一遍 prefill，把缓存铺好。',
-      '想省显存还是想省时间，评论区说说你怎么选。',
+      '先说结论。它不是技巧。',
+      '它只记得 K 和 V，别的一概不留。',
+      '代价很直白。缓存越长越占卡，你也躲不掉。',
+      '所以先跑一遍 prefill，把缓存铺好再开跑。',
+      '你选省显存，还是省时间？',
     ].join('\n'))
+  }
+  // 条数下拉：平台上的「一次出 2~3 条挑一条发」必须能在界面里点出来，
+  // 只验接口等于没验到用户手上那一层。
+  if (COUNT > 1) {
+    await page.click('#fact-card-count')
+    await page.getByRole('option', { name: String(COUNT), exact: true }).click()
   }
   await page.screenshot({ path: '/tmp/studio_form_filled.png', fullPage: true })
 
@@ -101,7 +110,9 @@ function readToken() {
   console.log(JSON.stringify({
     submitted: true,
     http: resp ? resp.status() : null,
-    runId: parsed && parsed.data ? parsed.data.runId : null,
+    runId: parsed && parsed.data ? (parsed.data.runId || (parsed.data.runIds || [])[0]) : null,
+    runIds: parsed && parsed.data ? (parsed.data.runIds || null) : null,
+    count: COUNT,
     payload: posts.length ? JSON.parse(posts[0]) : null,
   }, null, 2))
   await browser.close()
