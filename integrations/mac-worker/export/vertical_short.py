@@ -392,11 +392,14 @@ def _gesture_summary(audit: list[dict], switches: list[float] | None = None,
     checked = [a for a in audit if a["want"] and a["idx"] > 0 and not a["last"]]
     clash = [a for a in checked
              if a["pose"] not in (a.get("supported") or [a["want"]])]
+    played = {a["pose"] for a in audit} | {a.get("alt") for a in audit if a.get("alt")}
     return {
         "scenes": len(audit),
         "checked": len(checked),
         "mismatch": len(clash),
-        "poses": sorted({a["pose"] for a in audit}),
+        "poses": sorted(played),
+        "detail": [{"idx": a["idx"], "pose": a["pose"], "alt": a.get("alt") or "",
+                    "want": a.get("want") or ""} for a in audit],
         "clash_at": [a["at"] for a in clash[:5]],
         # 换势时机（占本屏比例）：太晚等于后半句没手势
         "switch": list(switches or []),
@@ -923,8 +926,10 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     switch_audit: list[float] = []
     motion_audit: list[float] = []
     char_widths: list[int] = []
+    # 上一屏、上上屏演的是什么：跨屏换姿势靠这两个，别用它记屏内逐帧状态
+    scene_prev = ""
+    scene_prev2 = ""
     prev_pose = ""
-    prev2_pose = ""
     for i, sc in enumerate(scenes):
         card = Path(str(sc["image"]))
         if i == 0:
@@ -1135,9 +1140,10 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             # 一屏一张立绘就是贴图：按口型拍点切成几段，手势在中段换一次，
             # 角色才是在"讲这句话"，而不是被贴上来定格。
             pose = str(char_cfg.get("pose")
-                       or JE._scene_pose(char_cfg, i, total, scene, avoid=prev_pose,
-                                         avoid_extra=prev2_pose))
-            prev2_pose, prev_pose = prev_pose, pose
+                       or JE._scene_pose(char_cfg, i, total, scene, avoid=scene_prev,
+                                         avoid_extra=scene_prev2))
+            # 屏内逐帧状态（prev_pose）会在下面被改写，跨屏记忆单独存
+            scene_prev2, scene_prev = scene_prev, pose
             # 作者用 poses 列表指定了整条片的手势，那是意图不是错配；显式 pose 同理
             if not char_cfg.get("pose") and not char_cfg.get("poses"):
                 # 记下「这句话该做什么动作」和「实际做了什么」，交给成片体检核对
@@ -1152,6 +1158,9 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                                       "last": i == total - 1})
             alt_pose = (None if char_cfg.get("pose") else
                         JE._second_half_pose(char_cfg, i, total, scene))
+            # 体检要报「这一屏真正演过的姿势」，只记前半句会漏掉换势后的那一个
+            if gesture_audit and gesture_audit[-1]["idx"] == i:
+                gesture_audit[-1]["alt"] = alt_pose or ""
             # 收尾那屏往往八九秒，闭眼大笑的稿撑过五秒就是贴图。先睁着眼把
             # 话说完（认可），笑点留给最后一句——情绪落在收尾，不是从头笑到尾。
             if i == total - 1 and pose == "happy" and dur >= 6.0:
