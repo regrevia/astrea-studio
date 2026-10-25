@@ -1041,7 +1041,8 @@ _POSE_RULES = (
               "懒得", "又是", "反复")),
     ("shy", ("不好意思", "抱歉", "小声", "偷偷", "害羞", "其实我",
              "说句实话", "说实话")),
-    ("approve", ("没错", "就是这样", "稳妥", "靠谱", "信得过", "照做", "对得上")),
+    ("approve", ("没错", "就是这样", "就这么查", "稳妥", "靠谱", "信得过",
+                 "照做", "对得上")),
 )
 # 每个姿态的动幅：(上下起伏倍数, 摆动倍数)。想事情就该比挥手安静。
 _MOTION = {"idle": (1.0, 1.0), "wave": (1.3, 1.8), "point": (0.9, 0.7),
@@ -1104,7 +1105,9 @@ def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
         hit = max(scores, key=lambda k: round(scores[k], 3)) if scores else ""
     # 开场挥手、收尾高兴是默认礼数；但这句话本身在发问或在说缺口，
     # 还挥手/傻笑就假了——语义优先于礼数。
-    if hit in ("think", "shrug"):
+    if hit and hit not in ("wave", "happy"):
+        # 语义命中就别让「开场挥手/收尾傻笑」压掉：收尾那句是「没想到」，
+        # 给个惊喜比给个笑更贴。
         return hit
     if idx == 0:
         return "wave"       # 开场挥手，先把人立住
