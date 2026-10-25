@@ -23,23 +23,19 @@ API="${STUDIO_API:-http://127.0.0.1:8080}"
 TOKEN="${STUDIO_TOKEN:-$HOME/CreatorStudio/config/user.token}"
 [ -f "$TOKEN" ] && TOKEN=$(cat "$TOKEN")
 
-post() {
-  curl -s -m 120 -X POST "$API/api/production/runs" \
-    -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-    --data @"$SPEC" | /usr/bin/python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["runId"])'
-}
-
 get() {
   curl -s -m 20 -H "Authorization: Bearer $TOKEN" "$API/api/production/runs/$1"
 }
 
+# <spec.json> 可以是「脚本稿」，也可以是已经带 projectId + spec 的完整请求体。
+# 脚本稿直接甩给 /runs 会缺 projectId/spec：接口回 code!=0，脚本只剩一句 KeyError。
 IDS=()
 if [ -n "${STUDIO_RUN_IDS:-}" ]; then
   # 想复查已经跑过的批次：STUDIO_RUN_IDS="id1 id2" 直接跳过提交
   read -r -a IDS <<< "$STUDIO_RUN_IDS"
   echo "复查 ${#IDS[@]} 条已存在的 run"
-elif [ -n "${STUDIO_BATCH:-}" ]; then
-  # 走平台批量接口：一键提一条 run 列表是主路径，单条循环只是它的退化情形
+else
+  # 走平台批量接口：一次拿到全部 runId，串行入队在服务端
   echo "批量提交 $N 条（/api/production/runs/batch）..."
   # macOS 自带 bash 3.2 没有 mapfile：用 while read 收 id
   while IFS= read -r line; do
@@ -47,7 +43,22 @@ elif [ -n "${STUDIO_BATCH:-}" ]; then
   done < <(/usr/bin/python3 - "$SPEC" "$N" <<'PYAPI'
 import json, subprocess, sys, os
 spec_path, count = sys.argv[1], int(sys.argv[2])
-body = json.load(open(spec_path))
+raw = json.load(open(spec_path))
+if "projectId" in raw and "spec" in raw:
+    body = dict(raw)
+else:
+    spec = dict(raw)
+    spec.setdefault("mode", "vertical_short")
+    spec.setdefault("engine", "timeline")
+    spec.setdefault("template", "factcard")
+    body = {
+        "projectId": os.environ.get("STUDIO_PROJECT", "6adc2161656a13996166bbfc"),
+        "title": str(spec.get("topic") or os.path.basename(spec_path)),
+        "brief": os.environ.get("STUDIO_BRIEF", "批量冒烟"),
+        "engine": spec.get("engine"),
+        "template": spec.get("template"),
+        "spec": spec,
+    }
 body["count"] = count
 api = os.environ.get("STUDIO_API", "http://127.0.0.1:8080")
 tok = os.environ.get("STUDIO_TOKEN") or open(
@@ -58,7 +69,11 @@ out = subprocess.run(["curl", "-s", "-m", "180", "-X", "POST",
                       "-H", "Content-Type: application/json",
                       "--data", json.dumps(body, ensure_ascii=False)],
                      capture_output=True, text=True).stdout
-data = json.loads(out)
+try:
+    data = json.loads(out)
+except ValueError:
+    print("batch 接口返回的不是 JSON：%s" % out[:200], file=sys.stderr)
+    sys.exit(1)
 if data.get("code") != 0:
     print("batch 接口返回 %s %s" % (data.get("code"), data.get("message")), file=sys.stderr)
     sys.exit(1)
@@ -68,15 +83,7 @@ PYAPI
   )
   [ "${#IDS[@]}" -eq "$N" ] || { echo "批量接口返回 ${#IDS[@]} 条，期望 $N 条"; exit 1; }
   printf '  %s\n' "${IDS[@]}"
-else
-  echo "提交 $N 条..."
-  for _ in $(seq 1 "$N"); do
-    id=$(post) || { echo "提交失败"; exit 1; }
-    echo "  $id"
-    IDS+=("$id")
-  done
 fi
-
 echo "等待渲染（每条约 2~3 分钟）..."
 for round in $(seq 1 90); do
   sleep 15
