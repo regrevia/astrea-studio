@@ -103,7 +103,8 @@ def _text_layer(line: str, size: int, workdir: Path | None, name: str, *,
 
 def _block_layers(text: str, size: int, top: int, workdir: Path, prefix: str, *,
                   align: str, left: int, max_w: int, fill, spacing: float = 1.42,
-                  center_in: tuple[int, int] | None = None) -> list[dict]:
+                  center_in: tuple[int, int] | None = None,
+                  tail_fill=None) -> list[dict]:
     """一段正文按 factcard 的排版规则切成逐行贴片（行高、断句、对齐都跟卡面一致）。"""
     text = " ".join(str(text or "").split())
     if not text:
@@ -117,14 +118,37 @@ def _block_layers(text: str, size: int, top: int, workdir: Path, prefix: str, *,
         lo, hi = center_in
         block_h = int(len(rows) * size * spacing)
         top = max(lo, int(lo + (hi - lo - block_h) / 2))
+    # 一句话的落点（最后一个逗号后的短句）染强调色：整块正文一个颜色，
+    # 读者得自己找重点；落点先亮起来，眼睛才跟着这句话走。
+    cut = int(factcard._tail_cut(text)) if tail_fill else -1
+    pos = 0
     out: list[dict] = []
     y = top
     for n, ln in enumerate(rows):
-        (w, _h), png = _text_layer(ln, size, workdir, f"{prefix}_l{n}.png", fill=fill)
+        head, tail = ln, ""
+        if cut >= 0:
+            lead = len(ln) - len(ln.lstrip())
+            take = max(0, min(len(ln) - lead, cut - pos))
+            head = ln[:lead + take]
+            tail = ln[lead + take:]
+            pos += len(ln)
+        (w, _h), png = _text_layer(head, size, workdir, f"{prefix}_l{n}.png", fill=fill)
         x = left + (max_w - w) // 2 if align == "center" else left
         out.append({"png": png, "x": int(x), "y": int(y), "w": int(w)})
+        if tail:
+            (tw, _th), tpng = _text_layer(tail, size, workdir, f"{prefix}_t{n}.png",
+                                          fill=tail_fill)
+            out.append({"png": tpng, "x": int(x + w), "y": int(y), "w": int(tw)})
         y += int(size * spacing)
     return out
+
+
+def _scene_accent(scene: dict, idx: int, total: int) -> tuple:
+    """这一屏卡面的强调色，跟卡底色温和 HUD 同一套，别让正文亮成另一个牌子。"""
+    pal = scene.get("palette")
+    n = len(factcard.PALETTES)
+    i = int(pal) if pal is not None else (0 if idx == 0 else (n - 1 if idx == total - 1 else idx))
+    return factcard.PALETTES[int(i) % n][2]
 
 
 def _cover_hook_size(text: str) -> int:
@@ -583,7 +607,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 size, _lines, top, _bottom = factcard.body_layout(body, _measure())
                 layers += _block_layers(body, size, top, workdir, f"b{i:02d}",
                                         align="left", left=140, max_w=factcard.W - 264,
-                                        fill=(255, 255, 255, 236))
+                                        fill=(255, 255, 255, 236),
+                                        tail_fill=(*_scene_accent(sc, i, total), 245))
         layer_sets.append(layers)
     char_cfg = script.get("character")
     if char_cfg is True:

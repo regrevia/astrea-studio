@@ -189,9 +189,27 @@ def _wrap_text(draw, text: str, font, max_w: float) -> list[str]:
     return [ln.rstrip() for ln in out]
 
 
+def _tail_cut(text: str, lo: int = 3, hi: int = 12) -> int:
+    """找出这句话的落点：最后一个逗号之后的短句。返回它在原文里的起点，找不到返回 -1。
+
+    整块正文一个颜色，读者得自己找重点；一句话的落点染上强调色，
+    眼睛先落地，再回头读前提。
+    """
+    body = str(text or "").rstrip("。！!")
+    for sep in ("，", ",", "；", ";"):
+        i = body.rfind(sep)
+        if i <= 0:
+            continue
+        tail = body[i + 1:].strip()
+        if lo <= len(tail) <= hi:
+            return i + 1
+        return -1
+    return -1
+
+
 def _draw_block(page, text: str, size: int, top: int, left: int, max_w: float,
                 fill=(255, 255, 255, 240), spacing: float = 1.45,
-                align: str = "left") -> int:
+                align: str = "left", tail_fill=None) -> int:
     """在出图阶段排版正文：剪映字号是相对量，精排只能自己算像素。返回结束 y。"""
     from PIL import ImageDraw
 
@@ -200,12 +218,30 @@ def _draw_block(page, text: str, size: int, top: int, left: int, max_w: float,
     draw = ImageDraw.Draw(page)
     font = _font(size)
     y = top
-    for ln in _wrap_text(draw, text, font, max_w):
+    rows = _wrap_text(draw, text, font, max_w)
+    cut = _tail_cut(text) if tail_fill else -1
+    pos = 0     # 已消费的原文下标，用来把落点映射到某一行中间
+    for ln in rows:
         if ln:
             x = left
             if align == "center":   # 标题居中，正文左对齐会读成两套排版
                 x = left + (max_w - draw.textlength(ln, font=font)) / 2
-            draw.text((x, y), ln, font=font, fill=fill)
+            if cut < 0:
+                draw.text((x, y), ln, font=font, fill=fill)
+            else:
+                # 行内切两段：落点之前用正文色，之后用强调色
+                stripped = ln.lstrip()
+                lead = len(ln) - len(stripped)
+                head_len = max(0, min(len(stripped), cut - pos))
+                head, tail = stripped[:head_len], stripped[head_len:]
+                if head:
+                    draw.text((x, y), head, font=font, fill=fill)
+                    x += draw.textlength(head, font=font)
+                if tail:
+                    draw.text((x, y), tail, font=font, fill=tail_fill)
+                pos += len(stripped) + lead
+                while pos < cut and pos < len(text) and text[pos].isspace():
+                    pos += 1
         y += int(size * spacing)
     return y
 
@@ -381,7 +417,8 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
                         fill=(255, 255, 255, 214), spacing=1.42, align="center")
         else:
             _draw_block(overlay, body, body_size, body_top, 140, W - 264,
-                        fill=(255, 255, 255, 236), spacing=1.42)
+                        fill=(255, 255, 255, 236), spacing=1.42,
+                        tail_fill=(*accent, 245))
     if hook:
         # 开场卡没有边框，给钩子句一条细分隔线做锚
         draw.rounded_rectangle((W // 2 - 48, body_top - 44, W // 2 + 48, body_top - 38),
