@@ -36,6 +36,36 @@ if [ -n "${STUDIO_RUN_IDS:-}" ]; then
   # 想复查已经跑过的批次：STUDIO_RUN_IDS="id1 id2" 直接跳过提交
   read -r -a IDS <<< "$STUDIO_RUN_IDS"
   echo "复查 ${#IDS[@]} 条已存在的 run"
+elif [ -n "${STUDIO_BATCH:-}" ]; then
+  # 走平台批量接口：一键提一条 run 列表是主路径，单条循环只是它的退化情形
+  echo "批量提交 $N 条（/api/production/runs/batch）..."
+  # macOS 自带 bash 3.2 没有 mapfile：用 while read 收 id
+  while IFS= read -r line; do
+    [ -n "$line" ] && IDS+=("$line")
+  done < <(/usr/bin/python3 - "$SPEC" "$N" <<'PYAPI'
+import json, subprocess, sys, os
+spec_path, count = sys.argv[1], int(sys.argv[2])
+body = json.load(open(spec_path))
+body["count"] = count
+api = os.environ.get("STUDIO_API", "http://127.0.0.1:8080")
+tok = os.environ.get("STUDIO_TOKEN") or open(
+    os.path.expanduser("~/CreatorStudio/config/user.token")).read().strip()
+out = subprocess.run(["curl", "-s", "-m", "180", "-X", "POST",
+                      api + "/api/production/runs/batch",
+                      "-H", "Authorization: Bearer " + tok,
+                      "-H", "Content-Type: application/json",
+                      "--data", json.dumps(body, ensure_ascii=False)],
+                     capture_output=True, text=True).stdout
+data = json.loads(out)
+if data.get("code") != 0:
+    print("batch 接口返回 %s %s" % (data.get("code"), data.get("message")), file=sys.stderr)
+    sys.exit(1)
+for rid in data["data"]["runIds"]:
+    print(rid)
+PYAPI
+  )
+  [ "${#IDS[@]}" -eq "$N" ] || { echo "批量接口返回 ${#IDS[@]} 条，期望 $N 条"; exit 1; }
+  printf '  %s\n' "${IDS[@]}"
 else
   echo "提交 $N 条..."
   for _ in $(seq 1 "$N"); do
@@ -95,4 +125,4 @@ if [ "$uniq_count" -ne 1 ]; then
   echo "=== 失败：同一 spec 渲染出 $uniq_count 种母版（不幂等）"
   exit 1
 fi
-echo "=== 通过：$N 条全部 succeeded、体检干净、母版一致"
+echo "=== 通过：${#IDS[@]} 条全部 succeeded、体检干净、母版一致"
