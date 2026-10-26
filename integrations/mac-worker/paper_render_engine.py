@@ -727,7 +727,7 @@ def render_frames(html_path: Path, frames_dir: Path, seconds: float, *, fps: int
         out = subprocess.run(
             [_node(), str(CDP_DRIVER), str(port), html_path.resolve().as_uri(),
              str(fps), f"{seconds:.3f}", str(frames_dir)],
-            capture_output=True, text=True, timeout=60 + seconds * 6,
+            capture_output=True, text=True, timeout=90 + seconds * 40,
         )
         if out.returncode != 0:
             raise RuntimeError(f"逐帧渲染失败: {out.stderr[-800:]}")

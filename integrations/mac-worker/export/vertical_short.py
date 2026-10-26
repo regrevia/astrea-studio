@@ -75,7 +75,8 @@ def _dur(path: Path) -> float:
 def _scene_duration(audio: float, last: bool) -> float:
     """画面长度跟着配音走，多留的只有气口。"""
     pad = 0.18 + (TAIL_HOLD if last else 0.0)
-    return max(1.6, min(9.0, audio + pad))
+    # 上限放宽到 12s：念白长过 9s 时原来会被硬切，后半句叠到下一屏去
+    return max(1.6, min(12.0, audio + pad))
 
 
 def _fit_title(text: str, max_w: int, sizes=(92, 84, 76, 66, 60)) -> tuple[int, list[str]]:
@@ -781,29 +782,86 @@ def _slow(src: Path, tempo: float) -> Path:
     return out
 
 
-def _say(mp3: Path, say: str, voice: str, workdir: Path, stem: str) -> None:
+def _mp3_dur(path: Path) -> float:
+    """秒数；ffprobe 失手给 0，调用方按 0 处理（宁可少补时间也不要瞎猜）。"""
+    r = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "default=nw=1:nk=1", str(path)],
+        capture_output=True, text=True, timeout=60)
+    try:
+        return max(0.0, float(r.stdout.strip()))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _read_chars(path: Path) -> list[dict]:
+    """读配音的逐字时间（edge 通道会写 sidecar）；没有就空表。"""
+    side = path.with_suffix(".words.json")
+    try:
+        blob = json.loads(side.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    chars = blob.get("chars") if isinstance(blob, dict) else None
+    out = []
+    for c in chars or []:
+        try:
+            out.append({"ch": str(c["ch"]), "t": float(c["t"]), "d": float(c["d"])})
+        except (KeyError, TypeError, ValueError):
+            return []
+    return out
+
+
+def _write_chars(path: Path, chars: list[dict]) -> None:
+    if not chars:
+        return
+    side = path.with_suffix(".words.json")
+    side.write_text(json.dumps({"chars": chars}, ensure_ascii=False),
+                    encoding="utf-8")
+
+
+def _retime(chars: list[dict], tempo: float, offset: float) -> list[dict]:
+    """音频被 atempo 拉过、又被拼到某个偏移上：逐字时间跟着一起换算。
+
+    不做这一步，口型会按没拉慢前的字走，包袱那句就「嘴快过声音」。
+    """
+    if tempo <= 0:
+        return []
+    inv = 1.0 / tempo if tempo < 1.0 else 1.0
+    return [{"ch": c["ch"], "t": offset + c["t"] * inv, "d": c["d"] * inv}
+            for c in chars]
+
+
+def _say(mp3: Path, say: str, voice: str, workdir: Path, stem: str,
+         rate: float = 1.0) -> None:
     """一屏的配音：逐句合成、补静音、拼回一条。
 
     每句各自走配音缓存，片子重出时只有改过的那句重新合成。
+    拼完后把逐字时间（有就拼、没有就算了）落到成片 mp3 的 sidecar 上，
+    口型模块只认这条 sidecar，认不到就退音节切分。
     """
     parts = _say_parts(say)
     if len(parts) < 2:
-        _tts(say, mp3, voice)
+        _tts(say, mp3, voice, rate)
         tempo = _gag_tempo(say)
         if tempo < 1.0:
+            chars = _read_chars(mp3)
             shutil.copyfile(_slow(mp3, tempo), mp3)
+            _write_chars(mp3, _retime(chars, tempo, 0.0))
         return
     parts = [(text, gap + (_gag_lead(text) if k else 0.0))
              for k, (text, gap) in enumerate(parts)]
     inputs: list[str] = []
     filters: list[str] = []
+    rows: list[tuple[Path, Path, float]] = []
     for k, (text, _gap) in enumerate(parts):
         part = workdir / f"{stem}_p{k}.mp3"
-        _tts(text, part, voice)
+        _tts(text, part, voice, rate)
         tempo = _gag_tempo(text)
+        used = part
         if tempo < 1.0:
-            part = _slow(part, tempo)
-        inputs += ["-i", str(part)]
+            used = _slow(part, tempo)
+        rows.append((part, used, tempo))
+        inputs += ["-i", str(used)]
         filters.append(f"[{k}:a]aresample=44100,"
                        "aformat=sample_fmts=fltp:channel_layouts=mono["
                        f"a{k}]")
@@ -822,7 +880,19 @@ def _say(mp3: Path, say: str, voice: str, workdir: Path, stem: str) -> None:
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
     if r.returncode != 0 or not mp3.exists() or mp3.stat().st_size < 800:
         # 拼接失手就退回整段合成：停顿差一点，总比这一屏没声音强
-        _tts(say, mp3, voice)
+        _tts(say, mp3, voice, rate)
+        return
+    # 拼接成功才拼逐字时间：偏移 = 前面所有「句子 + 停顿」的累加，
+    # 某一句没有 sidecar 就整条不写（半截时间表比没有更糟，口型会一路跑偏）。
+    merged: list[dict] = []
+    offset = 0.0
+    for (orig, used, tempo), (_text, gap) in zip(rows, parts):
+        chars = _read_chars(orig)
+        if not chars:
+            return
+        merged += _retime(chars, tempo, offset)
+        offset += _mp3_dur(used) + (gap if gap > 0.01 else 0.0)
+    _write_chars(mp3, merged)
 
 
 def _beats(say: str, dur: float, last: bool, cfg: dict,
@@ -929,6 +999,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     _raw_seed = str(script.get("_variant_seed") or "")
     variant_seed = int(hashlib.md5(_raw_seed.encode()).hexdigest()[:6], 16) if _raw_seed else 0
     voice = voice or str(script.get("voice") or DEFAULT_VOICE)
+    # 语速只对 edge 通道生效（SAMI 没有这个参数）；gag 的 atempo 仍走 _slow
+    rate = float(script.get("rate") or 1.0)
     # 口播稿可能是文件路径（和 make_episode 一样）：不认路径就会退回要点里的说明句，
     # 同一份脚本出的 mp4 比剪映草稿长几秒，听起来还不像人写的
     narration = script.get("narration")
@@ -1163,7 +1235,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         say = str(scene.get("say") or "").strip()
         mp3 = workdir / f"a{i:02d}.mp3"
         if say:
-            _say(mp3, say, voice, workdir, f"a{i:02d}")
+            _say(mp3, say, voice, workdir, f"a{i:02d}", rate)
             tts_dur = _dur(mp3)
             dur = _scene_duration(tts_dur, i == total - 1)
             for lay in text_layers:
@@ -1470,6 +1542,10 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                             # 逐帧口型要的是这句配音本身和它在成片里的起点：
                             # 分段口型（0.1 秒一格）只能说"在动"，对不上字
                             "lip_audio": str(mp3) if say else None,
+                            # 这句话实际念的字：口型从「按音量开合」改成「按说的是
+                            # 哪个字定形」（见 export/lipsync.py）。缺了它只能退回
+                            # 老的包络四档——嘴会动，但对不上字。
+                            "lip_text": say if say else None,
                             "lip_t0": round(t, 3),
                             # 入场规格从 overlay 带过来：分层模式下运行时
                             # 只看得到分段表，不带就会整片站桩
