@@ -96,6 +96,12 @@ xChannelSelector=R / yChannelSelector=G，滤镜区 x/y 各放宽 10%
 每张面板在 `_sketch_svg()` 里按名字固定 seed（`link=11, timeline=23, gap=37, install=51`，其他名字落 7，
 第二层扰动取 seed+7）。seed 一改整张笔画全变、版式不动——想换手感只动 seed，别动坐标。
 
+**别加光。** 立绘周围那圈冷蓝 halo 来自 `jianying_engine._stage_canvas()` 的高斯叠色，逐帧渲染时
+它还会随人物缩放一起被放大，首尾两屏最明显——已经整段删掉，只留脚下一条接触阴影
+（`alpha≈96`，`blur=cw//26`）。背景同样不留中线高光与网格：`#stage` 只用单向下深渐变，
+`.grain` 只保留一层 104° 细斜纹（`opacity .16`）。判断标准是「环带亮度差」：
+人物周围环形带与背景的亮度差要 < 1，改完用 `/tmp/glow_check.py` 那套量一遍再出片。
+
 **精修 / 变糙的方向**：
 
 | 想要 | 改法 |
@@ -235,3 +241,6 @@ ffmpeg -y -v error -i ~/CreatorStudio/deliver/envoy-real-schematic.mp4 \
 | 截图没换，出的还是上一张 | `--shots` 数量少于屏数，多出的屏沿用最后一屏 | `shots` 数量对齐 `plan`，`--caps` 一起对齐 |
 | 渲完找不到 `spec.json`，复现不了 | 没给 `--workdir`，默认 `tempfile.mkdtemp` 渲完即删 | 固定 `--workdir ~/CreatorStudio/work/<slug>` |
 | 中间某屏整屏空白 | CDP 掉帧，帧数不足 | 看引擎日志的 `[paper] x.xxs / n 帧`，重跑；别在机器满载时出片 |
+| 换手势那一下动作突然加速 | 两段交叠太短（按旧段 end 对齐，交叠可能只剩几十毫秒），一帧换完≈硬切 | 走 `char_layer.plan_transitions()`：按姿态语义/重心/高度差铺 0.45–0.80s 交叠，姿势权重用 `smootherstep`（两端速度为 0），只换口型时不造交叠 |
+| 换服装后人物忽大忽小 | 母版画布不是一块（1254² 与 2048² 混用），人物占画布比例差近 3% | 摆位宽度乘 `character_assets.sprite_ratio()` 量出的内容框比例（带缓存），基准取同动作跨服装中位数；缺图一律回 1.0，不拦出片 |
+| 立绘右上角飘着一小块橙色 `hh` | 那是 `expressions/anger.png` 的漫画怒气符，按情绪叠上去的，不是脏点 | 别删素材；不想要愤怒情绪就把那一段的 expression 换掉 |
