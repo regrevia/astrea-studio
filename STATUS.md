@@ -365,6 +365,11 @@ python3 timeline_render.py --spec spec.json --out master.mp4 --dry-run   # 先�
 python3 deliver.py --master master.mp4 --platform all --outdir ~/CreatorStudio/out
 python3 test_timeline_render.py && python3 test_deliver.py && python3 test_platform_profiles.py
 
+# 剪映草稿版（同一份 spec，engine 换 jianying ⇒ 交付物是草稿而不是 mp4）
+bash deploy/submit_spec.sh deploy/specs/envoy_jianying.json 1
+# 草稿落 ~/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_<jobId>
+# 剪映里改完人工点导出（macOS 无法无头导出）；剪映下次启动才会把新草稿登记进 root_meta_info.json
+
 # 健康检查(平台/worker/S3/剪映)
 cd ~/Desktop/work/Studio/creator-studio && python3 deploy/doctor.py
 
