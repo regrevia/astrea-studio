@@ -192,226 +192,218 @@ _SVG_STAGE = """
 # 观众不会连着看六张同一风格的图，也就不会觉得这是幻灯片。
 # 线条用手绘感：feTurbulence 位移 + 圆头笔触 + pathLength=1 的描边生长动画。
 _RGH = ('<defs><filter id="rgh-{k}" x="-8%%" y="-8%%" width="116%%" height="116%%">'
-        '<feTurbulence type="fractalNoise" baseFrequency=".021" numOctaves="2" seed="{seed}" result="n"/>'
-        '<feDisplacementMap in="SourceGraphic" in2="n" scale="2.1" '
+        '<feTurbulence type="fractalNoise" baseFrequency=".012" numOctaves="2" seed="{seed}" result="n"/>'
+        '<feDisplacementMap in="SourceGraphic" in2="n" scale="1.05" '
         'xChannelSelector="R" yChannelSelector="G"/></filter></defs>')
 
 _SKETCHES = {
-    # 一张链接 → 一份带定位的材料
     "link": r"""
 <svg viewBox="0 0 900 470" fill="none">__RGH__
- <g filter="url(#rgh-link)" stroke="#9CC0D2" stroke-width="2.4">
-  <rect class="sk" pathLength="1" x="20" y="26" width="404" height="278" rx="11"/>
-  <path class="sk" pathLength="1" d="M20 64 H424"/>
-  <circle cx="44" cy="46" r="4.2" stroke-width="1.8"/><circle cx="60" cy="46" r="4.2" stroke-width="1.8"/>
-  <rect class="sk" pathLength="1" x="82" y="38" width="300" height="17" rx="8.5"/>
-  <path class="sk" pathLength="1" d="M98 46 h128" stroke-width="1.6" opacity=".85"/>
-  <path class="sk" pathLength="1" d="M390 38 v17" stroke-width="1.5"/>
-  <path class="sk" pathLength="1" d="M44 96 h300" stroke-width="1.9"/><path class="sk" pathLength="1" d="M44 124 h352" stroke-width="1.9"/>
-  <path class="sk" pathLength="1" d="M44 152 h322" stroke-width="1.9"/><path class="sk" pathLength="1" d="M44 180 h246" stroke-width="1.9"/>
-  <path class="sk" pathLength="1" d="M44 208 h338" stroke-width="1.9"/>
-  <path class="sk" pathLength="1" d="M44 248 h170" stroke-width="1.6" opacity=".8"/>
-  <path class="sk" pathLength="1" d="M410 80 v200" stroke-width="1.5" opacity=".7"/>
-  <path class="sk" pathLength="1" d="M404 176 h12" stroke-width="1.3"/>
+ <g filter="url(#rgh-link)" stroke="#A8C9DA">
+  <rect class="sk" pathLength="1" x="20" y="24" width="406" height="280" rx="10" stroke-width="2"/>
+  <path class="sk" pathLength="1" d="M20 62 H426" stroke-width="1.6"/>
+  <circle cx="40" cy="43" r="3.4" stroke-width="1.4"/><circle cx="55" cy="43" r="3.4" stroke-width="1.4"/>
+  <circle cx="70" cy="43" r="3.4" stroke-width="1.4"/>
+  <rect class="sk" pathLength="1" x="86" y="31" width="152" height="24" rx="6" stroke-width="1.3"/>
+  <rect class="sk" pathLength="1" x="95" y="39" width="9" height="9" rx="1.5" stroke-width="1.1"/>
+  <path class="sk" pathLength="1" d="M112 43 h84" stroke-width="1.4" opacity=".8"/>
+  <rect class="sk" pathLength="1" x="252" y="31" width="152" height="24" rx="6" stroke-width="1.1" opacity=".45"/>
+  <path class="sk" pathLength="1" d="M262 43 h74" stroke-width="1.1" opacity=".38"/>
+  <rect class="sk" pathLength="1" x="34" y="74" width="378" height="22" rx="11" stroke-width="1.3"/>
+  <text x="50" y="89" fill="#7FA6BC" font-family="SF Mono, ui-monospace, monospace" font-size="12" opacity=".9">github.com/regrevia/envoy</text>
+  <path class="sk" pathLength="1" d="M398 79 h9" stroke-width="1.1" opacity=".5"/>
+  <path class="sk" pathLength="1" d="M403 79 v11" stroke-width="1.1" opacity=".5"/>
+  <path class="sk" pathLength="1" d="M36 122 h214" stroke-width="4.2"/>
+  <path class="sk" pathLength="1" d="M36 148 h300" stroke-width="1.15" opacity=".9"/>
+  <path class="sk" pathLength="1" d="M36 168 h268" stroke-width="1.15" opacity=".8"/>
+  <path class="sk" pathLength="1" d="M36 188 h292" stroke-width="1.15" opacity=".7"/>
+  <path class="sk" pathLength="1" d="M36 208 h176" stroke-width="1.15" opacity=".6"/>
+  <rect class="sk" pathLength="1" x="36" y="230" width="240" height="58" rx="5" stroke-width="1.1" opacity=".7"/>
+  <path class="sk" pathLength="1" d="M48 250 h132" stroke="#5ED3BE" stroke-width=".9" opacity=".6"/>
+  <path class="sk" pathLength="1" d="M48 266 h96" stroke-width=".9" opacity=".45"/>
+  <path class="sk" pathLength="1" d="M48 282 h150" stroke-width=".9" opacity=".35"/>
+  <rect class="sk" pathLength="1" x="292" y="230" width="120" height="58" rx="5" stroke-width="1.1" opacity=".5"/>
+  <path d="M296 234 L408 284" stroke-width=".8" opacity=".28"/>
+  <path d="M408 234 L296 284" stroke-width=".8" opacity=".28"/>
+  <path d="M414 74 v206" stroke-width=".9" opacity=".2"/>
+  <rect x="411" y="86" width="6" height="54" rx="3" fill="#5ED3BE" opacity=".2"/>
  </g>
- <!-- 一条链接搬过去 -->
- <g filter="url(#rgh-link)" stroke="#5ED3BE" stroke-width="2.4">
-  <path class="sk" pathLength="1" d="M442 168 h52"/>
-  <path class="sk" pathLength="1" d="M480 152 l20 16 l-20 16"/>
-  <path class="sk" pathLength="1" d="M442 184 h34" stroke-width="1.5" opacity=".45"/>
+ <g filter="url(#rgh-link)" stroke="#5ED3BE" stroke-linecap="round" stroke-linejoin="round">
+  <path class="sk" pathLength="1" d="M446 198 H508" stroke-width="2.1"/>
+  <path class="sk" pathLength="1" d="M446 209 H500" stroke-width="1.1" opacity=".5"/>
+  <path class="sk" pathLength="1" d="M496 188 L512 203 L496 218" stroke-width="2.1"/>
  </g>
- <!-- 材料页：折角 + 定位标 -->
- <g filter="url(#rgh-link)" stroke="#9CC0D2" stroke-width="2.4">
-  <path class="sk" pathLength="1" d="M540 18 h252 l78 78 v352 h-330 z"/>
-  <path class="sk" pathLength="1" d="M792 18 v78 h78"/>
-  <path class="sk" pathLength="1" d="M566 124 h228" stroke-width="1.9"/><path class="sk" pathLength="1" d="M566 158 h186" stroke-width="1.9"/>
-  <path class="sk" pathLength="1" d="M566 192 h214" stroke-width="1.9"/><path class="sk" pathLength="1" d="M566 258 h198" stroke-width="1.9"/>
-  <path class="sk" pathLength="1" d="M566 292 h234" stroke-width="1.9"/><path class="sk" pathLength="1" d="M566 326 h152" stroke-width="1.9"/>
-  <path class="sk" pathLength="1" d="M566 392 h246" stroke-width="1.9"/><path class="sk" pathLength="1" d="M566 426 h178" stroke-width="1.9"/>
-  <path class="sk" pathLength="1" d="M550 96 v356" stroke-width="1.4" opacity=".55"/>
- </g>
- <!-- 坐标：时间戳 / 页码 -->
- <g stroke="#5ED3BE" stroke-width="1.8" fill="none" filter="url(#rgh-link)">
-  <rect class="sk" pathLength="1" x="812" y="212" width="72" height="28" rx="5"/>
-  <rect class="sk" pathLength="1" x="812" y="252" width="72" height="28" rx="5"/>
-  <circle class="sk" pathLength="1" cx="700" cy="300" r="12" stroke-width="1.6"/>
-  <path class="sk" pathLength="1" d="M700 288 v-16" stroke-width="1.3" opacity=".75"/>
- </g>
- <g fill="#5ED3BE" font-family="SF Mono, ui-monospace, monospace" font-size="16">
-  <text x="819" y="231">04:18</text><text x="819" y="271">p.12</text>
- </g>
- <!-- 引线 + 手写标注 -->
- <g stroke="#7FA6BC" stroke-width="1.4" fill="none" opacity=".85">
-  <path d="M690 292 q-46 -20 -78 -8"/>
-  <path d="M744 172 h74" stroke-dasharray="5 6"/>
-  <path d="M566 96 q-30 -14 -58 -10"/>
- </g>
- <g fill="#7FA6BC" font-family="SF Mono, ui-monospace, monospace" font-size="18" opacity=".9">
-  <text x="26" y="344">one link</text><text x="754" y="322">material id</text>
- </g>
- <!-- 影线 -->
- <g stroke="#6F97AE" stroke-width="1.1" opacity=".38">
-  <path d="M26 300 l16 -12"/><path d="M48 306 l16 -12"/><path d="M70 312 l16 -12"/>
-  <path d="M556 452 l20 -16"/><path d="M584 456 l20 -16"/><path d="M612 460 l20 -16"/>
- </g>
-</svg>""",
-    # 视频按时间点抽帧，结论带 [mm:ss]
-    "timeline": r"""
-<svg viewBox="0 0 900 470" fill="none">__RGH__
- <!-- 胶片条 + 齿孔 -->
- <g filter="url(#rgh-tl)" stroke="#9CC0D2" stroke-width="2.4">
-  <rect class="sk" pathLength="1" x="20" y="88" width="860" height="140" rx="6"/>
-  <path class="sk" pathLength="1" d="M20 108 H880"/><path class="sk" pathLength="1" d="M20 208 H880"/>
-  <g stroke-width="1.3" opacity=".82">
-   <path class="sk" pathLength="1" d="M44 94 h10 v10 h-10 z"/><path class="sk" pathLength="1" d="M100 94 h10 v10 h-10 z"/>
-   <path class="sk" pathLength="1" d="M156 94 h10 v10 h-10 z"/><path class="sk" pathLength="1" d="M212 94 h10 v10 h-10 z"/>
-   <path class="sk" pathLength="1" d="M268 94 h10 v10 h-10 z"/><path class="sk" pathLength="1" d="M324 94 h10 v10 h-10 z"/>
-   <path class="sk" pathLength="1" d="M380 94 h10 v10 h-10 z"/><path class="sk" pathLength="1" d="M436 94 h10 v10 h-10 z"/>
-   <path class="sk" pathLength="1" d="M492 94 h10 v10 h-10 z"/><path class="sk" pathLength="1" d="M548 94 h10 v10 h-10 z"/>
-   <path class="sk" pathLength="1" d="M604 94 h10 v10 h-10 z"/><path class="sk" pathLength="1" d="M660 94 h10 v10 h-10 z"/>
-   <path class="sk" pathLength="1" d="M716 94 h10 v10 h-10 z"/><path class="sk" pathLength="1" d="M772 94 h10 v10 h-10 z"/>
-   <path class="sk" pathLength="1" d="M828 94 h10 v10 h-10 z"/>
-   <path class="sk" pathLength="1" d="M44 212 h10 v-10 h-10 z"/><path class="sk" pathLength="1" d="M156 212 h10 v-10 h-10 z"/>
-   <path class="sk" pathLength="1" d="M268 212 h10 v-10 h-10 z"/><path class="sk" pathLength="1" d="M380 212 h10 v-10 h-10 z"/>
-   <path class="sk" pathLength="1" d="M492 212 h10 v-10 h-10 z"/><path class="sk" pathLength="1" d="M604 212 h10 v-10 h-10 z"/>
-   <path class="sk" pathLength="1" d="M716 212 h10 v-10 h-10 z"/><path class="sk" pathLength="1" d="M828 212 h10 v-10 h-10 z"/>
+ <g filter="url(#rgh-link)" stroke="#A8C9DA">
+  <path class="sk" pathLength="1" d="M560 20 H788 L860 92 V450 H560 Z" stroke-width="2"/>
+  <path class="sk" pathLength="1" d="M788 20 V92 H860" stroke-width="1.3"/>
+  <path d="M600 40 V432" stroke-width=".9" opacity=".18"/>
+  <text x="620" y="74" fill="#6F97AE" font-family="SF Mono, ui-monospace, monospace" font-size="12" opacity=".75">material</text>
+  <path class="sk" pathLength="1" d="M620 96 h182" stroke-width="3.4"/>
+  <path class="sk" pathLength="1" d="M620 128 h216" stroke-width="1.1" opacity=".85"/>
+  <path class="sk" pathLength="1" d="M620 150 h190" stroke-width="1.1" opacity=".75"/>
+  <path class="sk" pathLength="1" d="M620 172 h206" stroke-width="1.1" opacity=".65"/>
+  <path class="sk" pathLength="1" d="M620 194 h146" stroke-width="1.1" opacity=".55"/>
+  <rect class="sk" pathLength="1" x="620" y="216" width="224" height="54" rx="4" stroke-width="1" opacity=".5"/>
+  <path class="sk" pathLength="1" d="M632 236 h150" stroke-width=".85" opacity=".45"/>
+  <path class="sk" pathLength="1" d="M632 254 h108" stroke-width=".85" opacity=".35"/>
+  <text x="620" y="300" fill="#6F97AE" font-family="SF Mono, ui-monospace, monospace" font-size="11.5" opacity=".8">material id</text>
+  <rect class="sk" pathLength="1" x="620" y="310" width="84" height="26" rx="5" stroke="#5ED3BE" stroke-width="1.3"/>
+  <text x="631" y="328" fill="#5ED3BE" font-family="SF Mono, ui-monospace, monospace" font-size="12.5">04:18</text>
+  <rect class="sk" pathLength="1" x="714" y="310" width="70" height="26" rx="5" stroke="#5ED3BE" stroke-width="1.3"/>
+  <text x="725" y="328" fill="#5ED3BE" font-family="SF Mono, ui-monospace, monospace" font-size="12.5">p.12</text>
+  <circle class="sk" pathLength="1" cx="660" cy="382" r="13" stroke="#5ED3BE" stroke-width="1.5"/>
+  <circle cx="660" cy="382" r="2.6" fill="#5ED3BE"/>
+  <path d="M673 382 h44" stroke="#5ED3BE" stroke-width=".9" stroke-dasharray="4 4" opacity=".7"/>
+  <text x="724" y="386" fill="#5ED3BE" font-family="SF Mono, ui-monospace, monospace" font-size="11.5" opacity=".85">keyframe</text>
+  <g stroke="#6F97AE" stroke-width="1" opacity=".28">
+   <path d="M620 424 l16 -11"/><path d="M640 428 l16 -11"/><path d="M660 432 l16 -11"/>
   </g>
  </g>
- <!-- 音轨波形：满条铺开，不出条外 -->
- <g filter="url(#rgh-tl)" stroke="#9CC0D2" stroke-width="1.7" opacity=".95">
-  <path class="sk" pathLength="1" d="M52 168 q8 -14 16 0 q8 -27 16 0 q8 -9 16 0 q8 -32 16 0 q8 -18 16 0 q8 -8 16 0 q8 -24 16 0 q8 -13 16 0 q8 -35 16 0 q8 -17 16 0 q8 -23 16 0 q8 -9 16 0 q8 -28 16 0 q8 -19 16 0 q8 -33 16 0 q8 -11 16 0 q8 -22 16 0 q8 -15 16 0 q8 -30 16 0 q8 -18 16 0 q8 -8 16 0 q8 -26 16 0 q8 -12 16 0 q8 -34 16 0 q8 -16 16 0 q8 -21 16 0 q8 -11 16 0 q8 -25 16 0 q8 -14 16 0 q8 -29 16 0 q8 -9 16 0 q8 -31 16 0 q8 -18 16 0 q8 -24 16 0 q8 -13 16 0 q8 -27 16 0 q8 -16 16 0 q8 -22 16 0 q8 -10 16 0 q8 -33 16 0 q8 -15 16 0 q8 -26 16 0 q8 -12 16 0 q8 -30 16 0 q8 -17 16 0 q8 -20 16 0 q8 -11 16 0 q8 -28 16 0 q8 -14 16 0 q8 -24 16 0 q8 -16 16 0 q8 -32 16 0"/>
+</svg>
+""",
+
+    "timeline": r"""
+<svg viewBox="0 0 900 470" fill="none">__RGH__
+ <!-- 胶片带：每格一帧 -->
+ <g filter="url(#rgh-tl)" stroke="#A8C9DA">
+  <rect class="sk" pathLength="1" x="20" y="60" width="860" height="132" rx="6" stroke-width="1.9"/>
+  <path d="M29 100 h28" stroke-width="1.1" opacity=".55"/><rect x="29" y="112" width="28" height="20" rx="2" stroke-width="1" opacity=".5"/>
+  <rect x="101" y="96" width="30" height="22" rx="2" stroke-width="1" opacity=".5"/><path d="M101 128 h24" stroke-width="1.1" opacity=".45"/>
+  <path d="M172 98 h32" stroke-width="1.1" opacity=".6"/><path d="M172 112 h22" stroke-width="1.1" opacity=".45"/><path d="M172 128 h30" stroke-width="1" opacity=".3"/>
+  <path d="M244 100 h28" stroke-width="1.1" opacity=".55"/><rect x="244" y="112" width="28" height="20" rx="2" stroke-width="1" opacity=".5"/>
+  <rect x="315" y="96" width="30" height="22" rx="2" stroke-width="1" opacity=".5"/><path d="M315 128 h24" stroke-width="1.1" opacity=".45"/>
+  <path d="M387 98 h32" stroke-width="1.1" opacity=".6"/><path d="M387 112 h22" stroke-width="1.1" opacity=".45"/><path d="M387 128 h30" stroke-width="1" opacity=".3"/>
+  <path d="M459 100 h28" stroke-width="1.1" opacity=".55"/><rect x="459" y="112" width="28" height="20" rx="2" stroke-width="1" opacity=".5"/>
+  <rect x="530" y="96" width="30" height="22" rx="2" stroke-width="1" opacity=".5"/><path d="M530 128 h24" stroke-width="1.1" opacity=".45"/>
+  <path d="M602 98 h32" stroke-width="1.1" opacity=".6"/><path d="M602 112 h22" stroke-width="1.1" opacity=".45"/><path d="M602 128 h30" stroke-width="1" opacity=".3"/>
+  <path d="M673 100 h28" stroke-width="1.1" opacity=".55"/><rect x="673" y="112" width="28" height="20" rx="2" stroke-width="1" opacity=".5"/>
+  <rect x="745" y="96" width="30" height="22" rx="2" stroke-width="1" opacity=".5"/><path d="M745 128 h24" stroke-width="1.1" opacity=".45"/>
+  <path d="M817 98 h32" stroke-width="1.1" opacity=".6"/><path d="M817 112 h22" stroke-width="1.1" opacity=".45"/><path d="M817 128 h30" stroke-width="1" opacity=".3"/>
+  <path d="M92 78 V172" stroke-width=".8" opacity=".22"/>
+  <path d="M163 78 V172" stroke-width=".8" opacity=".22"/>
+  <path d="M235 78 V172" stroke-width=".8" opacity=".22"/>
+  <path d="M306 78 V172" stroke-width=".8" opacity=".22"/>
+  <path d="M378 78 V172" stroke-width=".8" opacity=".22"/>
+  <path d="M450 78 V172" stroke-width=".8" opacity=".22"/>
+  <path d="M521 78 V172" stroke-width=".8" opacity=".22"/>
+  <path d="M593 78 V172" stroke-width=".8" opacity=".22"/>
+  <path d="M664 78 V172" stroke-width=".8" opacity=".22"/>
+  <path d="M736 78 V172" stroke-width=".8" opacity=".22"/>
+  <path d="M808 78 V172" stroke-width=".8" opacity=".22"/>
+  <path d="M20 76 H880" stroke-width=".8" opacity=".2"/>
+  <path d="M20 146 H880" stroke-width=".7" opacity=".13"/>
+  <path class="sk" pathLength="1" d="M34 176 H866" stroke-width="1" opacity=".4"/>
+  <path class="sk" pathLength="1" d="M34 176 h12 q6 -12 12 0 q6 -18 12 0 q6 -9 12 0 q6 -15 12 0 q6 -10 12 0 q6 -19 12 0 q6 -8 12 0 q6 -14 12 0 q6 -11 12 0 q6 -17 12 0 q6 -9 12 0 q6 -13 12 0 q6 -16 12 0 q6 -8 12 0 q6 -18 12 0 q6 -10 12 0 q6 -14 12 0 q6 -7 12 0 q6 -16 12 0 q6 -11 12 0 q6 -13 12 0 q6 -9 12 0 q6 -17 12 0 q6 -10 12 0 q6 -15 12 0 q6 -8 12 0 q6 -14 12 0 q6 -12 12 0 q6 -18 12 0 q6 -9 12 0 q6 -13 12 0 q6 -11 12 0 q6 -16 12 0 q6 -8 12 0 q6 -15 12 0 q6 -10 12 0 q6 -17 12 0 q6 -9 12 0 q6 -13 12 0 q6 -12 12 0 q6 -16 12 0 q6 -8 12 0 q6 -14 12 0 q6 -10 12 0 q6 -18 12 0 q6 -9 12 0 q6 -13 12 0 q6 -11 12 0 q6 -15 12 0 q6 -8 12 0 q6 -14 12 0 q6 -10 12 0 q6 -16 12 0 q6 -9 12 0 q6 -13 12 0 q6 -11 12 0 q6 -15 12 0 q6 -8 12 0 q6 -12 12 0 q6 -10 12 0" stroke-width="1.15" opacity=".6"/>
+  <path class="sk" pathLength="1" d="M20 214 H880" stroke-width="1.1" opacity=".7"/>
+  <g stroke-width=".9" opacity=".4">
+   <path d="M92 214 v-7"/><path d="M164 214 v-7"/><path d="M236 214 v-7"/><path d="M308 214 v-7"/>
+   <path d="M380 214 v-7"/><path d="M452 214 v-7"/><path d="M524 214 v-7"/><path d="M596 214 v-7"/>
+   <path d="M668 214 v-7"/><path d="M740 214 v-7"/><path d="M812 214 v-7"/>
+  </g>
+  <g stroke-width="1.1" opacity=".55"><path d="M254 214 v-11"/><path d="M604 214 v-11"/></g>
  </g>
- <!-- 抽帧标尺 -->
- <g filter="url(#rgh-tl)" stroke="#9CC0D2" stroke-width="1.5" opacity=".85">
-  <path class="sk" pathLength="1" d="M20 250 H880"/>
-  <path class="sk" pathLength="1" d="M80 250 v8"/><path class="sk" pathLength="1" d="M164 250 v14"/>
-  <path class="sk" pathLength="1" d="M248 250 v8"/><path class="sk" pathLength="1" d="M332 250 v14"/>
-  <path class="sk" pathLength="1" d="M416 250 v8"/><path class="sk" pathLength="1" d="M500 250 v14"/>
-  <path class="sk" pathLength="1" d="M584 250 v8"/><path class="sk" pathLength="1" d="M668 250 v14"/>
-  <path class="sk" pathLength="1" d="M752 250 v8"/><path class="sk" pathLength="1" d="M836 250 v14"/>
+ <g filter="url(#rgh-tl)" stroke="#5ED3BE" stroke-linecap="round">
+  <path class="sk" pathLength="1" d="M254 54 V212" stroke-width="2"/>
+  <path class="sk" pathLength="1" d="M604 54 V212" stroke-width="2"/>
+  <circle cx="254" cy="54" r="4.2" fill="#5ED3BE" stroke="none"/>
+  <circle cx="604" cy="54" r="4.2" fill="#5ED3BE" stroke="none"/>
+  <text x="232" y="40" fill="#5ED3BE" font-family="SF Mono, ui-monospace, monospace" font-size="13">03:12</text>
+  <text x="582" y="40" fill="#5ED3BE" font-family="SF Mono, ui-monospace, monospace" font-size="13">07:02</text>
+  <path d="M254 212 v28" stroke-width=".9" stroke-dasharray="4 4" opacity=".6"/>
+  <path d="M604 212 v28" stroke-width=".9" stroke-dasharray="4 4" opacity=".6"/>
  </g>
- <!-- 两个抽帧点：竖线 + 小旗 + 帧框 -->
- <g filter="url(#rgh-tl)" stroke="#5ED3BE" stroke-width="2.2">
-  <path class="sk" pathLength="1" d="M254 96 V286"/>
-  <path class="sk" pathLength="1" d="M254 96 V240"/>
-  <path class="sk" pathLength="1" d="M604 96 V240"/>
-  <path class="sk" pathLength="1" d="M248 96 h12 v12 h-12 z" stroke-width="1.6"/>
-  <path class="sk" pathLength="1" d="M598 96 h12 v12 h-12 z" stroke-width="1.6"/>
-  <rect class="sk" pathLength="1" x="232" y="120" width="42" height="26" rx="3" opacity=".8" stroke-width="1.5"/>
-  <rect class="sk" pathLength="1" x="582" y="120" width="42" height="26" rx="3" opacity=".8" stroke-width="1.5"/>
-  <path class="sk" pathLength="1" d="M232 139 l12 -8 l8 6 l9 -10" stroke-width="1.1" opacity=".85"/>
-  <path class="sk" pathLength="1" d="M582 139 l12 -8 l8 6 l9 -10" stroke-width="1.1" opacity=".85"/>
+ <g filter="url(#rgh-tl)" stroke="#A8C9DA">
+  <rect class="sk" pathLength="1" x="212" y="240" width="84" height="26" rx="5" stroke="#5ED3BE" stroke-width="1.3"/>
+  <text x="223" y="258" fill="#5ED3BE" font-family="SF Mono, ui-monospace, monospace" font-size="12.5">03:12</text>
+  <rect class="sk" pathLength="1" x="562" y="240" width="84" height="26" rx="5" stroke="#5ED3BE" stroke-width="1.3"/>
+  <text x="573" y="258" fill="#5ED3BE" font-family="SF Mono, ui-monospace, monospace" font-size="12.5">07:02</text>
+  <path class="sk" pathLength="1" d="M212 300 h258" stroke-width="1.15" opacity=".8"/>
+  <path class="sk" pathLength="1" d="M212 322 h222" stroke-width="1.15" opacity=".6"/>
+  <path class="sk" pathLength="1" d="M212 344 h244" stroke-width="1.15" opacity=".45"/>
+  <path class="sk" pathLength="1" d="M562 300 h256" stroke-width="1.15" opacity=".8"/>
+  <path class="sk" pathLength="1" d="M562 322 h198" stroke-width="1.15" opacity=".6"/>
+  <path class="sk" pathLength="1" d="M562 344 h230" stroke-width="1.15" opacity=".45"/>
+  <path d="M212 396 h14" stroke="#5ED3BE" stroke-width="1.6"/>
+  <text x="238" y="402" fill="#C6DCEC" font-family="PingFang SC, sans-serif" font-size="18" opacity=".92">抽帧和转写，钉在同一根时间轴上</text>
  </g>
- <!-- 被抽中的两句转录 -->
- <g filter="url(#rgh-tl)" stroke="#9CC0D2" stroke-width="1.7">
-  <path class="sk" pathLength="1" d="M254 320 h300"/><path class="sk" pathLength="1" d="M254 346 h216"/>
-  <path class="sk" pathLength="1" d="M604 320 h214"/><path class="sk" pathLength="1" d="M604 346 h166"/>
-  <path class="sk" pathLength="1" d="M240 310 v52" opacity=".45" stroke-width="1.1"/>
-  <path class="sk" pathLength="1" d="M590 310 v52" opacity=".45" stroke-width="1.1"/>
- </g>
- <g fill="#5ED3BE" font-family="SF Mono, ui-monospace, monospace" font-size="17">
-  <text x="262" y="82">03:12</text><text x="612" y="82">07:02</text>
- </g>
- <g fill="#7FA6BC" font-family="SF Mono, ui-monospace, monospace" font-size="17" opacity=".85">
-  <text x="22" y="300">keyframe</text><text x="502" y="300">transcript</text>
-  <text x="22" y="404">frame( t )</text>
- </g>
- <g stroke="#6F97AE" stroke-width="1.1" opacity=".32">
-  <path d="M26 430 l22 -16"/><path d="M58 434 l22 -16"/><path d="M90 438 l22 -16"/>
- </g>
-</svg>""",
-    # 没读到的部分照实标出来
+</svg>
+""",
+
     "gap": r"""
 <svg viewBox="0 0 900 470" fill="none">__RGH__
- <!-- 材料页 -->
- <g filter="url(#rgh-gap)" stroke="#9CC0D2" stroke-width="2.4">
-  <path class="sk" pathLength="1" d="M40 20 h398 l82 82 v328 h-480 z"/>
-  <path class="sk" pathLength="1" d="M438 20 v82 h82"/>
-  <path class="sk" pathLength="1" d="M80 112 h330" stroke-width="1.9"/><path class="sk" pathLength="1" d="M80 144 h268" stroke-width="1.9"/>
-  <path class="sk" pathLength="1" d="M80 176 h312" stroke-width="1.9"/><path class="sk" pathLength="1" d="M80 208 h236" stroke-width="1.9"/>
-  <path class="sk" pathLength="1" d="M80 340 h318 v52 h-318 z"/>
-  <path class="sk" pathLength="1" d="M94 366 l12 13 l25 -27"/>
-  <path class="sk" pathLength="1" d="M172 370 h186"/>
+ <!-- 左：一页材料，中间有一段没读到 -->
+ <g filter="url(#rgh-gap)" stroke="#A8C9DA">
+  <path class="sk" pathLength="1" d="M20 26 H420 L470 76 V420 H20 Z" stroke-width="2"/>
+  <path class="sk" pathLength="1" d="M420 26 V76 H470" stroke-width="1.3"/>
+  <path class="sk" pathLength="1" d="M46 88 h250" stroke-width="3.4"/>
+  <path class="sk" pathLength="1" d="M46 116 h330" stroke-width="1.15" opacity=".85"/>
+  <path class="sk" pathLength="1" d="M46 138 h296" stroke-width="1.15" opacity=".75"/>
+  <path class="sk" pathLength="1" d="M46 160 h318" stroke-width="1.15" opacity=".65"/>
+  <rect x="46" y="180" width="342" height="86" rx="4" stroke="#E8B464" stroke-width="1.3" stroke-dasharray="7 6" opacity=".85"/>
+  <g stroke="#E8B464" stroke-width="1" opacity=".2">
+   <path d="M268 260 l24 -72"/><path d="M292 260 l24 -72"/><path d="M316 260 l24 -72"/>
+   <path d="M340 260 l24 -72"/><path d="M364 260 l22 -66"/>
+  </g>
+  <text x="62" y="228" fill="#E8B464" font-family="PingFang SC, sans-serif" font-size="19">这里没读到</text>
+  <path class="sk" pathLength="1" d="M46 296 h330" stroke-width="1.15" opacity=".8"/>
+  <path class="sk" pathLength="1" d="M46 318 h212" stroke-width="1.15" opacity=".65"/>
+  <path class="sk" pathLength="1" d="M46 392 h300" stroke-width="1.15" opacity=".4"/>
+  <rect class="sk" pathLength="1" x="46" y="340" width="78" height="26" rx="5" stroke="#5ED3BE" stroke-width="1.3"/>
+  <text x="55" y="358" fill="#5ED3BE" font-family="SF Mono, ui-monospace, monospace" font-size="12.5">04:18</text>
+  <path d="M124 353 h84" stroke="#5ED3BE" stroke-width=".9" stroke-dasharray="4 4" opacity=".65"/>
+  <text x="216" y="358" fill="#6F97AE" font-family="SF Mono, ui-monospace, monospace" font-size="11.5" opacity=".8">带定位</text>
  </g>
- <!-- 没读到的一段：虚线带 + 打叉 -->
- <g filter="url(#rgh-gap)" stroke="#8FAEBF" stroke-width="1.5" opacity=".7">
-  <path d="M80 262 h330" stroke-dasharray="7 8"/>
-  <path d="M80 288 h330" stroke-dasharray="7 8"/>
+ <!-- 右：两条判定 -->
+ <g filter="url(#rgh-gap)" stroke="#A8C9DA">
+  <path d="M560 62 h320" stroke-width=".9" opacity=".28"/>
+  <path d="M560 96 h44" stroke="#E8B464" stroke-width="2" stroke-dasharray="7 6"/>
+  <text x="620" y="105" fill="#E8B464" font-family="PingFang SC, sans-serif" font-size="21">未覆盖</text>
+  <text x="620" y="134" fill="#8FAEBF" font-family="PingFang SC, sans-serif" font-size="16" opacity=".9">没字幕、要登录、预算不够</text>
+  <path d="M560 162 h320" stroke-width=".9" opacity=".22"/>
+  <path class="sk" pathLength="1" d="M560 196 h44" stroke="#5ED3BE" stroke-width="2"/>
+  <text x="620" y="205" fill="#5ED3BE" font-family="PingFang SC, sans-serif" font-size="21">带定位</text>
+  <text x="620" y="234" fill="#8FAEBF" font-family="PingFang SC, sans-serif" font-size="16" opacity=".9">读到的每段都挂着时间和页码</text>
+  <path d="M560 262 h320" stroke-width=".9" opacity=".22"/>
+  <path d="M560 310 h320" stroke-width=".9" opacity=".3"/>
+  <path d="M560 340 h3" stroke="#5ED3BE" stroke-width="1.6"/>
+  <text x="578" y="346" fill="#C6DCEC" font-family="PingFang SC, sans-serif" font-size="18" opacity=".92">没有定位，就不算读到</text>
  </g>
- <g filter="url(#rgh-gap)" stroke="#E8B464" stroke-width="2.2">
-  <rect class="sk" pathLength="1" x="196" y="240" width="104" height="70" rx="7" stroke-width="1.5" opacity=".6"/>
-  <path class="sk" pathLength="1" d="M212 254 l72 44"/><path class="sk" pathLength="1" d="M284 254 l-72 44"/>
- </g>
- <!-- 右侧图例 -->
- <g stroke="#E8B464" stroke-width="1.6" fill="none" opacity=".9">
-  <path d="M604 236 h44" stroke-dasharray="6 7"/>
-  <path d="M560 236 h20"/>
- </g>
- <g fill="#E8B464" font-family="SF Mono, ui-monospace, monospace" font-size="19">
-  <text x="662" y="242">未覆盖</text>
- </g>
- <g filter="url(#rgh-gap)" stroke="#5ED3BE" stroke-width="1.9">
-  <circle class="sk" pathLength="1" cx="590" cy="306" r="10"/>
-  <path class="sk" pathLength="1" d="M585 306 l4 5 l9 -12"/>
- </g>
- <g fill="#7FA6BC" font-family="SF Mono, ui-monospace, monospace" font-size="19" opacity=".9">
-  <text x="614" y="313">covered</text>
- </g>
- <g filter="url(#rgh-gap)" stroke="#5ED3BE" stroke-width="1.7" fill="none">
-  <rect class="sk" pathLength="1" x="556" y="346" width="74" height="30" rx="5"/>
- </g>
- <g fill="#5ED3BE" font-family="SF Mono, ui-monospace, monospace" font-size="15">
-  <text x="566" y="366">04:18</text>
- </g>
- <g fill="#7FA6BC" font-family="SF Mono, ui-monospace, monospace" font-size="19" opacity=".9">
-  <text x="632" y="368">带定位才算</text>
- </g>
- <g fill="#8FAEBF" font-family="SF Mono, ui-monospace, monospace" font-size="17" opacity=".8">
-  <text x="560" y="416">只有结论不算读到了</text>
- </g>
- <g stroke="#6F97AE" stroke-width="1.1" opacity=".35">
-  <path d="M60 452 l22 -16"/><path d="M88 456 l22 -16"/><path d="M116 460 l22 -16"/>
- </g>
-</svg>""",
-    # 三个客户端，同一套 skill + MCP
+</svg>
+""",
+
     "install": r"""
 <svg viewBox="0 0 900 470" fill="none">__RGH__
- <g filter="url(#rgh-in)" stroke="#9CC0D2" stroke-width="2.4">
-  <rect class="sk" pathLength="1" x="20" y="16" width="600" height="238" rx="9"/>
-  <path class="sk" pathLength="1" d="M20 58 H620"/>
-  <circle cx="44" cy="37" r="4.6" stroke-width="1.7"/><circle cx="62" cy="37" r="4.6" stroke-width="1.7"/>
-  <circle cx="80" cy="37" r="4.6" stroke-width="1.7"/>
-  <path class="sk" pathLength="1" d="M100 37 h118" stroke-width="1.4" opacity=".7"/>
-  <path class="sk" pathLength="1" d="M70 100 l9 6 l-9 6" stroke-width="1.6"/>
-  <path class="sk" pathLength="1" d="M70 152 l9 6 l-9 6" stroke-width="1.6"/>
-  <path class="sk" pathLength="1" d="M70 204 l9 6 l-9 6" stroke-width="1.6"/>
+ <!-- 终端：装好 -->
+ <g filter="url(#rgh-in)" stroke="#A8C9DA">
+  <rect class="sk" pathLength="1" x="140" y="34" width="620" height="248" rx="10" stroke-width="2"/>
+  <path class="sk" pathLength="1" d="M140 76 H760" stroke-width="1.5"/>
+  <circle cx="164" cy="55" r="3.6" stroke-width="1.3"/><circle cx="180" cy="55" r="3.6" stroke-width="1.3"/>
+  <circle cx="196" cy="55" r="3.6" stroke-width="1.3"/>
+  <path class="sk" pathLength="1" d="M220 55 h104" stroke-width="1.3" opacity=".7"/>
+  <text x="168" y="124" fill="#5ED3BE" font-family="SF Mono, ui-monospace, monospace" font-size="15.5">$ pip install envoy-cli</text>
+  <text x="168" y="178" fill="#A8C9DA" font-family="SF Mono, ui-monospace, monospace" font-size="15.5" opacity=".85">$ uv tool install envoy</text>
+  <text x="168" y="232" fill="#A8C9DA" font-family="SF Mono, ui-monospace, monospace" font-size="15.5" opacity=".85">envoy hook install --host codex</text>
+  
  </g>
- <g font-family="SF Mono, ui-monospace, monospace" font-size="22">
-  <text x="96" y="114" fill="#5ED3BE">$ pip install envoy-cli</text>
-  <text x="96" y="166" fill="#9CC0D2">$ uv tool install envoy</text>
-  <text x="96" y="218" fill="#8FAEBF" font-size="17" opacity=".85">envoy hook install --host codex</text>
+ <!-- 三个客户端，同一套接口 -->
+ <g filter="url(#rgh-in)" stroke="#A8C9DA">
+  <path d="M465 282 v26" stroke-width="1.2" opacity=".55"/>
+  <path d="M279 310 h372" stroke-width="1.2" stroke-dasharray="6 7" opacity=".5"/>
+  <path d="M279 310 v22" stroke-width="1.2" opacity=".5"/>
+  <path d="M480 310 v22" stroke-width="1.2" opacity=".5"/>
+  <path d="M651 310 v22" stroke-width="1.2" opacity=".5"/>
+  <rect class="sk" pathLength="1" x="174" y="332" width="210" height="62" rx="31" stroke-width="1.7"/>
+  <rect class="sk" pathLength="1" x="400" y="332" width="160" height="62" rx="31" stroke-width="1.7"/>
+  <rect class="sk" pathLength="1" x="576" y="332" width="150" height="62" rx="31" stroke-width="1.7"/>
+  <text x="206" y="370" fill="#C6DCEC" font-family="PingFang SC, sans-serif" font-size="20">Claude Code</text>
+  <text x="428" y="370" fill="#C6DCEC" font-family="PingFang SC, sans-serif" font-size="20">Codex</text>
+  <text x="604" y="370" fill="#C6DCEC" font-family="PingFang SC, sans-serif" font-size="20">DSH</text>
+  <text x="176" y="438" fill="#6F97AE" font-family="SF Mono, ui-monospace, monospace" font-size="13" opacity=".85">skill + MCP</text>
+  <text x="450" y="438" fill="#8FAEBF" font-family="PingFang SC, sans-serif" font-size="17" opacity=".9">同一套接口</text>
  </g>
- <!-- 三个客户端 -->
- <g filter="url(#rgh-in)" stroke="#9CC0D2" stroke-width="2.2">
-  <rect class="sk" pathLength="1" x="20" y="306" width="198" height="62" rx="31"/>
-  <rect class="sk" pathLength="1" x="238" y="306" width="152" height="62" rx="31"/>
-  <rect class="sk" pathLength="1" x="410" y="306" width="132" height="62" rx="31"/>
-  <path d="M320 254 v24" stroke-width="1.5" opacity=".55"/>
-  <path d="M119 284 h357" stroke-dasharray="6 7" stroke-width="1.3" opacity=".55"/>
-  <path d="M119 284 v20" stroke-width="1.3" opacity=".55"/>
-  <path d="M314 284 v20" stroke-width="1.3" opacity=".55"/>
-  <path d="M476 284 v20" stroke-width="1.3" opacity=".55"/>
- </g>
- <g fill="#D6E8F5" font-family="PingFang SC, sans-serif" font-size="22">
-  <text x="62" y="344">Claude Code</text><text x="264" y="344">Codex</text><text x="436" y="344">DSH</text>
- </g>
- <g fill="#7FA6BC" font-family="SF Mono, ui-monospace, monospace" font-size="17" opacity=".88">
-  <text x="22" y="414">skill + MCP</text><text x="352" y="414">同一套接口</text>
- </g>
- <g stroke="#6F97AE" stroke-width="1.1" opacity=".35">
-  <path d="M646 236 l24 -18"/><path d="M676 242 l24 -18"/><path d="M706 248 l24 -18"/>
- </g>
-</svg>""",
+</svg>
+""",
+
 }
 
 def _sketch_svg(name: str) -> str:
