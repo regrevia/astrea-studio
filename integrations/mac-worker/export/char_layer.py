@@ -103,8 +103,50 @@ _STATE_CACHE: dict[str, list[str]] = {}
 # 换档的最小驻留：50Hz 下 3 格 = 60ms，短于这个的抖动一律当噪声。
 # 只在「收口」方向生效，张嘴不驻留（见 _mouth_states）。
 _LIP_DWELL = 3
+# 最短口型驻留：50Hz 下 5 格 = 100ms
+_LIP_MIN_RUN = 6
 # 口型开合大小排序，用来判断这次换档是张嘴还是收口
 _LIP_RANK = {"closed": 0, "half": 1, "open": 2, "round": 2}
+
+
+def _settle(states: list[str], min_run: int = 0) -> list[str]:
+    """把短于 min_run 的口型段并进前一段。
+
+    逐格换是 50Hz：嘴型 20ms 一换，成片里就是「嘴在抖」。驻留只能解决
+    「同一档反复横跳」，解决不了 A→B→A 这种 40ms 的来回，所以统一再扫一遍。
+    """
+    if min_run <= 1:
+        return states
+    out = list(states)
+    i = 0
+    while i < len(out):
+        j = i
+        while j + 1 < len(out) and out[j + 1] == out[i]:
+            j += 1
+        if (j - i + 1) < min_run and i > 0:
+            for k in range(i, j + 1):
+                out[k] = out[i - 1]
+            i = j + 1
+            continue
+        i = j + 1
+    return out
+
+
+_LIP_BRIDGE = 2   # 40ms 的中间档：张↔闭之间必须有半开，否则嘴是「啪」地翻面
+
+
+def _bridge(states: list[str], span: int = _LIP_BRIDGE) -> list[str]:
+    """开合两个极端之间补半开。
+
+    30fps 下张口直接翻成闭嘴，观众看到的是嘴唇「闪一下」。现实里嘴是先
+    收到半开再闭合，补 1–2 格半开，速度不变但读起来是动作不是错帧。
+    """
+    out: list[str] = []
+    for st in states:
+        if out and {out[-1], st} == {"open", "closed"}:
+            out.extend(["half"] * span)
+        out.append(st)
+    return out
 
 
 def _mouth_states(mp3: str) -> list[str]:
@@ -150,6 +192,9 @@ def _mouth_states(mp3: str) -> list[str]:
             if run >= _LIP_DWELL:
                 cand, run = want, _LIP_DWELL
         states.append(cand)
+    # 100ms 是最短可读的口型段：短于它，观众读到的不是「这个字」，是「抽了一下」
+    states = _settle(states, _LIP_MIN_RUN)
+    states = _bridge(states)
     if len(_STATE_CACHE) > 64:
         _STATE_CACHE.clear()
     _STATE_CACHE[mp3] = states
@@ -247,13 +292,23 @@ def _piece(seg: dict, sprite, stage, canvas: tuple[int, int]):
     return val
 
 
-def _active(segments: list[dict], t: float) -> list[tuple[dict, float]]:
-    """该帧要画哪些分段及权重：单段满权重，交叠处按时间做线性叠化。"""
+def _smootherstep(x: float) -> float:
+    """两端速度为 0 的过渡：起手和收尾都不「一顿」再加速。"""
+    x = min(1.0, max(0.0, x))
+    return x * x * x * (x * (x * 6.0 - 15.0) + 10.0)
+
+
+def _active(segments: list[dict], t: float) -> list[tuple[dict, float, float]]:
+    """该帧要画哪些分段，以及 (alpha 权重, 姿态权重)。
+
+    两套权重分开：alpha 要前段推上去（否则交叠区里人物发灰、体检判「透」），
+    姿态/重心必须两端速度为 0（否则换手势那一刻身体会突然加速）。
+    """
     hits = [s for s in segments if float(s["start"]) <= t < float(s["end"])]
     if not hits:
         return []
     if len(hits) == 1:
-        return [(hits[0], 1.0)]
+        return [(hits[0], 1.0, 1.0)]
     hits.sort(key=lambda s: float(s["start"]))
     a, b = hits[0], hits[1]
     span = max(1e-6, min(float(a["end"]), float(b["end"])) - float(b["start"]))
@@ -261,7 +316,8 @@ def _active(segments: list[dict], t: float) -> list[tuple[dict, float]]:
     # 权重前段加速：线性叠化等于让新人从 0 一路半透明地爬到 1，交叠区整段
     # 都在「发灰」，体检直接判人物发透。前半段推上去，只在头一两帧透。
     k = 1.0 - (1.0 - x) ** 2
-    return [(a, 1.0 - k), (b, k)]
+    ks = _smootherstep(x)
+    return [(a, 1.0 - k, 1.0 - ks), (b, k, ks)]
 
 
 def _alpha_at(seg: dict, t: float) -> float:
@@ -438,7 +494,7 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
         canvas = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
         active = _active(segs, t)
         entering = False
-        for idx, (seg, weight) in enumerate(active):
+        for idx, (seg, weight, _wpose) in enumerate(active):
             _mt = _lip_mouth(seg, t)
             if _mt:
                 # 记一张「第几帧张的什么口型」：误差不靠肉眼猜，出片后拿它对帧
@@ -480,9 +536,12 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
             # 换姿势时给一下小跳：立绘本身没换动作，只靠倾斜和呼吸太"稳"，
             # 0.26 秒的低幅起落读起来像答话时点了一下头。
             if _prev_pose.get(id(seg), "") != str(seg.get("pose") or ""):
-                _bh = (t - float(seg["start"])) / 0.26
+                _bh = (t - float(seg["start"])) / 0.42
                 if float(seg["start"]) > 1e-6 and 0.0 <= _bh < 1.0:
-                    dy -= 7.0 * math.sin(math.pi * _bh)
+                    # 正弦在起点速度最大，接上前一段的静止就是「猛地一顿」；
+                    # 换成两端速度都为零的 smoothstep，只当重心沉了一下
+                    _bs = _bh * _bh * (3.0 - 2.0 * _bh)
+                    dy -= 4.6 * _bs
             # 亚像素位移：按整像素取整会出现几帧完全一样，观感上就是卡住
             fx, fy = px - bx0 + dx, py - by0 + dy
             ox, oy = int(round(fx)), int(round(fy))
@@ -491,7 +550,7 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
             # 支点压在脚底中线，脚不会跟着漂。合成一次仿射，不额外花钱。
             breath = 1.0 + 0.006 * math.sin(2.0 * math.pi * t / 3.30 + _ph)
             bias = mult = 0.0
-            for seg_a, wgt in active:
+            for seg_a, _wa, wgt in active:
                 b_le, m_le = _POSE_ATTITUDE.get(str(seg_a.get("pose") or ""), (0.0, 1.0))
                 bias += b_le * wgt
                 mult += m_le * wgt

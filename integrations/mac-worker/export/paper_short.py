@@ -118,7 +118,8 @@ def build(script: dict[str, Any], workdir: Path, *, voice: str = "",
 
 
 def render(script: dict[str, Any], workdir: Path, out_mp4: Path, *,
-           voice: str = "", logo: Path | None = None, log=print) -> dict[str, Any]:
+           voice: str = "", logo: Path | None = None, style: str = "paper",
+           shots: list[tuple[str, str]] | None = None, log=print) -> dict[str, Any]:
     """纸面帧 + 人物层 + 音轨 → 母版。返回出货信息（时长/场景数/人物层）。"""
     workdir.mkdir(parents=True, exist_ok=True)
     built = build(script, workdir, voice=voice, logo=logo)
@@ -127,9 +128,14 @@ def render(script: dict[str, Any], workdir: Path, out_mp4: Path, *,
     spec_path = workdir / "spec.json"
     spec_path.write_text(json.dumps(spec, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    if shots:
+        # shots: [(图片路径, 角标文案)]，按屏序贴上去；真截图比画出来的图形可信
+        for row, pair in zip(plan, shots):
+            row["shot"], row["cap"] = str(pair[0]), str(pair[1])
+
     silent = workdir / "paper_silent.mp4"
-    log(f"[paper] {len(plan)} 屏 {total:.2f}s")
-    PAPER.render(plan, silent, audio=None, workdir=workdir / "paper", log=log)
+    log(f"[paper] {len(plan)} 屏 {total:.2f}s style={style}")
+    PAPER.render(plan, silent, audio=None, workdir=workdir / "paper", style=style, log=log)
 
     char = next((o for o in (spec.get("overlay") or [])
                  if str(o.get("src", "")).endswith("char_layer.webm")), None)
@@ -165,6 +171,6 @@ def render(script: dict[str, Any], workdir: Path, out_mp4: Path, *,
     subprocess.run(cmd, check=True)
     if not out_mp4.exists():
         raise RuntimeError("纸面母版没有生成")
-    return {"engine": "paper", "videoPath": str(out_mp4), "duration": round(total, 3),
+    return {"engine": style if style != "paper" else "paper", "videoPath": str(out_mp4), "duration": round(total, 3),
             "scenes": len(plan), "character": char is not None,
             "video": str(silent), "specPath": str(spec_path)}

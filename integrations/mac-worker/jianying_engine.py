@@ -1241,6 +1241,10 @@ def _scene_pose(cfg: dict[str, Any], idx: int, total: int,
         return hit
     if semantic:
         return semantic
+    # 一点线索都没有时，别「为了换而换」：奇偶轮换会让每一屏都换一次手势，
+    # 观众看到的是人每隔五秒抽一下。保持上一屏的姿势，等真有话说再换。
+    if avoid:
+        return avoid
     return "point" if idx % 2 else "think"
 
 

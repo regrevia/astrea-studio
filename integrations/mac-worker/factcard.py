@@ -357,19 +357,9 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
     img = _vgrad((W, H), top, bottom).convert("RGBA")
     draw = ImageDraw.Draw(img, "RGBA")
 
-    # 光斑：制造纵深，避免"纯色 PPT 味"。颜色锚在第一套色上，不跟语气走：
-    # 语气色只留给前景（强调条 / HUD / 进度点），换屏时整块背景的色温才不会跟着变，
-    # 观众看到的是内容在换，不是背后那盏灯在换。
-    rnd = _seed(slug)
-    spot = PALETTES[0][2]
-    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow, "RGBA")
-    for i in range(3):
-        cx = int((0.2 + 0.6 * ((rnd + i * 37) % 100) / 100) * W)
-        cy = int((0.15 + 0.5 * ((rnd + i * 61) % 100) / 100) * H)
-        r = int(220 + 160 * ((rnd + i * 17) % 100) / 100)
-        gd.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(*spot, 30))
-    img = Image.alpha_composite(img, glow.filter(ImageFilter.GaussianBlur(120)))
+    # 背景就是一块竖直渐变，不画光斑。光斑按卡片的 slug 随机落点，换屏时
+    # 观众看到的是「背后那盏灯换了位置」，这是「光效」投诉的来源；纵深交给
+    # 推近、网格点和人物呼吸，不靠打光。
     # 半透明元素必须画在独立图层再合成：直接在 RGBA 上 draw 会把 alpha 覆盖掉，
     # convert("RGB") 后就变成一坨纯白（卡片曾经整个糊成白板）。
     overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -383,13 +373,9 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
                          fill=(255, 255, 255, dot_alpha))
 
     if plain:
-        # 开场是素底：原来那条斜切色块正压在立绘身上，像一块没对齐的板。
-        # 换成钩子文字后面一团柔光，字有底、人物也不被切。
-        glow = Image.radial_gradient("L").resize((1080, 1080))
-        glow = glow.point(lambda v: max(0, int(52 * (1 - v / 255))))
-        patch = Image.new("RGBA", (1080, 1080), (*accent, 0))
-        patch.putalpha(glow)
-        overlay.alpha_composite(patch, (0, 240))
+        # 开场也只用素底 + 网格点：原来这里垫过一团柔光和两圈细环，成片里
+        # 读成「过曝的光圈」，而且推近时整团光跟着一起动 —— 全部去掉。
+        pass
         # 以前这里画过两圈 3px 的细环，想让推近时画面有动的东西。实际成片里
         # 它们横穿人脸和立绘，读成「过曝的光圈」而不是纵深——删掉，动态交给
         # 人物呼吸和卡面 7% 推近。
