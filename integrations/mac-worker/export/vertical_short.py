@@ -49,7 +49,9 @@ XFADE = 0.40
 # 换手势的叠化只有 0.1 秒：0.22 秒的线性叠化里，人物有三分之一时间处在
 # 两张立绘互相透着的状态，体检判「发透」，眼睛也看得出鬼影。0.1 秒读起来
 # 仍是「接住」，但透的那一两帧一闪就过。
-POSE_XFADE = 0.10
+# 换姿势的叠化时长：0.10 秒等于「一帧半就换完」，观众看到的是动作突然换挡。
+# 拉到 0.28 秒，跟卡面 0.4 秒转场同拍，动作是接过去的，不是切过去的。
+POSE_XFADE = 0.28
 # 换手势躲开眨眼：两个动作贴在一起，观众看到的是抽搐
 POSE_BLINK_GUARD = 0.35
 TAIL = 1.00  # 话说完再定一秒：立刻黑屏是最廉价的收尾  # 相邻两屏叠化时长：整屏硬切是「PPT 翻页」最重的一笔
@@ -459,6 +461,18 @@ def _fallback_alt_pose(pose: str) -> str | None:
     return alt if alt and alt != pose else None
 
 
+# 整片只用一个摆动周期。以前周期跟着姿势和语气变（1.46~2.82 秒），
+# 换屏那一刻正弦频率突然变，观众看到的就是「动作忽然加速」——
+# 幅度可以跟着语气走，节奏不行，节奏一变动作就断成两截。
+MOTION_PERIOD = 2.4
+# 幅度换挡用 0.36 秒渐变：切点前后摆幅不同，硬切等于在切点上凭空挪一下人
+AMP_RAMP = 0.36
+# 竖轴整片固定成 2.4px 的轻呼吸，周期也锁死。以前竖晃和横摆按姿势二选一，
+# 换姿势那一刻另一个轴归零，人物在切点上凭空挪一格——那才是「位置会有变化」。
+BODY_AMP_Y = 2.4
+BODY_PERIOD_Y = 3.3
+
+
 def _pose_motion(pose: str, say: str = "") -> dict:
     """动作幅度跟着语气走：问句摆得活一点，下结论收稳一点。"""
     motion = dict(_POSE_MOTION.get(pose, _POSE_MOTION["idle"]))
@@ -479,7 +493,11 @@ def _pose_motion(pose: str, say: str = "") -> dict:
         gain -= 0.10
     gain = round(min(1.3, max(0.85, gain)), 3)
     motion["amplitude"] = round(float(motion["amplitude"]) * gain, 2)
-    motion["period"] = round(float(motion["period"]) / gain, 3)
+    motion["period"] = MOTION_PERIOD
+    # 两个轴一直都在：横摆幅度跟语气，竖呼吸全片一个值，切点上不会有人错位
+    motion["type"] = "orbit"
+    motion["amp_y"] = BODY_AMP_Y
+    motion["period_y"] = BODY_PERIOD_Y
     motion["gain"] = gain
     return motion
 
@@ -1128,6 +1146,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
     bg_overlay: list[dict] = []
     card_overlays: list[dict] = []
     char_ovs: list[dict] = []
+    # 上一段人物的摆幅：新一段从它渐变过来，切点上不凭空挪一下
+    _prev_amp: list[float] = [-1.0]
     # 逐段静帧仍然照生成（体检和回退都要它），成片前若动画层建成，
     # 这些静帧就整批摘掉，换成一条带 alpha 的人物视频。
     char_segs: list[dict] = []
@@ -1160,7 +1180,9 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         # 同稿多版时推镜深浅和起手屏都错开（一版从封面开始推、一版从第二屏推），
         # 两版看起来是两条不同调度的片子，文案和节奏一点没动
         _flip = variant_seed % 2
-        _deep = 1.07 + 0.015 * ((variant_seed // 2) % 2)
+        # 推镜幅度也收小：7% 推近会把卡面那几团柔光一起放大，
+        # 看着像背景在慢慢变亮。4.5% 够破 PPT 感，又看不出背景在动
+        _deep = 1.045 + 0.010 * ((variant_seed // 2) % 2)
         z0, z1 = ((1.0, _deep) if (i + _flip) % 2 == 0 else (_deep, 1.0))
         video.append({
             "src": str(card), "out": round(dur, 3), "zoom": [z0, z1],
@@ -1404,8 +1426,12 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                         "width": fw,
                         "fade": max(fade_in, fade_out),
                         # 相位对齐到绝对时间：口型分段不打断呼吸节奏
-                        "motion": {**motion, "phase": round(start, 3)},
+                        "motion": {**motion, "phase": round(start, 3),
+                                   "amp_from": (_prev_amp[0] if _prev_amp[0] >= 0
+                                                else float(motion.get("amplitude") or 0.0)),
+                                   "ramp": AMP_RAMP},
                     }
+                    _prev_amp[0] = float(motion.get("amplitude") or 0.0)
                     if head and i == 0:
                         # 首屏从画面下沿升上来，别一开片就杵在那儿
                         ov["enter"] = {"from": "bottom", "duration": 0.55,
@@ -1466,7 +1492,8 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         last["out"] = round(float(last["out"]) + TAIL, 3)
         z0 = float((last.get("zoom") or [1.0, 1.0])[0])
         last["zoom"] = [round(z0, 3), 1.05]
-        last["fade_out"] = round(TAIL * 0.30, 3)
+        # 收尾淡出拉长到 0.55 秒：0.3 秒从满亮掉到黑，像被人突然关了灯
+        last["fade_out"] = round(TAIL * 0.55, 3)
         if last_ov is not None:
             last_ov["end"] = round(t + TAIL, 3)
             last_ov["fade"] = max(last_ov.get("fade") or 0.0,
@@ -1479,9 +1506,10 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
 
     # 整片那块环境光的色温也跟着种子走：深蓝 / 深琥珀 / 深青轮着来，
     # 色温差得不多，但两条片子并排放能看出来不是同一条
-    bg_overlay.extend(_film_glow(workdir, round(t, 3),
-                                 palette_idx=(0, 3, 1)[variant_seed % 3],
-                                 mirror=bool(variant_seed % 2)))
+    # 环境光整层去掉：两层柔光悬在卡面上慢慢摆，观众看到的是「背景那盏灯
+    # 一会在动」，动作一切换就被读成「光效跟着变」。卡面自己已经有底光，
+    # 不再加任何会动的光。
+    _ = (workdir, variant_seed)
 
     char_mov = None
     char_x = char_y = 0

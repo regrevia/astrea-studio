@@ -12,6 +12,7 @@
 |---|---|---|
 | `~/Desktop/work/Studio/creator-studio` | **唯一真源**:源码、部署脚本、文档、本文件 | 改代码、改 compose 模板、提交基线 |
 | `~/CreatorStudio` | **运行时**:`config/compose.env`、`state/`、`logs/`、`deliver/`、`materials/`、`jianying/VectCutAPI` | 只放运行产物与凭据;**不放源码** |
+| `~/CreatorStudio/deliver` | **成片出口**:各平台版本、待发短片 | 交付/预览文件只落这里,不再放桌面 |
 | `~/Desktop/DSH/CreatorLab` | **研究归档**:notes/、prototypes/、monitor/ | 探查脚本、逆向笔记;结论要回填到本仓库 |
 
 VectCutAPI(剪映草稿 HTTP 服务,`127.0.0.1:9100`)装在 `~/CreatorStudio/jianying/VectCutAPI`,

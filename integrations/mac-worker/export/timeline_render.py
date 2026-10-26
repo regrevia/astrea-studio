@@ -271,6 +271,10 @@ def load_spec(path, base: Path | None = None) -> dict:
                 # 同一角色被切成多段口型时，正弦相位要接着上一段走，
                 # 否则每 0.4 秒归零一次，人物像在抖。
                 "phase": float(motion.get("phase") or 0.0),
+                # 人物统一成「横摆 + 轻呼吸」两个轴：以前横摆和竖晃按姿势二选一，
+                # 换姿势那一刻横轴或竖轴直接归零，人就凭空挪一格。
+                "amp_y": float(motion.get("amp_y") or 0.0),
+                "period_y": float(motion.get("period_y") or 0.0),
             },
         })
 
@@ -390,10 +394,31 @@ def _overlay_axis_expr(item: dict, axis: str, canvas: dict) -> str:
     mtype = motion.get("type") or "none"
     amp = motion.get("amplitude") or 0.0
     period = motion.get("period") or 2.2
-    if amp and mtype in ("bob", "sway") and (
-            (mtype == "bob" and axis == "y") or (mtype == "sway" and axis == "x")):
+    amp_y = motion.get("amp_y") or 0.0
+    period_y = motion.get("period_y") or 0.0
+    if mtype == "orbit" and axis == "y" and amp_y and period_y:
+        # 竖轴幅度整片固定，只有横轴跟着语气换摆幅：竖轴一变，切点上人物
+        # 就上下错位；不变就没有错位，只剩节奏一致的呼吸。
         phase = float(motion.get("phase") or 0.0)
-        expr = (f"({expr})+{amp:.3f}"
+        expr = (f"({expr})+{float(amp_y):.3f}"
+                f"*sin(2*PI*(t-{item['start'] - phase:.3f})/{float(period_y):.3f})")
+    if mtype == "orbit":
+        active = axis == "x"
+    else:
+        active = amp and mtype in ("bob", "sway") and (
+            (mtype == "bob" and axis == "y") or (mtype == "sway" and axis == "x"))
+    if active and amp:
+        phase = float(motion.get("phase") or 0.0)
+        # 摆幅换挡：切点前后幅度不同，直接换等于在切点上把人物挪一下。
+        # 用一段线性过渡把幅度从上一段的接过来，动作连续、幅度也连续。
+        amp_from = motion.get("amp_from")
+        ramp = float(motion.get("ramp") or 0.0)
+        if amp_from is not None and ramp > 0 and abs(float(amp_from) - amp) > 0.01:
+            amp_expr = (f"({float(amp_from):.3f}+({amp:.3f}-{float(amp_from):.3f})"
+                        f"*min(1,max(0,(t-{item['start']:.3f})/{ramp:.3f})))")
+        else:
+            amp_expr = f"{amp:.3f}"
+        expr = (f"({expr})+{amp_expr}"
                 f"*sin(2*PI*(t-{item['start'] - phase:.3f})/{period:.3f})")
 
     return expr

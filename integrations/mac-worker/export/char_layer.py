@@ -457,9 +457,12 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
             if isinstance(ent, dict) and enter_px:
                 _ed = max(1e-3, float(ent.get("duration") or 0.55))
                 _p = min(1.0, max(0.0, (t - float(seg["start"])) / _ed))
-                _k = 1.0 - (1.0 - _p) ** 3
-                e_dy = enter_px * (1.0 - _k)
-                e_a = _k
+                # 位移走 smoothstep：out-cubic 初速是 3，人一开片是「弹」上来的，
+                # 两头都慢的曲线才读成「站起来」。透明度仍按 out-cubic 快速拉起——
+                # 跟着位移曲线走的话，前几帧只有半透明轮廓，量身高会偏小。
+                _s = _p * _p * (3.0 - 2.0 * _p)
+                e_dy = enter_px * (1.0 - _s)
+                e_a = 1.0 - (1.0 - _p) ** 3
                 entering = _p < 1.0
             a *= e_a
             if a < 0.999:

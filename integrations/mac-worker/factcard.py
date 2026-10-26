@@ -56,7 +56,7 @@ def _mix(c1, c2, t: float) -> tuple:
     return tuple(int(a + (b - a) * t) for a, b in zip(c1, c2))
 
 
-_BG_ANCHOR = 0.74  # 底色统一压向第一套深蓝，只留两成半的色温差
+_BG_ANCHOR = 1.0  # 底色统一压向第一套深蓝，只留两成半的色温差
 
 
 _TONE_HINTS = (
@@ -350,8 +350,8 @@ def render_card(path: Path, *, kicker: str, index: str, palette_idx: int,
     from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
     top, bottom, accent = PALETTES[palette_idx % len(PALETTES)]
-    # 语气只该改强调色，不该换整块底色：切点从深蓝跳到深琥珀，观众看到的是
-    # 「换了一套模板」，不是「换了一个意思」。底色统一压低到同一条色轴。
+    # 语气只改强调色，底色整块锁死：切点从深蓝跳到深琥珀、收尾又泛灰，
+    # 观众看到的是「背景那盏灯在变」，不是「换了一个意思」。
     top = _mix(top, PALETTES[0][0], _BG_ANCHOR)
     bottom = _mix(bottom, PALETTES[0][1], _BG_ANCHOR)
     img = _vgrad((W, H), top, bottom).convert("RGBA")
