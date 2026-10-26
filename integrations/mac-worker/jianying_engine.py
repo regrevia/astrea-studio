@@ -745,13 +745,7 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
             # 说话就按拍点切成几段不同口型，一屏一个定格看着像贴图
             beats: list[tuple[str, float, float]] = []
             if speaking and char_cfg.get("lip_flap", True):
-                period = float(char_cfg.get("lip_period") or 0.42)
-                count = max(2, min(8, int(round(dur / period)) or 2))
-                seg = dur / count
-                for k in range(count):
-                    end = total + dur if k == count - 1 else total + seg * (k + 1)
-                    beats.append((("open", "half", "round", "half")[k % 4],
-                                  total + seg * k, end))
+                beats = _lip_beats(char_cfg, item.get("audio"), total, dur)
             if not beats:
                 beats = [("", total, total + dur)]
 
@@ -937,6 +931,60 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
 
 _CHARACTERS_ROOT = Path("~/CreatorStudio/state/characters").expanduser()
 _CHAR_FRAME_CACHE: dict[tuple[str, str], Any] = {}
+
+
+def _lip_beats(char_cfg: dict[str, Any], audio: Any, start: float,
+               dur: float) -> list[tuple[str, float, float]]:
+    """这一屏的口型段：跟着配音能量走，不再按屏均分。
+
+    均分节拍跟口播对不上，观众读到的是「嘴在动」而不是「在说这句」。
+    有配音就让 vertical_short 的音量分段决定开合，失败再退回按周期兜底——
+    口型出问题不该把整条草稿打掉。
+    """
+    mouths: list[tuple[str, float]] = []
+    if audio and char_cfg.get("lip_from_audio", True):
+        try:
+            try:
+                from export.vertical_short import _audio_beats
+            except ImportError:      # worker 里 export 不是包时退回按文件目录找
+                sys.path.insert(0, str(Path(__file__).resolve().parent / "export"))
+                from vertical_short import _audio_beats  # type: ignore[no-redef]
+            mouths = _audio_beats(Path(str(audio)), dur, {
+                "lip_min": float(char_cfg.get("lip_min") or 0.22),
+                "lip_release": float(char_cfg.get("lip_release") or 0.12),
+            })
+        except Exception:  # noqa: BLE001 - 解码失败就退回固定周期
+            mouths = []
+    beats: list[tuple[str, float, float]] = []
+    if len(mouths) >= 2:
+        at = start
+        for mouth, sec in mouths:
+            beats.append((mouth, at, min(start + dur, at + max(0.05, float(sec)))))
+            at += max(0.05, float(sec))
+    if not beats:
+        period = float(char_cfg.get("lip_period") or 0.30)
+        count = max(2, min(8, int(round(dur / period)) or 2))
+        seg = dur / count
+        for k in range(count):
+            end = start + dur if k == count - 1 else start + seg * (k + 1)
+            beats.append((("open", "half", "round", "half")[k % 4],
+                          start + seg * k, end))
+    # 短于 0.24s 的口型人眼看不出是在说话，只是在闪：并进前一段
+    merged: list[tuple[str, float, float]] = []
+    for mouth, b0, b1 in beats:
+        if merged and merged[-1][0] == mouth:
+            prev, p0, _ = merged[-1]
+            merged[-1] = (prev, p0, b1)
+        elif merged and b1 - b0 < 0.24:
+            prev, p0, _ = merged[-1]
+            merged[-1] = (prev, p0, b1)
+        else:
+            merged.append((mouth, b0, b1))
+    # 尾段一定盖到本屏结束，否则角色轨在片尾留一道空
+    if merged and merged[-1][2] < start + dur - 1e-6:
+        mouth, b0, _ = merged[-1]
+        merged[-1] = (mouth, b0, start + dur)
+    return merged
 
 
 def _character_config(spec: dict[str, Any]) -> dict[str, Any] | None:
