@@ -241,6 +241,15 @@ TTS_CACHE_MAX_BYTES = 1200 * 1024 * 1024   # 缓存上限：一只 20 秒片约 
 TTS_CACHE_MAX_AGE = 45 * 86400              # 45 天没再用到的旧稿没人会再出片
 
 
+def _drop_cached(mp3: Path) -> None:
+    """删缓存干音时连逐字 sidecar 一起删，别留只对半条的孤儿文件。"""
+    for p in (mp3, mp3.with_suffix(".words.json")):
+        try:
+            p.unlink()
+        except OSError:
+            pass
+
+
 def prune_tts_cache(keep: Path | None = None) -> None:
     """配音缓存要封顶：一直只写不删，跑几个月磁盘满了，整个平台跟着躺。
 
@@ -260,10 +269,7 @@ def prune_tts_cache(keep: Path | None = None) -> None:
             if keep is not None and f == keep:
                 continue
             if now - st.st_mtime > TTS_CACHE_MAX_AGE:
-                try:
-                    f.unlink()
-                except OSError:
-                    pass
+                _drop_cached(f)
                 continue
             files.append((st.st_mtime, st.st_size, f))
         total = sum(sz for _m, sz, _f in files)
@@ -272,11 +278,8 @@ def prune_tts_cache(keep: Path | None = None) -> None:
         for _m, sz, f in sorted(files):
             if total <= TTS_CACHE_MAX_BYTES:
                 break
-            try:
-                f.unlink()
-                total -= sz
-            except OSError:
-                pass
+            _drop_cached(f)
+            total -= sz
     except Exception:
         pass
 
