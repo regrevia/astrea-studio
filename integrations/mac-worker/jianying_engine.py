@@ -1309,7 +1309,10 @@ def _character_mouth(idx: int, speaking: bool, scene: dict[str, Any]) -> str:
 
 
 def _stage_canvas(figure: Any, cfg: dict[str, Any], width: int, height: int) -> Any:
-    """把一张立绘摆进整幅透明画布：影子、轮廓柔光、按内容框贴底。
+    """把一张立绘摆进整幅透明画布：只留脚下的接触阴影，按内容框贴底。
+
+    这里不放任何发光层：轮廓光、亮边、辉光、bloom 在深色卡面上都会读成
+    「人物周围有一圈光」，所以只剩阴影（暗）这一种把人物从背景里摘出来的手段。
 
     `_character_frame` 一屏画一张；人物动画层逐帧走同一套摆位——
     两处只要有一处改歪，动起来的人和停住的人就会错位。
@@ -1327,39 +1330,17 @@ def _stage_canvas(figure: Any, cfg: dict[str, Any], width: int, height: int) -> 
     x = max(0, min(x, width - 32 - cw))
     y = max(0, min(y, height - chh))
     canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-    # 脚下压一层模糊椭圆当影子：没有它，立绘读起来就是贴在画面上的一张图
+    # 脚下压一层模糊椭圆当接触阴影：没有它，立绘读起来就是贴在画面上的一张图。
+    # 这是暗部、不是光：半径和浓度都收着用，只压脚边一小圈。
     from PIL import ImageFilter
 
     shade = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     sd = ImageDraw.Draw(shade)
     cx = x + cw * 0.5
     cy = y + chh * 0.95
-    sd.ellipse((cx - cw * 0.40, cy - chh * 0.055, cx + cw * 0.40, cy + chh * 0.045),
-               fill=(0, 0, 0, 90))
-    canvas.alpha_composite(shade.filter(ImageFilter.GaussianBlur(max(6, cw // 22))))
-    # 深色卡面上蓝发立绘会和背景糊在一起：沿轮廓扩一圈柔光把她从底上摘出来
-    # 光晕不能跟着每一缕头发走：直接把轮廓高斯模糊，发梢会被描成一圈亮边，
-    # 看着像贴纸。先缩到 1/7 抹掉细节，再放大成一团模糊的云，读起来才是环境光。
-    gw = int(w * 1.16)
-    cut = max(24, gw // 7)
-    ga = fig.split()[-1].resize((cut, cut), Image.LANCZOS)
-    ga = ga.filter(ImageFilter.GaussianBlur(max(3, cut // 9)))
-    ga = ga.resize((gw, gw), Image.LANCZOS)
-    ga = ga.filter(ImageFilter.GaussianBlur(max(6, gw // 30)))
-    # 只模糊轮廓会在方形画布边界上留一圈硬边，深色卡面上看就是一个亮方块。
-    # 再乘一层径向遮罩，让光晕在边缘自然消失。
-    from PIL import ImageChops
-
-    mask = Image.new("L", (gw, gw), 0)
-    ImageDraw.Draw(mask).ellipse((gw * 0.06, gw * 0.06, gw * 0.94, gw * 0.94), fill=255)
-    mask = mask.filter(ImageFilter.GaussianBlur(gw // 9))
-    ga = ImageChops.multiply(ga, mask)
-    # 冷白偏蓝的光，压到 0.16：深色卡面上刚够把她从背景里托起来，
-    # 再亮就是脖子上套了个光圈
-    halo = Image.new("RGBA", (gw, gw), (196, 226, 255, 255))
-    halo.putalpha(ga.point(lambda v: int(v * 0.16)))
-    canvas.alpha_composite(halo, (int(x + cw * 0.5 - gw * 0.5),
-                                 int(y + chh * 0.5 - gw * 0.5)))
+    sd.ellipse((cx - cw * 0.38, cy - chh * 0.045, cx + cw * 0.38, cy + chh * 0.035),
+               fill=(0, 0, 0, 96))
+    canvas.alpha_composite(shade.filter(ImageFilter.GaussianBlur(max(5, cw // 26))))
     canvas.alpha_composite(fig, (x - bb[0], y - bb[1]))
     return canvas
 
