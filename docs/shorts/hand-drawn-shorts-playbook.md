@@ -85,16 +85,20 @@ STUDIO_SKIP_PREFLIGHT=1 bash deploy/submit_spec.sh deploy/specs/envoy_real.json 
 
 ## 3. 手绘质感调参
 
-粗糙感全靠一个两层位移滤镜 `_RGH`（`paper_render_engine.py:194-200`）：
+粗糙感全靠一个位移滤镜 `_RGH`（`paper_render_engine.py` 顶部）：
 
 ```text
-feTurbulence fractalNoise baseFrequency=.009 numOctaves=2 seed={seed}   → scale 1.5  （大骨架抖动）
-feTurbulence fractalNoise baseFrequency=.075 numOctaves=1 seed={seed+7} → scale .55  （笔尖毛刺）
-xChannelSelector=R / yChannelSelector=G，滤镜区 x/y 各放宽 10%
+feTurbulence fractalNoise baseFrequency=.012 numOctaves=2 seed={seed}
+→ feDisplacementMap scale=1.05，xChannelSelector=R / yChannelSelector=G
+滤镜区 x/y 各放宽 8%（x="-8%" width="116%"）
 ```
 
-每张面板在 `_sketch_svg()` 里按名字固定 seed（`link=11, timeline=23, gap=37, install=51`，其他名字落 7，
-第二层扰动取 seed+7）。seed 一改整张笔画全变、版式不动——想换手感只动 seed，别动坐标。
+只留一层：`scale` 超过 1.5 笔画开始发毛、细线（.5）会被抖断；低于 .8 就看不出手绘。
+原来的第二层高频扰动（`baseFrequency=.075 scale=.55`）已删除——它在 1080p 下只贡献噪点，
+把小字边缘啃出毛刺。
+
+每张面板在 `_sketch_svg()` 里按名字固定 seed（`link=11, timeline=23, gap=37, install=51`，其他名字落 7）。
+seed 一改整张笔画全变、版式不动——想换手感只动 seed，别动坐标。
 
 **别加光。** 立绘周围那圈冷蓝 halo 来自 `jianying_engine._stage_canvas()` 的高斯叠色，逐帧渲染时
 它还会随人物缩放一起被放大，首尾两屏最明显——已经整段删掉，只留脚下一条接触阴影
@@ -111,16 +115,33 @@ xChannelSelector=R / yChannelSelector=G，滤镜区 x/y 各放宽 10%
 | 抖动太规律（看得出波纹） | 换 `seed`，或把第一层 `numOctaves` 提到 3 |
 | 笔画粗细不匀 | 别调滤镜，按层级改 `stroke-width` |
 
-线宽按信息层级分四档，四档之外不要再造新值：
+线宽按信息层级分四档，四档之外不要再造新值（`_SKETCHES` 里的实际取值）：
 
 ```text
-1.5   外框 / 主轮廓            （<g stroke-width="1.5">）
-1.15  正文行、列表行
-0.95  分隔线、刻度、次要连接
-0.85  引线、角标；影线用 0.75 + opacity .38
+T1  1.5    外框、终端窗、整块卡纸
+T2  1.0    结构线：标题栏、分栏、胶片带、药丸
+T3  .7-.8  内容行、刻度、树状条目
+T4  .5-.6  发丝线：分隔、影线、滚动条、参考线（配 opacity .18-.4）
+accent 1.1-1.4  只剩青线 / 琥珀虚线两种语义色
 ```
 
-圆头圆角、`fill:none`，影线一律 45° 短斜线、`stroke-width:.75` 配 `opacity:.38`（`_SKETCHES["link"]` 末尾那组）。
+四档是层级不是装饰：同一张图里 T1 只能出现在最外层 1-2 条，T4 可以几十条。
+层级一乱（比如列表行用 1.15、外框用 1.5）画面就回到「PPT 描边」的观感。
+
+圆头圆角、`fill:none`，影线一律 45° 短斜线、`stroke-width:.6` 配 `opacity:.16-.2`——
+影线只做「这块没读到 / 这块是附件」的弱提示，不能比正文重。
+
+**密度底线**（一张面板在 1080 宽下至少要有三层信息，缺一层就显空）：
+
+```text
+1  结构层：外框 + 标题栏 + 分栏（T1/T2）
+2  内容层：≥12 条 T3 行/格，行距 26-30，单行 ≤300 单位
+3  标注层：mono caption 一条（≥13）+ 中文结论一条（≥18，≤20 字）
+```
+
+空区控制：任何一块连续留白不要超过 100×100 单位；四角里至少两角有内容压住。
+刻度 / 帧号 / 滚动条这类「无信息但表意」的 T4 细节，是让手绘图像真页面的关键，
+每条都便宜（一个 `path`），但别超过两层嵌套，否则动画时线太多会糊。
 
 **描边生长（draw-on）**：所有笔画 `class="sk" pathLength="1"`，CSS 里
 `stroke-dasharray:1; stroke-dashoffset:1`（`paper_render_engine.py:166`），由 JS 逐条放出来：
