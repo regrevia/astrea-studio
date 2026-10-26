@@ -430,11 +430,12 @@ def _char_anim_name(pose: str, speaking: bool) -> str:
 
     talk/idle_blink 两套序列是按站姿烘的：一旦挂上，char_layer 就用序列帧顶掉
     当前姿态的立绘，八张手势稿全部退化成垂手站桩——片子看着像只有嘴在动。
-    挥手序列带抬臂动作，仍走 wave；其余姿态直接用姿态稿本身，口型靠 open/closed
+    所以只有 idle 用序列帧，其余姿态一律用姿态稿本身，口型靠 open/closed
     差分，身体起伏交给 char_layer 的 bob/sway/lean。
     """
-    if pose == "wave":
-        return "wave"
+    # 烘好的 wave 序列是「垂手站姿的小幅起伏」：手没抬，人物还比姿态稿大 4%，
+    # 挂上去既不是挥手，身高也会在收尾突然长一截。挥手直接用姿态稿里的抬手掌心，
+    # 身体起伏交给 char_layer 的 bob/sway/lean，尺寸跟前面每一屏对齐。
     if pose in ("idle", ""):
         return "idle_blink"
     return ""

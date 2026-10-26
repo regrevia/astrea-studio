@@ -499,6 +499,9 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
             nw, nh = pw + 2 * rot, ph + 2 * rot
             cos_l, sin_l = math.cos(lean), math.sin(lean)
             m00, m01 = cos_l, sin_l
+            # 注意这是「输出坐标 → 素材坐标」的逆变换：想让人矮一点，逆矩阵的
+            # y 系数要变大（乘），不是变小。量过：绕脚底转 2.6° 身高只多 3px（0.5%，
+            # 在 3% 容差内），不必再补偿，补偿写反了反而会让人凭空长 4%。
             m10, m11 = -sin_l / breath, cos_l / breath
             cx, cy = pw / 2.0 + rot, float(ph + rot)
             a = (m00, m01, pw / 2.0 - m00 * cx - m01 * cy)
