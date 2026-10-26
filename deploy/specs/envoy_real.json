@@ -29,6 +29,8 @@
     "engine": "timeline",
     "template": "factcard",
     "mode": "vertical_short",
-    "character": true
+    "character": {
+      "outfit": "06_researcher"
+    }
   }
 }

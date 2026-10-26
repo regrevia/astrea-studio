@@ -128,10 +128,9 @@ _CSS_SCHEMATIC = f"""
 html,body{{width:{WIDTH}px;height:{HEIGHT}px;overflow:hidden;background:#07101A}}
 body{{font-kerning:normal;text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased}}
 #stage{{position:relative;width:{WIDTH}px;height:{HEIGHT}px;overflow:hidden;
-  background:radial-gradient(96% 64% at 46% 8%,#111F2D 0%,#0B1621 44%,#070F18 74%,#050B12 100%)}}
-.grain{{position:absolute;inset:0;pointer-events:none;opacity:.5;
-  background-image:repeating-linear-gradient(104deg,rgba(150,186,210,.030) 0 1px,transparent 1px 3px),
-    repeating-linear-gradient(9deg,rgba(150,186,210,.022) 0 1px,transparent 1px 4px)}}
+  background:linear-gradient(180deg,#0A151F 0%,#08121C 46%,#060E17 76%,#050B13 100%)}}
+.grain{{position:absolute;inset:0;pointer-events:none;opacity:.16;
+  background-image:repeating-linear-gradient(104deg,rgba(150,186,210,.013) 0 1px,transparent 1px 3px)}}
 #bg{{position:absolute;inset:0;width:{WIDTH}px;height:{HEIGHT}px}}
 .sheet{{position:absolute;inset:0;opacity:0;will-change:opacity}}
 .pad{{position:absolute;left:92px;right:92px;top:128px;bottom:104px}}
@@ -389,17 +388,20 @@ _SKETCHES = {
  <g filter="url(#rgh-in)" stroke="#A8C9DA">
   <path d="M465 282 v26" stroke-width="1.2" opacity=".55"/>
   <path d="M279 310 h372" stroke-width="1.2" stroke-dasharray="6 7" opacity=".5"/>
+  <circle cx="279" cy="310" r="2.6" fill="#A8C9DA" stroke="none" opacity=".75"/>
+  <circle cx="480" cy="310" r="2.6" fill="#A8C9DA" stroke="none" opacity=".75"/>
+  <circle cx="651" cy="310" r="2.6" fill="#A8C9DA" stroke="none" opacity=".75"/>
   <path d="M279 310 v22" stroke-width="1.2" opacity=".5"/>
   <path d="M480 310 v22" stroke-width="1.2" opacity=".5"/>
   <path d="M651 310 v22" stroke-width="1.2" opacity=".5"/>
   <rect class="sk" pathLength="1" x="174" y="332" width="210" height="62" rx="31" stroke-width="1.7"/>
   <rect class="sk" pathLength="1" x="400" y="332" width="160" height="62" rx="31" stroke-width="1.7"/>
   <rect class="sk" pathLength="1" x="576" y="332" width="150" height="62" rx="31" stroke-width="1.7"/>
-  <text x="206" y="370" fill="#C6DCEC" font-family="PingFang SC, sans-serif" font-size="20">Claude Code</text>
-  <text x="428" y="370" fill="#C6DCEC" font-family="PingFang SC, sans-serif" font-size="20">Codex</text>
-  <text x="604" y="370" fill="#C6DCEC" font-family="PingFang SC, sans-serif" font-size="20">DSH</text>
+  <text x="279" y="370" fill="#C6DCEC" font-family="PingFang SC, sans-serif" font-size="20" text-anchor="middle">Claude Code</text>
+  <text x="480" y="370" fill="#C6DCEC" font-family="PingFang SC, sans-serif" font-size="20" text-anchor="middle">Codex</text>
+  <text x="651" y="370" fill="#C6DCEC" font-family="PingFang SC, sans-serif" font-size="20" text-anchor="middle">DSH</text>
   <text x="176" y="438" fill="#6F97AE" font-family="SF Mono, ui-monospace, monospace" font-size="13" opacity=".85">skill + MCP</text>
-  <text x="450" y="438" fill="#8FAEBF" font-family="PingFang SC, sans-serif" font-size="17" opacity=".9">同一套接口</text>
+  <text x="465" y="438" fill="#8FAEBF" font-family="PingFang SC, sans-serif" font-size="17" text-anchor="middle" opacity=".9">同一套接口</text>
  </g>
 </svg>
 """,
