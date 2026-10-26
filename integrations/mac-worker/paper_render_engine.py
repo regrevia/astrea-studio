@@ -129,9 +129,12 @@ html,body{{width:{WIDTH}px;height:{HEIGHT}px;overflow:hidden;background:#07101A}
 body{{font-kerning:normal;text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased}}
 #stage{{position:relative;width:{WIDTH}px;height:{HEIGHT}px;overflow:hidden;
   background:linear-gradient(180deg,#0A151F 0%,#08121C 46%,#060E17 76%,#050B13 100%)}}
-.grain{{position:absolute;inset:0;pointer-events:none;opacity:.16;
-  background-image:repeating-linear-gradient(104deg,rgba(150,186,210,.013) 0 1px,transparent 1px 3px)}}
 #bg{{position:absolute;inset:0;width:{WIDTH}px;height:{HEIGHT}px}}
+/* 纸面：笔刷痕和四角磨损都只压暗、不补亮；原来的 104° 斜纹在 crf16 下会变成条纹噪点，删掉 */
+.tone{{position:absolute;inset:0;pointer-events:none;background:rgba(2,5,9,.10)}}
+#vign{{position:absolute;inset:0;pointer-events:none;background:
+  radial-gradient(120% 90% at 46% 8%,rgba(0,0,0,0) 40%,rgba(0,0,0,.28) 100%),
+  linear-gradient(180deg,rgba(0,0,0,.15) 0%,rgba(0,0,0,0) 13%,rgba(0,0,0,0) 84%,rgba(0,0,0,.22) 100%)}}
 .sheet{{position:absolute;inset:0;opacity:0;will-change:opacity}}
 .pad{{position:absolute;left:92px;right:92px;top:128px;bottom:104px}}
 .kicker{{display:none}}
@@ -174,18 +177,40 @@ body{{font-kerning:normal;text-rendering:geometricPrecision;-webkit-font-smoothi
 _SVG_STAGE = """
 <svg id="bg" viewBox="0 0 1080 1920" preserveAspectRatio="none">
   <defs>
-    <filter id="paper" x="0" y="0" width="100%" height="100%">
-      <feTurbulence type="fractalNoise" baseFrequency=".78" numOctaves="3" seed="5" result="n"/>
-      <feColorMatrix in="n" type="saturate" values="0"/>
+    <!-- 墨面低频浓淡：各向同性，避免 1080 宽上出现拉丝 -->
+    <filter id="pm" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency=".0016 .011" numOctaves="3" seed="29"/>
+      <feColorMatrix type="saturate" values="0"/>
     </filter>
-    <radialGradient id="vg" cx="46%" cy="8%" r="86%">
-      <stop offset="0" stop-color="#000" stop-opacity="0"/>
-      <stop offset="1" stop-color="#000" stop-opacity=".45"/>
-    </radialGradient>
+    <!-- 横向笔刷：位移打破直边，再糊一点，像笔扫过一遍 -->
+    <filter id="pb" x="-12%" y="-12%" width="124%" height="124%">
+      <feTurbulence type="fractalNoise" baseFrequency=".009 .06" numOctaves="2" seed="23" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="20" xChannelSelector="R" yChannelSelector="G"/>
+      <feGaussianBlur stdDeviation="2.6"/>
+    </filter>
+    <!-- 四角磨损：不规则块，只压暗 -->
+    <filter id="pw" x="-12%" y="-12%" width="124%" height="124%">
+      <feTurbulence type="fractalNoise" baseFrequency=".02 .05" numOctaves="3" seed="41" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="30" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
   </defs>
-  <rect width="1080" height="1920" filter="url(#paper)" opacity=".05"/>
-  <rect width="1080" height="1920" fill="url(#vg)"/>
-</svg>"""
+  <rect width="1080" height="1920" filter="url(#pm)" opacity=".03"/>
+  <g filter="url(#pb)" stroke-linecap="round" fill="none">
+    <path d="M-60 92 q320 -14 610 8 t520 -10" stroke="#16283A" stroke-width="44" opacity=".035"/>
+    <path d="M-60 118 q360 10 640 -8 t480 12" stroke="#04090F" stroke-width="30" opacity=".05"/>
+    <path d="M-60 1306 q300 12 560 -8 t520 8" stroke="#04090F" stroke-width="58" opacity=".055"/>
+    <path d="M120 1402 q300 -10 520 8 t420 -8" stroke="#16283A" stroke-width="36" opacity=".04"/>
+    <path d="M-60 1548 q340 10 600 -8 t520 6" stroke="#04090F" stroke-width="66" opacity=".05"/>
+    <path d="M40 1796 q320 -10 580 8 t500 -6" stroke="#03080E" stroke-width="52" opacity=".075"/>
+  </g>
+  <g filter="url(#pw)" fill="#03070C">
+    <path d="M0 0 h190 q-40 26 -96 30 q-58 4 -94 44 z" opacity=".30"/>
+    <path d="M1080 0 h-150 q34 20 74 30 q52 12 76 46 z" opacity=".24"/>
+    <path d="M0 1920 h168 q-34 -22 -82 -30 q-56 -8 -86 -46 z" opacity=".26"/>
+    <path d="M1080 1920 h-176 q30 -20 76 -30 q54 -10 100 -44 z" opacity=".22"/>
+  </g>
+</svg>
+<div class="tone"></div><div id="vign"></div>"""
 
 
 # ---------------------------------------------------------------- 手绘面板
@@ -612,7 +637,7 @@ window.renderFrame(0);
 """ % {"P": payload}
     return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <title>schematic</title><style>{_CSS_SCHEMATIC}</style></head>
-<body><div id="stage"><div class="grain"></div>{_SVG_STAGE}{sheets}</div>
+<body><div id="stage">{_SVG_STAGE}{sheets}</div>
 <script>{js}</script></body></html>"""
 
 
