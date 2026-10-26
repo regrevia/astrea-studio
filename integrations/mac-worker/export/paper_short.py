@@ -131,7 +131,20 @@ def render(script: dict[str, Any], workdir: Path, out_mp4: Path, *,
     if shots:
         # shots: [(图片路径, 角标文案)]，按屏序贴上去；真截图比画出来的图形可信
         for row, pair in zip(plan, shots):
-            row["shot"], row["cap"] = str(pair[0]), str(pair[1])
+            src, cap = str(pair[0]), str(pair[1])
+            if src.startswith("sketch:"):
+                # sketch:timeline —— 这一屏用画出来的手绘面板，其余用真截图
+                row["sketch"], row["cap"] = src.split(":", 1)[1], cap
+                continue
+            # 截图可以钉版位：路径#高度#fit#top，宽截图的字才够大
+            bits = src.split("#")
+            row["shot"], row["cap"] = bits[0], cap
+            if len(bits) > 1:
+                row["ph"] = float(bits[1])
+            if len(bits) > 2:
+                row["fit"] = bits[2]
+            if len(bits) > 3:
+                row["pt"] = float(bits[3])
 
     silent = workdir / "paper_silent.mp4"
     log(f"[paper] {len(plan)} 屏 {total:.2f}s style={style}")

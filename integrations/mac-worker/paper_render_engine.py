@@ -128,27 +128,43 @@ _CSS_SCHEMATIC = f"""
 html,body{{width:{WIDTH}px;height:{HEIGHT}px;overflow:hidden;background:#07101A}}
 body{{font-kerning:normal;text-rendering:geometricPrecision;-webkit-font-smoothing:antialiased}}
 #stage{{position:relative;width:{WIDTH}px;height:{HEIGHT}px;overflow:hidden;
-  background:radial-gradient(120% 78% at 50% 12%,#101E2C 0%,#0A141F 46%,#060D15 100%)}}
+  background:radial-gradient(96% 64% at 46% 8%,#111F2D 0%,#0B1621 44%,#070F18 74%,#050B12 100%)}}
+.grain{{position:absolute;inset:0;pointer-events:none;opacity:.5;
+  background-image:repeating-linear-gradient(104deg,rgba(150,186,210,.030) 0 1px,transparent 1px 3px),
+    repeating-linear-gradient(9deg,rgba(150,186,210,.022) 0 1px,transparent 1px 4px)}}
 #bg{{position:absolute;inset:0;width:{WIDTH}px;height:{HEIGHT}px}}
 .sheet{{position:absolute;inset:0;opacity:0;will-change:opacity}}
-.pad{{position:absolute;left:84px;right:84px;top:104px;bottom:104px}}
-.kicker{{font:500 26px/1 "SF Mono","JetBrains Mono",ui-monospace,monospace;
-  letter-spacing:.30em;color:#5ED3BE;text-transform:uppercase;opacity:0}}
-.head{{margin-top:26px;font:700 90px/1.14 "PingFang SC","Hiragino Sans GB",sans-serif;
-  letter-spacing:-.01em;color:#EAF2FA;opacity:0}}
+.pad{{position:absolute;left:92px;right:92px;top:128px;bottom:104px}}
+.kicker{{display:none}}
+.head{{font:600 61px/1.28 "PingFang SC","Hiragino Sans GB",sans-serif;
+  letter-spacing:0;color:#ECF3FA;max-width:858px;opacity:0}}
 .head .em{{color:#5ED3BE}}
-.accent{{height:2px;background:linear-gradient(90deg,#5ED3BE,rgba(94,211,190,0));margin:38px 0 34px;width:0}}
-.body{{font:400 40px/1.66 "PingFang SC","Hiragino Sans GB",sans-serif;color:#A9BDD0;
-  letter-spacing:.01em;max-width:900px;opacity:0}}
+.accent{{display:none}}
+.ul{{margin:14px 0 0;width:228px;height:16px}}
+.ul svg{{width:100%;height:100%;overflow:visible}}
+.ul path{{stroke:#5ED3BE;stroke-width:3;opacity:.92}}
+.body{{margin-top:24px;font:400 31px/1.62 "PingFang SC","Hiragino Sans GB",sans-serif;
+  color:#A2B8CB;letter-spacing:.015em;max-width:846px;opacity:0}}
 .body b{{color:#EAF2FA;font-weight:600}}
-.shot{{position:absolute;left:84px;right:84px;bottom:112px;height:560px;border-radius:16px;
-  overflow:hidden;border:1px solid rgba(94,211,190,.30);
-  box-shadow:0 26px 60px -30px rgba(0,0,0,.85);transform-origin:50% 100%}}
-.shot img{{width:100%;height:100%;object-fit:cover;object-position:top center;display:block}}
-.shot::after{{content:"";position:absolute;inset:0;
-  background:linear-gradient(180deg,rgba(6,13,21,0) 62%,rgba(6,13,21,.55) 100%)}}
-.shot .cap{{position:absolute;left:22px;bottom:18px;z-index:2;
-  font:500 22px/1.3 "SF Mono",ui-monospace,monospace;letter-spacing:.06em;color:#CFE3F2}}
+.panel{{position:absolute;left:58px;right:58px;top:396px;height:838px;display:block}}
+.pbody{{position:absolute;inset:0;overflow:hidden;border-radius:3px;background:#0C1826;
+  box-shadow:0 40px 92px -46px rgba(0,0,0,.96),0 0 0 1px rgba(133,176,201,.22);
+  transform:rotate(-.85deg);transform-origin:50% 0}}
+.panel::before{{content:"";position:absolute;left:44px;top:-14px;width:166px;height:30px;z-index:3;
+  background:rgba(206,226,240,.12);transform:rotate(-2.4deg);box-shadow:0 3px 12px rgba(0,0,0,.30)}}
+.panel::after{{content:"";position:absolute;right:30px;bottom:-12px;width:110px;height:24px;z-index:3;
+  background:rgba(206,226,240,.10);transform:rotate(3.2deg);box-shadow:0 3px 12px rgba(0,0,0,.26)}}
+.pbody img{{width:100%;height:100%;object-fit:contain;object-position:center;display:block}}
+.pbody::after{{content:"";position:absolute;inset:0;
+  background:linear-gradient(90deg,rgba(6,13,21,0) 0 calc(100% - 74px),rgba(6,13,21,.10) calc(100% - 74px),rgba(6,13,21,.88) 100%),
+  linear-gradient(180deg,rgba(6,13,21,0) 74%,rgba(6,13,21,.62) 100%)}}
+.panel .cap{{position:absolute;left:2px;bottom:calc(100% + 14px);z-index:2;
+  font:500 23px/1.3 "SF Mono",ui-monospace,monospace;letter-spacing:.08em;color:#7FA8C4}}
+.sketch{{position:absolute;left:18px;right:18px;top:430px;height:545px;
+  display:flex;align-items:center;justify-content:center}}
+.sketch svg{{width:100%;height:100%;overflow:visible}}
+.sk{{stroke-dasharray:1;stroke-dashoffset:1;stroke-linecap:round;stroke-linejoin:round;fill:none}}
+.skf{{opacity:0}}
 .foot{{position:absolute;left:84px;right:84px;bottom:52px;display:flex;
   justify-content:space-between;align-items:baseline;
   font:400 22px/1.2 "SF Mono",ui-monospace,monospace;letter-spacing:.18em;color:#6C8BA8}}
@@ -157,51 +173,282 @@ body{{font-kerning:normal;text-rendering:geometricPrecision;-webkit-font-smoothi
 _SVG_STAGE = """
 <svg id="bg" viewBox="0 0 1080 1920" preserveAspectRatio="none">
   <defs>
-    <pattern id="dots" width="56" height="56" patternUnits="userSpaceOnUse">
-      <circle cx="2" cy="2" r="1.6" fill="#3C6E80" opacity=".55"/>
-    </pattern>
-    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#7FA6C0" stop-opacity="0"/>
-      <stop offset=".5" stop-color="#7FA6C0" stop-opacity=".45"/>
-      <stop offset="1" stop-color="#7FA6C0" stop-opacity="0"/>
-    </linearGradient>
+    <filter id="paper" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency=".78" numOctaves="3" seed="5" result="n"/>
+      <feColorMatrix in="n" type="saturate" values="0"/>
+    </filter>
+    <radialGradient id="vg" cx="46%" cy="8%" r="86%">
+      <stop offset="0" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".45"/>
+    </radialGradient>
   </defs>
-  <g id="grid"><rect x="-400" y="-400" width="1900" height="2800" fill="url(#dots)"/></g>
-  <g id="rings" fill="none" stroke="#4E93A8" stroke-opacity=".30">
-    <circle id="r0" cx="540" cy="770" r="282" stroke-dasharray="3 17"/>
-    <circle id="r1" cx="540" cy="770" r="430" stroke-dasharray="44 30" stroke-opacity=".20"/>
-    <circle id="r2" cx="540" cy="770" r="600" stroke-dasharray="2 26" stroke-opacity=".14"/>
-  </g>
-  <polyline id="signal" points="0,1318 150,1306 268,1330 402,1272 548,1296 690,1246 812,1274 940,1228 1080,1252"
-    fill="none" stroke="#5ED3BE" stroke-opacity=".55" stroke-width="2"
-    stroke-dasharray="46 26"/>
-  <g id="nodes" fill="#5ED3BE">
-    <circle id="n0" cx="150" cy="1306" r="5"/><circle id="n1" cx="402" cy="1272" r="5"/>
-    <circle id="n2" cx="690" cy="1246" r="5"/><circle id="n3" cx="940" cy="1228" r="5"/>
-  </g>
-  <line x1="0" y1="1318" x2="1080" y2="1318" stroke="url(#edge)" stroke-width="1"/>
+  <rect width="1080" height="1920" filter="url(#paper)" opacity=".05"/>
+  <rect width="1080" height="1920" fill="url(#vg)"/>
 </svg>"""
 
 
+# ---------------------------------------------------------------- 手绘面板
+# 真截图解释「东西长什么样」，手绘图解释「它怎么运作」——两种面板交替出现，
+# 观众不会连着看六张同一风格的图，也就不会觉得这是幻灯片。
+# 线条用手绘感：feTurbulence 位移 + 圆头笔触 + pathLength=1 的描边生长动画。
+_RGH = ('<defs><filter id="rgh-{k}" x="-8%%" y="-8%%" width="116%%" height="116%%">'
+        '<feTurbulence type="fractalNoise" baseFrequency=".021" numOctaves="2" seed="{seed}" result="n"/>'
+        '<feDisplacementMap in="SourceGraphic" in2="n" scale="2.1" '
+        'xChannelSelector="R" yChannelSelector="G"/></filter></defs>')
+
+_SKETCHES = {
+    # 一张链接 → 一份带定位的材料
+    "link": r"""
+<svg viewBox="0 0 900 470" fill="none">__RGH__
+ <g filter="url(#rgh-link)" stroke="#9CC0D2" stroke-width="2.4">
+  <rect class="sk" pathLength="1" x="20" y="26" width="404" height="278" rx="11"/>
+  <path class="sk" pathLength="1" d="M20 64 H424"/>
+  <circle cx="44" cy="46" r="4.2" stroke-width="1.8"/><circle cx="60" cy="46" r="4.2" stroke-width="1.8"/>
+  <rect class="sk" pathLength="1" x="82" y="38" width="300" height="17" rx="8.5"/>
+  <path class="sk" pathLength="1" d="M98 46 h128" stroke-width="1.6" opacity=".85"/>
+  <path class="sk" pathLength="1" d="M390 38 v17" stroke-width="1.5"/>
+  <path class="sk" pathLength="1" d="M44 96 h300" stroke-width="1.9"/><path class="sk" pathLength="1" d="M44 124 h352" stroke-width="1.9"/>
+  <path class="sk" pathLength="1" d="M44 152 h322" stroke-width="1.9"/><path class="sk" pathLength="1" d="M44 180 h246" stroke-width="1.9"/>
+  <path class="sk" pathLength="1" d="M44 208 h338" stroke-width="1.9"/>
+  <path class="sk" pathLength="1" d="M44 248 h170" stroke-width="1.6" opacity=".8"/>
+  <path class="sk" pathLength="1" d="M410 80 v200" stroke-width="1.5" opacity=".7"/>
+  <path class="sk" pathLength="1" d="M404 176 h12" stroke-width="1.3"/>
+ </g>
+ <!-- 一条链接搬过去 -->
+ <g filter="url(#rgh-link)" stroke="#5ED3BE" stroke-width="2.4">
+  <path class="sk" pathLength="1" d="M442 168 h52"/>
+  <path class="sk" pathLength="1" d="M480 152 l20 16 l-20 16"/>
+  <path class="sk" pathLength="1" d="M442 184 h34" stroke-width="1.5" opacity=".45"/>
+ </g>
+ <!-- 材料页：折角 + 定位标 -->
+ <g filter="url(#rgh-link)" stroke="#9CC0D2" stroke-width="2.4">
+  <path class="sk" pathLength="1" d="M540 18 h252 l78 78 v352 h-330 z"/>
+  <path class="sk" pathLength="1" d="M792 18 v78 h78"/>
+  <path class="sk" pathLength="1" d="M566 124 h228" stroke-width="1.9"/><path class="sk" pathLength="1" d="M566 158 h186" stroke-width="1.9"/>
+  <path class="sk" pathLength="1" d="M566 192 h214" stroke-width="1.9"/><path class="sk" pathLength="1" d="M566 258 h198" stroke-width="1.9"/>
+  <path class="sk" pathLength="1" d="M566 292 h234" stroke-width="1.9"/><path class="sk" pathLength="1" d="M566 326 h152" stroke-width="1.9"/>
+  <path class="sk" pathLength="1" d="M566 392 h246" stroke-width="1.9"/><path class="sk" pathLength="1" d="M566 426 h178" stroke-width="1.9"/>
+  <path class="sk" pathLength="1" d="M550 96 v356" stroke-width="1.4" opacity=".55"/>
+ </g>
+ <!-- 坐标：时间戳 / 页码 -->
+ <g stroke="#5ED3BE" stroke-width="1.8" fill="none" filter="url(#rgh-link)">
+  <rect class="sk" pathLength="1" x="812" y="212" width="72" height="28" rx="5"/>
+  <rect class="sk" pathLength="1" x="812" y="252" width="72" height="28" rx="5"/>
+  <circle class="sk" pathLength="1" cx="700" cy="300" r="12" stroke-width="1.6"/>
+  <path class="sk" pathLength="1" d="M700 288 v-16" stroke-width="1.3" opacity=".75"/>
+ </g>
+ <g fill="#5ED3BE" font-family="SF Mono, ui-monospace, monospace" font-size="16">
+  <text x="819" y="231">04:18</text><text x="819" y="271">p.12</text>
+ </g>
+ <!-- 引线 + 手写标注 -->
+ <g stroke="#7FA6BC" stroke-width="1.4" fill="none" opacity=".85">
+  <path d="M690 292 q-46 -20 -78 -8"/>
+  <path d="M744 172 h74" stroke-dasharray="5 6"/>
+  <path d="M566 96 q-30 -14 -58 -10"/>
+ </g>
+ <g fill="#7FA6BC" font-family="SF Mono, ui-monospace, monospace" font-size="18" opacity=".9">
+  <text x="26" y="344">one link</text><text x="754" y="322">material id</text>
+ </g>
+ <!-- 影线 -->
+ <g stroke="#6F97AE" stroke-width="1.1" opacity=".38">
+  <path d="M26 300 l16 -12"/><path d="M48 306 l16 -12"/><path d="M70 312 l16 -12"/>
+  <path d="M556 452 l20 -16"/><path d="M584 456 l20 -16"/><path d="M612 460 l20 -16"/>
+ </g>
+</svg>""",
+    # 视频按时间点抽帧，结论带 [mm:ss]
+    "timeline": r"""
+<svg viewBox="0 0 900 470" fill="none">__RGH__
+ <!-- 胶片条 + 齿孔 -->
+ <g filter="url(#rgh-tl)" stroke="#9CC0D2" stroke-width="2.4">
+  <rect class="sk" pathLength="1" x="20" y="88" width="860" height="140" rx="6"/>
+  <path class="sk" pathLength="1" d="M20 108 H880"/><path class="sk" pathLength="1" d="M20 208 H880"/>
+  <g stroke-width="1.3" opacity=".82">
+   <path class="sk" pathLength="1" d="M44 94 h10 v10 h-10 z"/><path class="sk" pathLength="1" d="M100 94 h10 v10 h-10 z"/>
+   <path class="sk" pathLength="1" d="M156 94 h10 v10 h-10 z"/><path class="sk" pathLength="1" d="M212 94 h10 v10 h-10 z"/>
+   <path class="sk" pathLength="1" d="M268 94 h10 v10 h-10 z"/><path class="sk" pathLength="1" d="M324 94 h10 v10 h-10 z"/>
+   <path class="sk" pathLength="1" d="M380 94 h10 v10 h-10 z"/><path class="sk" pathLength="1" d="M436 94 h10 v10 h-10 z"/>
+   <path class="sk" pathLength="1" d="M492 94 h10 v10 h-10 z"/><path class="sk" pathLength="1" d="M548 94 h10 v10 h-10 z"/>
+   <path class="sk" pathLength="1" d="M604 94 h10 v10 h-10 z"/><path class="sk" pathLength="1" d="M660 94 h10 v10 h-10 z"/>
+   <path class="sk" pathLength="1" d="M716 94 h10 v10 h-10 z"/><path class="sk" pathLength="1" d="M772 94 h10 v10 h-10 z"/>
+   <path class="sk" pathLength="1" d="M828 94 h10 v10 h-10 z"/>
+   <path class="sk" pathLength="1" d="M44 212 h10 v-10 h-10 z"/><path class="sk" pathLength="1" d="M156 212 h10 v-10 h-10 z"/>
+   <path class="sk" pathLength="1" d="M268 212 h10 v-10 h-10 z"/><path class="sk" pathLength="1" d="M380 212 h10 v-10 h-10 z"/>
+   <path class="sk" pathLength="1" d="M492 212 h10 v-10 h-10 z"/><path class="sk" pathLength="1" d="M604 212 h10 v-10 h-10 z"/>
+   <path class="sk" pathLength="1" d="M716 212 h10 v-10 h-10 z"/><path class="sk" pathLength="1" d="M828 212 h10 v-10 h-10 z"/>
+  </g>
+ </g>
+ <!-- 音轨波形：满条铺开，不出条外 -->
+ <g filter="url(#rgh-tl)" stroke="#9CC0D2" stroke-width="1.7" opacity=".95">
+  <path class="sk" pathLength="1" d="M52 168 q8 -14 16 0 q8 -27 16 0 q8 -9 16 0 q8 -32 16 0 q8 -18 16 0 q8 -8 16 0 q8 -24 16 0 q8 -13 16 0 q8 -35 16 0 q8 -17 16 0 q8 -23 16 0 q8 -9 16 0 q8 -28 16 0 q8 -19 16 0 q8 -33 16 0 q8 -11 16 0 q8 -22 16 0 q8 -15 16 0 q8 -30 16 0 q8 -18 16 0 q8 -8 16 0 q8 -26 16 0 q8 -12 16 0 q8 -34 16 0 q8 -16 16 0 q8 -21 16 0 q8 -11 16 0 q8 -25 16 0 q8 -14 16 0 q8 -29 16 0 q8 -9 16 0 q8 -31 16 0 q8 -18 16 0 q8 -24 16 0 q8 -13 16 0 q8 -27 16 0 q8 -16 16 0 q8 -22 16 0 q8 -10 16 0 q8 -33 16 0 q8 -15 16 0 q8 -26 16 0 q8 -12 16 0 q8 -30 16 0 q8 -17 16 0 q8 -20 16 0 q8 -11 16 0 q8 -28 16 0 q8 -14 16 0 q8 -24 16 0 q8 -16 16 0 q8 -32 16 0"/>
+ </g>
+ <!-- 抽帧标尺 -->
+ <g filter="url(#rgh-tl)" stroke="#9CC0D2" stroke-width="1.5" opacity=".85">
+  <path class="sk" pathLength="1" d="M20 250 H880"/>
+  <path class="sk" pathLength="1" d="M80 250 v8"/><path class="sk" pathLength="1" d="M164 250 v14"/>
+  <path class="sk" pathLength="1" d="M248 250 v8"/><path class="sk" pathLength="1" d="M332 250 v14"/>
+  <path class="sk" pathLength="1" d="M416 250 v8"/><path class="sk" pathLength="1" d="M500 250 v14"/>
+  <path class="sk" pathLength="1" d="M584 250 v8"/><path class="sk" pathLength="1" d="M668 250 v14"/>
+  <path class="sk" pathLength="1" d="M752 250 v8"/><path class="sk" pathLength="1" d="M836 250 v14"/>
+ </g>
+ <!-- 两个抽帧点：竖线 + 小旗 + 帧框 -->
+ <g filter="url(#rgh-tl)" stroke="#5ED3BE" stroke-width="2.2">
+  <path class="sk" pathLength="1" d="M254 96 V286"/>
+  <path class="sk" pathLength="1" d="M254 96 V240"/>
+  <path class="sk" pathLength="1" d="M604 96 V240"/>
+  <path class="sk" pathLength="1" d="M248 96 h12 v12 h-12 z" stroke-width="1.6"/>
+  <path class="sk" pathLength="1" d="M598 96 h12 v12 h-12 z" stroke-width="1.6"/>
+  <rect class="sk" pathLength="1" x="232" y="120" width="42" height="26" rx="3" opacity=".8" stroke-width="1.5"/>
+  <rect class="sk" pathLength="1" x="582" y="120" width="42" height="26" rx="3" opacity=".8" stroke-width="1.5"/>
+  <path class="sk" pathLength="1" d="M232 139 l12 -8 l8 6 l9 -10" stroke-width="1.1" opacity=".85"/>
+  <path class="sk" pathLength="1" d="M582 139 l12 -8 l8 6 l9 -10" stroke-width="1.1" opacity=".85"/>
+ </g>
+ <!-- 被抽中的两句转录 -->
+ <g filter="url(#rgh-tl)" stroke="#9CC0D2" stroke-width="1.7">
+  <path class="sk" pathLength="1" d="M254 320 h300"/><path class="sk" pathLength="1" d="M254 346 h216"/>
+  <path class="sk" pathLength="1" d="M604 320 h214"/><path class="sk" pathLength="1" d="M604 346 h166"/>
+  <path class="sk" pathLength="1" d="M240 310 v52" opacity=".45" stroke-width="1.1"/>
+  <path class="sk" pathLength="1" d="M590 310 v52" opacity=".45" stroke-width="1.1"/>
+ </g>
+ <g fill="#5ED3BE" font-family="SF Mono, ui-monospace, monospace" font-size="17">
+  <text x="262" y="82">03:12</text><text x="612" y="82">07:02</text>
+ </g>
+ <g fill="#7FA6BC" font-family="SF Mono, ui-monospace, monospace" font-size="17" opacity=".85">
+  <text x="22" y="300">keyframe</text><text x="502" y="300">transcript</text>
+  <text x="22" y="404">frame( t )</text>
+ </g>
+ <g stroke="#6F97AE" stroke-width="1.1" opacity=".32">
+  <path d="M26 430 l22 -16"/><path d="M58 434 l22 -16"/><path d="M90 438 l22 -16"/>
+ </g>
+</svg>""",
+    # 没读到的部分照实标出来
+    "gap": r"""
+<svg viewBox="0 0 900 470" fill="none">__RGH__
+ <!-- 材料页 -->
+ <g filter="url(#rgh-gap)" stroke="#9CC0D2" stroke-width="2.4">
+  <path class="sk" pathLength="1" d="M40 20 h398 l82 82 v328 h-480 z"/>
+  <path class="sk" pathLength="1" d="M438 20 v82 h82"/>
+  <path class="sk" pathLength="1" d="M80 112 h330" stroke-width="1.9"/><path class="sk" pathLength="1" d="M80 144 h268" stroke-width="1.9"/>
+  <path class="sk" pathLength="1" d="M80 176 h312" stroke-width="1.9"/><path class="sk" pathLength="1" d="M80 208 h236" stroke-width="1.9"/>
+  <path class="sk" pathLength="1" d="M80 340 h318 v52 h-318 z"/>
+  <path class="sk" pathLength="1" d="M94 366 l12 13 l25 -27"/>
+  <path class="sk" pathLength="1" d="M172 370 h186"/>
+ </g>
+ <!-- 没读到的一段：虚线带 + 打叉 -->
+ <g filter="url(#rgh-gap)" stroke="#8FAEBF" stroke-width="1.5" opacity=".7">
+  <path d="M80 262 h330" stroke-dasharray="7 8"/>
+  <path d="M80 288 h330" stroke-dasharray="7 8"/>
+ </g>
+ <g filter="url(#rgh-gap)" stroke="#E8B464" stroke-width="2.2">
+  <rect class="sk" pathLength="1" x="196" y="240" width="104" height="70" rx="7" stroke-width="1.5" opacity=".6"/>
+  <path class="sk" pathLength="1" d="M212 254 l72 44"/><path class="sk" pathLength="1" d="M284 254 l-72 44"/>
+ </g>
+ <!-- 右侧图例 -->
+ <g stroke="#E8B464" stroke-width="1.6" fill="none" opacity=".9">
+  <path d="M604 236 h44" stroke-dasharray="6 7"/>
+  <path d="M560 236 h20"/>
+ </g>
+ <g fill="#E8B464" font-family="SF Mono, ui-monospace, monospace" font-size="19">
+  <text x="662" y="242">未覆盖</text>
+ </g>
+ <g filter="url(#rgh-gap)" stroke="#5ED3BE" stroke-width="1.9">
+  <circle class="sk" pathLength="1" cx="590" cy="306" r="10"/>
+  <path class="sk" pathLength="1" d="M585 306 l4 5 l9 -12"/>
+ </g>
+ <g fill="#7FA6BC" font-family="SF Mono, ui-monospace, monospace" font-size="19" opacity=".9">
+  <text x="614" y="313">covered</text>
+ </g>
+ <g filter="url(#rgh-gap)" stroke="#5ED3BE" stroke-width="1.7" fill="none">
+  <rect class="sk" pathLength="1" x="556" y="346" width="74" height="30" rx="5"/>
+ </g>
+ <g fill="#5ED3BE" font-family="SF Mono, ui-monospace, monospace" font-size="15">
+  <text x="566" y="366">04:18</text>
+ </g>
+ <g fill="#7FA6BC" font-family="SF Mono, ui-monospace, monospace" font-size="19" opacity=".9">
+  <text x="632" y="368">带定位才算</text>
+ </g>
+ <g fill="#8FAEBF" font-family="SF Mono, ui-monospace, monospace" font-size="17" opacity=".8">
+  <text x="560" y="416">只有结论不算读到了</text>
+ </g>
+ <g stroke="#6F97AE" stroke-width="1.1" opacity=".35">
+  <path d="M60 452 l22 -16"/><path d="M88 456 l22 -16"/><path d="M116 460 l22 -16"/>
+ </g>
+</svg>""",
+    # 三个客户端，同一套 skill + MCP
+    "install": r"""
+<svg viewBox="0 0 900 470" fill="none">__RGH__
+ <g filter="url(#rgh-in)" stroke="#9CC0D2" stroke-width="2.4">
+  <rect class="sk" pathLength="1" x="20" y="16" width="600" height="238" rx="9"/>
+  <path class="sk" pathLength="1" d="M20 58 H620"/>
+  <circle cx="44" cy="37" r="4.6" stroke-width="1.7"/><circle cx="62" cy="37" r="4.6" stroke-width="1.7"/>
+  <circle cx="80" cy="37" r="4.6" stroke-width="1.7"/>
+  <path class="sk" pathLength="1" d="M100 37 h118" stroke-width="1.4" opacity=".7"/>
+  <path class="sk" pathLength="1" d="M70 100 l9 6 l-9 6" stroke-width="1.6"/>
+  <path class="sk" pathLength="1" d="M70 152 l9 6 l-9 6" stroke-width="1.6"/>
+  <path class="sk" pathLength="1" d="M70 204 l9 6 l-9 6" stroke-width="1.6"/>
+ </g>
+ <g font-family="SF Mono, ui-monospace, monospace" font-size="22">
+  <text x="96" y="114" fill="#5ED3BE">$ pip install envoy-cli</text>
+  <text x="96" y="166" fill="#9CC0D2">$ uv tool install envoy</text>
+  <text x="96" y="218" fill="#8FAEBF" font-size="17" opacity=".85">envoy hook install --host codex</text>
+ </g>
+ <!-- 三个客户端 -->
+ <g filter="url(#rgh-in)" stroke="#9CC0D2" stroke-width="2.2">
+  <rect class="sk" pathLength="1" x="20" y="306" width="198" height="62" rx="31"/>
+  <rect class="sk" pathLength="1" x="238" y="306" width="152" height="62" rx="31"/>
+  <rect class="sk" pathLength="1" x="410" y="306" width="132" height="62" rx="31"/>
+  <path d="M320 254 v24" stroke-width="1.5" opacity=".55"/>
+  <path d="M119 284 h357" stroke-dasharray="6 7" stroke-width="1.3" opacity=".55"/>
+  <path d="M119 284 v20" stroke-width="1.3" opacity=".55"/>
+  <path d="M314 284 v20" stroke-width="1.3" opacity=".55"/>
+  <path d="M476 284 v20" stroke-width="1.3" opacity=".55"/>
+ </g>
+ <g fill="#D6E8F5" font-family="PingFang SC, sans-serif" font-size="22">
+  <text x="62" y="344">Claude Code</text><text x="264" y="344">Codex</text><text x="436" y="344">DSH</text>
+ </g>
+ <g fill="#7FA6BC" font-family="SF Mono, ui-monospace, monospace" font-size="17" opacity=".88">
+  <text x="22" y="414">skill + MCP</text><text x="352" y="414">同一套接口</text>
+ </g>
+ <g stroke="#6F97AE" stroke-width="1.1" opacity=".35">
+  <path d="M646 236 l24 -18"/><path d="M676 242 l24 -18"/><path d="M706 248 l24 -18"/>
+ </g>
+</svg>""",
+}
+
+def _sketch_svg(name: str) -> str:
+    tpl = _SKETCHES.get(name) or ""
+    key = name
+    seed = {"link": 11, "timeline": 23, "gap": 37, "install": 51}.get(name, 7)
+    return tpl.replace("__RGH__", _RGH.replace("{k}", key).replace("{seed}", str(seed)))
+
+
 def _sheet_schematic(scene: dict, i: int, total: int) -> str:
-    kicker = _esc(scene.get("kicker") or f"{i + 1:02d} / {total:02d}")
     headline = _esc(scene.get("headline") or "")
     body = _esc(scene.get("body") or "")
     shot = str(scene.get("shot") or "")
+    sketch = str(scene.get("sketch") or "")
     cap = _esc(scene.get("cap") or "")
-    shot_html = ""
+    panel_html = ""
     if shot:
         src = shot if shot.startswith("file:") else "file://" + shot
-        shot_html = (f'<div class="shot rise"><img src="{src}" alt="">'
-                     f'<div class="cap">{cap}</div></div>')
+        pt = float(scene.get("pt") or 396)
+        ph = float(scene.get("ph") or 838)
+        fit = str(scene.get("fit") or "cover")
+        pos = str(scene.get("pos") or "center")
+        st = f"top:{pt:g}px;height:{ph:g}px"
+        panel_html = (f'<div class="panel" style="{st}"><div class="pbody">'
+                      f'<img src="{src}" alt="" style="object-fit:{fit};object-position:{pos}">'
+                      f'</div><div class="cap">{cap}</div></div>')
+    elif sketch:
+        panel_html = f'<div class="sketch">{_sketch_svg(sketch)}</div>'
+
     return f"""<section class="sheet" data-i="{i}">
   <div class="pad">
-    <div class="kicker rise">{kicker}</div>
     <div class="head rise">{headline}</div>
-    <div class="accent"></div>
+    <div class="ul"><svg viewBox="0 0 232 16" fill="none">
+      <path class="sk" pathLength="1" d="M3 11 q13 -8 26 0 t26 0 t26 0 t26 0 t26 0 t26 0 t26 0 t26 0"/></svg></div>
     <div class="body rise">{body}</div>
   </div>
-  {shot_html}
+  {panel_html}
 </section>"""
 
 
@@ -214,24 +461,8 @@ def _html_doc_schematic(scenes: list[dict], total: float) -> str:
     js = """
 const SC = %(P)s;
 const sheets = [...document.querySelectorAll('.sheet')];
-const grid = document.getElementById('grid');
-const rings = [0, 1, 2].map((k) => document.getElementById('r' + k));
-const signal = document.getElementById('signal');
-const nodes = [0, 1, 2, 3].map((k) => document.getElementById('n' + k));
 const EASE = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
-const LEN = signal.getTotalLength();
 window.renderFrame = function (t) {
-  // 背景是**一条连续的运动**：格子漂、环转、信号线跑、扫描带走，全程不停
-  grid.setAttribute('transform', `translate(${(t * 13 %% 56).toFixed(2)},${(t * 7 %% 56).toFixed(2)})`);
-  rings.forEach((r, k) => {
-    const cx = r.getAttribute('cx'), cy = r.getAttribute('cy');
-    r.setAttribute('transform', `rotate(${(t * (5.5 - k * 1.6) * (k %% 2 ? -1 : 1)).toFixed(3)} ${cx} ${cy})`);
-  });
-  signal.setAttribute('stroke-dashoffset', (-t * 130).toFixed(2));
-  nodes.forEach((n, k) => {
-    const ph = k * 1.7;
-    // 点位固定不动：半径/透明度呼吸在成片里就是「一闪一闪的灯」
-  });
   for (let i = 0; i < sheets.length; i++) {
     const s = SC[i];
     const el = sheets[i];
@@ -245,17 +476,14 @@ window.renderFrame = function (t) {
     const local = t - s.start;
     // 字不整块平移，只各走各的；幅度小到看不出「入场动画」，只觉得画面在呼吸
     const head = el.querySelector('.head');
-    const kick = el.querySelector('.kicker');
     const body = el.querySelector('.body');
-    const acc = el.querySelector('.accent');
-    const shot = el.querySelector('.shot');
+    const shot = el.querySelector('.panel');
+    const sk = el.querySelectorAll('.sk');
     const pHead = EASE((local - 0.04) / 0.52);
     head.style.opacity = (fading ? 1 : pHead).toFixed(3);
     head.style.transform = `translateY(${((1 - pHead) * 20).toFixed(2)}px)`;
-    kick.style.opacity = (fading ? 1 : EASE((local - 0.0) / 0.4)).toFixed(3);
     body.style.opacity = (fading ? 1 : EASE((local - 0.16) / 0.5)).toFixed(3);
     body.style.transform = `translateY(${((1 - EASE((local - 0.16) / 0.5)) * 22).toFixed(2)}px)`;
-    acc.style.width = (EASE((local - 0.10) / 0.5) * 100).toFixed(2) + '%%';
     if (shot) {
       const p = EASE((local - 0.22) / 0.6);
       shot.style.opacity = (fading ? 1 : p).toFixed(3);
@@ -263,13 +491,32 @@ window.renderFrame = function (t) {
       const img = shot.querySelector('img');
       if (img) img.style.transform = `scale(${(1 + 0.04 * Math.min(1, local / 8)).toFixed(4)})`;
     }
+    // 手绘面板：笔画逐条长出来（pathLength=1 归一化的描边生长）
+    if (sk.length) {
+      const gapSk = sk.length > 12 ? 0.86 / sk.length : 0.030;
+      sk.forEach((el2, k) => {
+        const q = EASE((local - 0.14 - k * gapSk) / 0.46);
+        el2.style.strokeDashoffset = (1 - q).toFixed(3);
+      });
+    }
   }
 };
+// 版式落位：面板顶边跟着正文字块走，正文长一截也不会压到字上
+document.querySelectorAll('.sheet').forEach(function (s) {
+  var pad = s.querySelector('.pad'), pn = s.querySelector('.panel');
+  if (!pad || !pn) return;
+  var bottom = 0;
+  pad.querySelectorAll(':scope > *').forEach(function (n) {
+    var r = n.getBoundingClientRect();
+    if (r.bottom > bottom) bottom = r.bottom;
+  });
+  pn.style.top = Math.max(parseFloat(pn.style.top) || 0, bottom + 34) + 'px';
+});
 window.renderFrame(0);
 """ % {"P": payload}
     return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <title>schematic</title><style>{_CSS_SCHEMATIC}</style></head>
-<body><div id="stage">{_SVG_STAGE}{sheets}</div>
+<body><div id="stage"><div class="grain"></div>{_SVG_STAGE}{sheets}</div>
 <script>{js}</script></body></html>"""
 
 
@@ -322,11 +569,22 @@ window.renderFrame = function (t) {
     }
   }
 };
+// 版式落位：面板顶边跟着正文字块走，正文长一截也不会压到字上
+document.querySelectorAll('.sheet').forEach(function (s) {
+  var pad = s.querySelector('.pad'), pn = s.querySelector('.panel');
+  if (!pad || !pn) return;
+  var bottom = 0;
+  pad.querySelectorAll(':scope > *').forEach(function (n) {
+    var r = n.getBoundingClientRect();
+    if (r.bottom > bottom) bottom = r.bottom;
+  });
+  pn.style.top = Math.max(parseFloat(pn.style.top) || 0, bottom + 34) + 'px';
+});
 window.renderFrame(0);
 """ % {"P": payload}
     return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <title>paper</title><style>{_CSS}</style></head>
-<body><div id="stage">{sheets}<div class="grain"></div></div>
+<body><div id="stage"><div class="grain"></div>{sheets}<div class="grain"></div></div>
 <script>{js}</script></body></html>"""
 
 

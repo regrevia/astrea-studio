@@ -1,0 +1,34 @@
+{
+  "projectId": "{{PROJECT_ID}}",
+  "title": "Envoy · 一个链接变成材料",
+  "brief": "按仓库真实内容讲 Envoy：带定位的材料、关键帧、读数、边界。手绘与真截图交替。",
+  "engine": "timeline",
+  "template": "factcard",
+  "spec": {
+    "topic": "regrevia/envoy",
+    "hook": "给 AI 一个链接，它只读到标题",
+    "kicker": "github.com/regrevia/envoy",
+    "points": [
+      "每条结论挂时间戳::material id + video_time::每段带时间戳或来源坐标，引用能点回去核对。",
+      "关键帧，按时间点抽::说到哪就抽哪一帧::视频里的 PPT 和图表，说第几分钟就抽那一帧，不用来回拖进度条。",
+      "60 轮对照，读完率 13 → 55::20 个素材包 × 3 轮；自评 verified 0::二十个素材包三轮对照，说读完的，十三比五十五，只算线索。",
+      "读不到就说读不到::未覆盖，不写成结论::没字幕、要登录、预算不够，就标成未覆盖，不硬凑成结论。"
+    ],
+    "cta": "装上 envoy-cli，链接就是材料",
+    "voice": "sami:BV405_streaming",
+    "narration": {
+      "intro": "它翻两屏就敢下结论，剩下的全靠脑补。",
+      "points": [
+        "每段带时间戳或来源坐标，引用能点回去核对。",
+        "视频里的 PPT 和图表，说第几分钟就抽那一帧，不用来回拖进度条。",
+        "二十个素材包三轮对照，说读完的，十三比五十五，只算线索。",
+        "没字幕、要登录、预算不够，就标成未覆盖。"
+      ],
+      "outro": "命令行装好，客户端里直接能用。本期视频全程由大肥鱼制作完成。"
+    },
+    "engine": "timeline",
+    "template": "factcard",
+    "mode": "vertical_short",
+    "character": true
+  }
+}

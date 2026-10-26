@@ -36,10 +36,12 @@ def main() -> int:
     body = json.loads(a.spec.read_text(encoding="utf-8"))
     spec = body.get("spec") or body
     caps = list(a.caps) or [Path(p).stem for p in a.shots]
-    shots = [(str(Path(p).expanduser()), caps[i] if i < len(caps) else "")
+    shots = [(p if p.startswith("sketch:") else str(Path(p.split("#")[0]).expanduser())+"".join("#"+b for b in p.split("#")[1:]), caps[i] if i < len(caps) else "")
              for i, p in enumerate(a.shots)]
     for p, _ in shots:
-        if not Path(p).exists():
+        if p.startswith("sketch:"):
+            continue
+        if not Path(p.split("#")[0]).exists():
             raise SystemExit(f"截图不存在: {p}")
 
     work = a.workdir or Path(tempfile.mkdtemp(prefix="schematic-"))
