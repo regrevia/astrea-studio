@@ -224,7 +224,7 @@ def _lip_mouth(seg: dict, t: float):
 # 观众第一秒就发现「这是张图」。
 BOB_PERIOD = 4.4
 # 每种手势的重心偏向（度）与晃动幅度倍数：手指出去时人往前压，耸肩往后仰，
-# 思考偏在一侧、幅度小，开心最活。换势那 0.22 秒里按叠化权重混，
+# 思考偏在一侧、幅度小，开心最活。换势那段（见 POSE_FADE_MIN）里按叠化权重混，
 # 所以是「重心挪过去」而不是「换了一张图」。
 _POSE_ATTITUDE = {
     "point": (-0.55, 1.10),
@@ -241,6 +241,186 @@ _POSE_ATTITUDE = {
 }
 
 SWAY_PERIOD = 6.7
+
+# 换姿势的过渡时长（秒）。这一段长度决定「自然」还是「跳帧」：权重曲线
+# 再平滑，交叠只有三四帧时观众看到的仍然是硬切。
+#
+# 下限 0.55：30fps 下 17 帧。原来交叠自然形成时常常只剩 3~6 帧，读起来就是
+# 「换了一张图」；17 帧够两个重心各起落一次，又短到读不成两次动作。
+# 上限 0.95：差异最大的两势（idle→shrug）也得在 1 秒内收完，否则一句话里
+# 换三次手势就变成一直在溶解。
+# 这两个数不是手感，是照 30fps 的帧量化反推的：两端导数为 0 的曲线在边界上
+# 一帧只走 ks(1/30/T) ≈ 10/T³，T=0.73 秒时正好压在 1e-3 以下——再短一帧
+# 就看得见「蹦」那一下。
+POSE_FADE_MIN = 0.55
+POSE_FADE_MAX = 0.95
+# 后段起点最多提前到「前段起点 + 0.12 秒」：再往前，观众还没看清前一个手势
+POSE_SETTLE = 0.12
+# 兜底：素材切得再碎也不许退化成硬切（30fps 下 6 帧）
+POSE_FADE_FLOOR = 0.20
+# 交叠最多吃掉一段的一半：全吃进去等于把这段压成 0，下一处交接又变成硬切
+POSE_FADE_SHARE = 0.5
+
+# 姿态别名归族：同族是同一个体态（只有口型/眼睛在换），不该混姿态；
+# 叫法不同但画的是同一张的，素材里确实存在（stand / base / neutral）。
+_POSE_ALIAS = {
+    "stand": "idle", "base": "idle", "neutral": "idle", "still": "idle",
+    "hello": "wave", "hi": "wave", "greet": "wave",
+    "nod": "approve", "ok": "approve", "agree": "approve",
+    "smile": "happy", "laugh": "happy", "joy": "happy",
+    "thinking": "think", "ponder": "think",
+    "sorry": "shrug", "apologize": "shrug",
+    "shock": "surprise", "wow": "surprise",
+    "sad": "pout", "angry": "pout", "upset": "pout",
+    "bashful": "shy", "embarrassed": "shy",
+    "explain": "point",
+}
+
+
+def _pose_family(pose) -> str:
+    """姿势归族：`stand` 和 `idle` 是同一张图，混姿态只会让重心来回蹭。"""
+    key = str(pose or "idle").strip().lower()
+    return _POSE_ALIAS.get(key, key)
+
+
+def pose_difference(pose_a, pose_b, box_a=None, box_b=None) -> float:
+    """两个姿势差多少：0 = 同一体态，1 = 完全换了个姿势。
+
+    三路信号加权相加，缺哪路就重新归一：
+    - 语义族：不同族先记 0.45，再按 `_POSE_ATTITUDE` 的重心/幅度向量差放大；
+    - 位移：两张静帧内容框中心的相对位移（抬手、蹲下都会挪中心）；
+    - 面积：内容框高度比的对数（换一个「大一号」的姿势，叠化要更长才不突兀）。
+    `box_*` 是 character_assets.sprite_ratio 的 (高度比, 中心x比, 中心y比)。
+    """
+    fam_a, fam_b = _pose_family(pose_a), _pose_family(pose_b)
+    if fam_a == fam_b:
+        return 0.0
+    bias_a, mult_a = _POSE_ATTITUDE.get(fam_a, (0.0, 1.0))
+    bias_b, mult_b = _POSE_ATTITUDE.get(fam_b, (0.0, 1.0))
+    # bias 差最大约 1.2、mult 差最大约 0.85：除 1.5 之后落在 0~1
+    att = math.hypot(bias_a - bias_b, mult_a - mult_b)
+    parts = [(0.55, 0.45 + 0.55 * min(1.0, att / 1.5))]
+    if box_a and box_b:
+        parts.append((0.30, min(1.0, math.hypot(box_a[1] - box_b[1],
+                                                box_a[2] - box_b[2]) / 0.10)))
+        if box_a[0] > 0 and box_b[0] > 0:
+            parts.append((0.15, min(1.0, abs(math.log(box_a[0] / box_b[0])) / 0.25)))
+    total = sum(w for w, _ in parts)
+    return min(1.0, max(0.0, sum(w * v for w, v in parts) / total))
+
+
+def pose_fade_for(diff: float) -> float:
+    """姿态差 → 过渡时长（秒）：线性落在 [POSE_FADE_MIN, POSE_FADE_MAX]。"""
+    d = min(1.0, max(0.0, float(diff)))
+    return POSE_FADE_MIN + (POSE_FADE_MAX - POSE_FADE_MIN) * d
+
+
+def _shift_seg(seg: dict, dt: float) -> None:
+    """整段平移。相位一起挪：动画和口型接着原来的绝对时刻播，不从头起。"""
+    seg["start"] = float(seg["start"]) + dt
+    seg["end"] = float(seg["end"]) + dt
+    if seg.get("anim_t0") is not None:
+        seg["anim_t0"] = float(seg["anim_t0"]) + dt
+    if seg.get("lip_t0") is not None:
+        seg["lip_t0"] = float(seg["lip_t0"]) + dt
+    elif seg.get("lip_audio"):
+        # 没显式给相位就是「从段首开始」：段首提前了，相位得钉住原时刻
+        seg["lip_t0"] = -dt
+    if seg.get("fade_in") is not None:
+        # 入场提前了，但淡入要在原来的时刻结束：时长跟着缩（到 0 就是直接实心）
+        seg["fade_in"] = max(0.0, float(seg["fade_in"]) + dt)
+
+
+def plan_transitions(segments: list[dict], box_of=None) -> list[dict]:
+    """给相邻两段铺一段看得见的过渡时间，并标出该不该混姿态。
+
+    `_fill_gaps` 只把缝补上（前段 end 顶到后段 start），交叠长度是 0；权重
+    曲线再平滑，一帧就跨过去的换手也只会读成硬切。这里先把后段 start 往前挪，
+    造出与姿态差成正比的交叠（`pose_fade_for`）；挪不动（前段太短、已经贴着
+    POSE_SETTLE、后段要入场）就把前段 end 往后延——总之不许退化成硬切。
+
+    只改时间，不动素材与摆位。返回新表（原表不改），方便单测。
+    """
+    out = [dict(s) for s in sorted(segments, key=lambda s: float(s["start"]))]
+    for i in range(1, len(out)):
+        a, b = out[i - 1], out[i]
+        a_start, a_end = float(a["start"]), float(a["end"])
+        b_start, b_end = float(b["start"]), float(b["end"])
+        if a_end < b_start:
+            # 调这个函数前通常已经 _fill_gaps 过；单独用时也把缝补上，
+            # 否则「没有交叠」会被误当成「已经接好」
+            a["end"] = a_end = b_start
+        box_a = box_of(a) if box_of else None
+        box_b = box_of(b) if box_of else None
+        diff = pose_difference(a.get("pose"), b.get("pose"), box_a, box_b)
+        b["_pose_diff"] = diff
+        b["_pose_mix"] = diff > 1e-6
+        if not b["_pose_mix"]:
+            # 同一个姿势只换了口型和眼睛：不混姿态，也不造交叠——两张一样的
+            # 立绘叠半秒，只有嘴在跳，读起来是重影不是换姿势
+            b["_xfade"] = 0.0
+            continue
+        len_a = max(1e-6, a_end - a_start)
+        len_b = max(1e-6, b_end - b_start)
+        cap = POSE_FADE_SHARE * min(len_a, len_b)
+        # 入场段提前起会把人从画面下沿提前升起来，和上一段叠在一起
+        room = 0.0 if b.get("enter") else max(0.0, a_end - (a_start + POSE_SETTLE))
+        target = min(cap, max(POSE_FADE_FLOOR, pose_fade_for(diff)))
+        cur = max(0.0, min(a_end, b_end) - b_start)
+        gap = max(0.0, target - cur)
+        if gap > 0.0:
+            adv = min(gap, room, max(0.0, b_start))
+            if adv > 1e-9:
+                _shift_seg(b, -adv)
+                b_start -= adv
+                cur += adv
+                gap -= adv
+            if gap > 1e-9:
+                # 挪不动就把前段往后延：合上最后一截，别留下硬切
+                new_end = min(b_end, b_start + target)
+                if new_end > a_end:
+                    a["end"] = new_end
+                    a_end = new_end
+            b["_xfade"] = max(0.0, min(a_end, b_end) - b_start)
+        else:
+            b["_xfade"] = cur
+    return out
+
+
+def _norm_width(seg: dict, width: float) -> int:
+    """立绘归一化：设计稿宽度 × 这套服装这个动作的尺度系数。
+
+    只改宽度不改 x/y：`_stage_canvas` 把立绘等比缩到 (w, w)，人物可视高度
+    就是内容框占比 × w；x/y 仍是内容框左上角的锚点，头顶脚底位置不变。
+    系数来自素材本身（见 character_assets.outfit_scale），量不出来就是 1.0。
+    """
+    try:
+        import character_assets as CA
+
+        root = seg.get("_outfit_root")
+        if root is None:
+            import character
+
+            root = character.outfit_root(seg.get("outfit") or None)
+        scale = CA.outfit_scale(Path(root), seg.get("pose") or "idle")
+    except Exception:  # noqa: BLE001 - 换算不出来就按原尺寸摆，别拦着出片
+        scale = 1.0
+    return max(16, int(round(float(width) * scale)))
+
+
+def _pose_box(seg: dict):
+    """这个动作静帧的内容框（相对画布）：量姿态差用，量不出来返回 None。"""
+    try:
+        import character_assets as CA
+
+        root = seg.get("_outfit_root")
+        if root is None:
+            import character
+
+            root = character.outfit_root(seg.get("outfit") or None)
+        return CA.sprite_ratio(Path(root), seg.get("pose") or "idle")
+    except Exception:  # noqa: BLE001 - 量不出来就当只有语义差
+        return None
 
 
 def anim_frames(outfit_root: Path, name: str, key_green) -> list:
@@ -316,6 +496,10 @@ def _active(segments: list[dict], t: float) -> list[tuple[dict, float, float]]:
     # 权重前段加速：线性叠化等于让新人从 0 一路半透明地爬到 1，交叠区整段
     # 都在「发灰」，体检直接判人物发透。前半段推上去，只在头一两帧透。
     k = 1.0 - (1.0 - x) ** 2
+    if not b.get("_pose_mix", True):
+        # 同一个体态（只换了口型/眼睛）：姿态权重钉在前段。让两帧一模一样的
+        # 身体互相权重混，重心会在半秒里来回蹭两下，看着像「抖了一下」。
+        return [(a, 1.0 - k, 1.0), (b, k, 0.0)]
     ks = _smootherstep(x)
     return [(a, 1.0 - k, 1.0 - ks), (b, k, ks)]
 
@@ -428,11 +612,14 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
     if not segs:
         return None
     segs = _fill_gaps(segs)
+    # 补完缝还不够：交叠长度是 0 的时候，一帧就换完 = 硬切。这一步按姿态差
+    # 铺出 0.45~0.80 秒的交叠，同一体态（只换口型）则不造交叠、也不混姿态。
+    segs = plan_transitions(segs, _pose_box)
     total = max(float(duration), max(float(s["end"]) for s in segs))
     frames = max(1, int(round(total * fps)))
 
     def _stage_of(seg: dict):
-        return (int(float(seg.get("width") or 620)),
+        return (_norm_width(seg, float(seg.get("width") or 620)),
                 int(float(seg.get("x") or 560)),
                 int(float(seg.get("y") or 1014)))
 
@@ -485,7 +672,7 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
     _last_pose = ""
     for _s in sorted(segs, key=lambda x: float(x["start"])):
         _prev_pose[id(_s)] = _last_pose
-        _last_pose = str(_s.get("pose") or "")
+        _last_pose = _pose_family(_s.get("pose"))
     # 人物身高整条片子必须一条直线：素材或摆位一变，观众读到的就是「人在跳」
     heights: list[int] = []
     lip_log: dict[int, str] = {}
@@ -535,7 +722,7 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
             dy += e_dy
             # 换姿势时给一下小跳：立绘本身没换动作，只靠倾斜和呼吸太"稳"，
             # 0.26 秒的低幅起落读起来像答话时点了一下头。
-            if _prev_pose.get(id(seg), "") != str(seg.get("pose") or ""):
+            if _prev_pose.get(id(seg), "") != _pose_family(seg.get("pose")):
                 _bh = (t - float(seg["start"])) / 0.42
                 if float(seg["start"]) > 1e-6 and 0.0 <= _bh < 1.0:
                     # 正弦在起点速度最大，接上前一段的静止就是「猛地一顿」；
@@ -551,7 +738,10 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
             breath = 1.0 + 0.006 * math.sin(2.0 * math.pi * t / 3.30 + _ph)
             bias = mult = 0.0
             for seg_a, _wa, wgt in active:
-                b_le, m_le = _POSE_ATTITUDE.get(str(seg_a.get("pose") or ""), (0.0, 1.0))
+                # 按族取体态：素材里 `stand`/`idle`、`hi`/`wave` 是同一张图，
+                # 按名字查表会让同姿势叠化时重心凭空跳一下
+                b_le, m_le = _POSE_ATTITUDE.get(_pose_family(seg_a.get("pose")),
+                                                (0.0, 1.0))
                 bias += b_le * wgt
                 mult += m_le * wgt
             lean = math.radians(

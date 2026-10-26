@@ -214,6 +214,179 @@ def head_anchor(outfit: Outfit | None, pose: str) -> tuple[int, int]:
     return DEFAULT_ANCHOR
 
 
+# ---------------------------------------------------------------- 立绘归一化
+# 八套服装的母版不是同一块画布：01–05 是 1254²，06–08 是 2048²，人物在画布里的
+# 占比差着近 3%（量过：0.829 ~ 0.853）。同一段 seg（width/x/y 完全一样）换一套
+# 衣服，人就从 720px 变成 740px——观众读到的不是「换衣服」，是「镜头推近一档」。
+#
+# 归一化只改摆位用的宽度系数，不碰素材：`jianying_engine._stage_canvas` 把立绘
+# 等比缩到 (w, w)，可视高度 = 内容框高度占比 × w，所以 w 乘 k 就是身高乘 k；
+# x/y 仍是内容框左上角的锚点，头顶和脚底的位置照旧由设计稿决定。
+# 基准取「同一动作跨服装的中位数」：大多数服装几乎不动，只把离群那几套拉回来，
+# 这样整套素材看起来和导演手摆的一次一样。量不出来一律 1.0，绝不拦着出片。
+_CONTENT_CACHE: dict[tuple[str, float], tuple[float, float, float] | None] = {}
+_NOMINAL_CACHE: dict[tuple, float | None] = {}
+_SCALE_CACHE: dict[tuple, float] = {}
+
+
+def _green_box(im) -> tuple[int, int, int, int] | None:
+    """绿幕之外的内容框。判定和 character._key_green 同一套阈值
+    （g>90 且 g>1.3r 且 g>1.3b），这里用 numpy 整数比较向量化：逐像素走 Python
+    量 8 套 × 9 动作要半分钟，而这段在每次出片开头都会跑。"""
+    try:
+        import numpy as np
+
+        a = np.asarray(im)
+        r = a[..., 0].astype(np.int32)
+        g = a[..., 1].astype(np.int32)
+        b = a[..., 2].astype(np.int32)
+        bg = (g > 90) & (g * 10 > r * 13) & (g * 10 > b * 13)
+        ys, xs = np.nonzero(~bg)
+        if ys.size == 0:
+            return None
+        return (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
+    except Exception:  # noqa: BLE001 - 没有 numpy 就退到缩略图上抠绿
+        try:
+            import character
+            from PIL import Image as _Image
+
+            small = im.resize((256, 256), _Image.LANCZOS)
+            bb = character._key_green(small.convert("RGBA")).getbbox()
+            if not bb:
+                return None
+            k = im.size[0] / 256.0
+            return (int(bb[0] * k), int(bb[1] * k), int(bb[2] * k), int(bb[3] * k))
+        except Exception:  # noqa: BLE001
+            return None
+
+
+def _content_ratio(path: Path) -> tuple[float, float, float] | None:
+    """(高度占画布比, 中心x占宽比, 中心y占高比)。缺图坏图返回 None。"""
+    try:
+        key = (str(path), Path(path).stat().st_mtime)
+        if key in _CONTENT_CACHE:
+            return _CONTENT_CACHE[key]
+        from PIL import Image
+
+        im = Image.open(path).convert("RGB")
+        cw, ch = im.size
+        box = _green_box(im)
+        val = None
+        if box and cw > 0 and ch > 0:
+            y0, y1 = box[1], box[3]
+            val = ((y1 - y0) / float(ch),
+                   (box[0] + box[2]) / 2.0 / float(cw),
+                   (y0 + y1) / 2.0 / float(ch))
+        if len(_CONTENT_CACHE) > 256:
+            _CONTENT_CACHE.clear()
+        _CONTENT_CACHE[key] = val
+        return val
+    except Exception:  # noqa: BLE001 - 量不出来就当归一化不存在
+        return None
+
+
+def _pose_source(odir: Path, pose: str) -> Path | None:
+    """这个动作的静帧母版：优先级与 character._asset_candidates 一致。
+
+    站姿在 base/；其余动作口型一律改在张口那张上（身体像素一帧不换），
+    所以量尺寸也认 `_open` 那张。
+    """
+    p = _normalize_pose(pose or "idle")
+    cands = [odir / "body" / f"pose_{p}.png"]
+    if p in ("idle", "neutral"):
+        cands += [odir / "base" / "01_base_open.png",
+                  odir / "base" / "01_base_closed.png"]
+    else:
+        cands += [odir / "poses" / f"pose_{p}_open.png",
+                  odir / "poses" / f"pose_{p}_closed.png"]
+    for cand in cands:
+        try:
+            if cand.is_file():
+                return cand
+        except OSError:
+            continue
+    return None
+
+
+def _outfit_dirs(root: Path) -> list[Path]:
+    """root 可能是角色根（outfits/*），也可能是单套服装目录（旧素材）。"""
+    r = Path(root)
+    sub = r / "outfits"
+    if sub.is_dir():
+        return [p for p in sorted(sub.iterdir()) if p.is_dir()]
+    for kind in ("poses", "base", "body"):
+        if (r / kind).is_dir():
+            return [r]
+    return []
+
+
+def sprite_ratio(odir: Path, pose: str = "idle") -> tuple[float, float, float] | None:
+    """这套服装这个动作的内容框（相对画布）。缺素材返回 None。"""
+    src = _pose_source(Path(odir), pose)
+    return _content_ratio(src) if src is not None else None
+
+
+def nominal_ratio(root: Path, pose: str = "idle") -> float | None:
+    """同一动作跨服装的内容框高度中位数：一换装尺寸不该跳，基准取中间的。"""
+    try:
+        dirs = _outfit_dirs(root)
+        if not dirs:
+            return None
+        stamp = 0.0
+        for od in dirs:
+            try:
+                stamp = max(stamp, od.stat().st_mtime)
+            except OSError:
+                continue
+        key = (str(Path(root)), _normalize_pose(pose or "idle"), round(stamp, 3))
+        if key in _NOMINAL_CACHE:
+            return _NOMINAL_CACHE[key]
+        vals = []
+        for od in dirs:
+            r = sprite_ratio(od, pose)
+            if r and r[0] > 0:
+                vals.append(r[0])
+        val = sorted(vals)[len(vals) // 2] if vals else None
+        if len(_NOMINAL_CACHE) > 128:
+            _NOMINAL_CACHE.clear()
+        _NOMINAL_CACHE[key] = val
+        return val
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def outfit_scale(odir: Path, pose: str = "idle",
+                 lo: float = 0.75, hi: float = 1.35) -> float:
+    """这套服装这个动作摆位要乘的宽度系数，让人物可视高度对齐中位数。
+
+    返回 1.0 = 不缩放：素材缺、量不出内容框、只有一套服装（中位数就是自己）
+    都是 1.0。夹在 [lo, hi] 里， deformed 的素材不至于被拉到离谱的尺寸。
+    """
+    try:
+        odir = Path(odir)
+        src = _pose_source(odir, pose)
+        if src is None:
+            return 1.0
+        own = _content_ratio(src)
+        if not own or own[0] <= 0:
+            return 1.0
+        croot = odir.parent.parent if odir.parent.name == "outfits" else odir
+        nom = nominal_ratio(croot, pose)
+        if not nom:
+            return 1.0
+        key = (str(odir), str(pose), round(src.stat().st_mtime, 3), round(nom, 6))
+        hit = _SCALE_CACHE.get(key)
+        if hit is not None:
+            return hit
+        val = max(lo, min(hi, nom / own[0]))
+        if len(_SCALE_CACHE) > 256:
+            _SCALE_CACHE.clear()
+        _SCALE_CACHE[key] = val
+        return val
+    except Exception:  # noqa: BLE001 - 归一化是锦上添花，出错就不归一化
+        return 1.0
+
+
 # ---------------------------------------------------------------- 导入
 
 _ALIASES = {"stand": "idle", "base": "idle", "hello": "wave", "hi": "wave",
