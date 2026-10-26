@@ -288,12 +288,112 @@ def _tts_cache(text: str, voice: str, rate: float = 1.0) -> Path | None:
     return TTS_CACHE / slug / f"{key}.mp3"
 
 
-def _tts(text: str, mp3: Path, voice: str, rate: float = 1.0) -> None:
-    """调 SAMI 配音。
+# edge-tts 的 voice id：`zh-CN-XiaoxiaoNeural` 这一类。系统 python3 没有 edge_tts，
+# 合成走 MPT venv 的 python 跑 tools/edge_tts_once.py，本进程绝不 import edge_tts。
+_EDGE_VOICE_RE = re.compile(r"^[a-z]{2,3}-[A-Za-z]{2,4}-[A-Za-z0-9]+Neural$")
+EDGE_TTS_ONCE = Path(__file__).resolve().parent / "tools" / "edge_tts_once.py"
 
-    worker 跑在系统 python3 上，没有 MPT venv 的依赖（loguru/websockets），
-    所以**不能在本进程 import sami_tts**，必须用子进程交给 MPT 的解释器跑。
+
+def _edge_voice(voice: str) -> str | None:
+    """`edge:zh-CN-XiaoxiaoNeural` / 裸 `zh-CN-XiaoxiaoNeural` → voice id，否则 None。"""
+    raw = str(voice or "").strip()
+    name = raw[5:].strip() if raw.lower().startswith("edge:") else raw
+    return name if _EDGE_VOICE_RE.match(name) else None
+
+
+def _edge_rate(rate: float) -> str:
+    """1.0 → +0%，0.92 → -8%；edge-tts 吃百分比字符串，夹在 ±30%。"""
+    pct = max(-30.0, min(30.0, (float(rate) - 1.0) * 100.0))
+    return f"{pct:+.0f}%"
+
+
+def _words_path(mp3: Path) -> Path:
+    """逐字 sidecar 与 mp3 同目录同 stem：export/lipsync.py 就按这个约定找。"""
+    return mp3.with_suffix(".words.json")
+
+
+def _words_ok(path: Path) -> bool:
+    try:
+        blob = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    chars = blob.get("chars") if isinstance(blob, dict) else None
+    return isinstance(chars, list) and bool(chars)
+
+
+def _edge_tts(text: str, mp3: Path, voice: str, rate: float) -> None:
+    """edge-tts 合成 + 逐字 sidecar；两者同进同出缓存，缺一个就重新合成。
+
+    有 mp3 没 sidecar 时不能静默退回包络猜口型（那样口型与真声音只是「差不多」），
+    所以缓存命中要求两者都在，缺 sidecar 就整句重合成。
     """
+    name = _edge_voice(voice)
+    if not name:
+        raise SlidesError(f"not an edge voice: {voice!r}")
+    python = MPT_HOME / ".venv/bin/python"
+    if not python.exists():
+        raise SlidesError(f"MPT venv missing at {python}; run deploy/bootstrap_mpt.sh")
+    if not EDGE_TTS_ONCE.exists():
+        raise SlidesError(f"edge_tts_once.py not found at {EDGE_TTS_ONCE}")
+
+    cached = _tts_cache(text, f"edge:{name}", rate)
+    cached_words = _words_path(cached)
+    sidecar = _words_path(mp3)
+    if cached.exists() and cached.stat().st_size >= 1000:
+        if _words_ok(cached_words):
+            shutil.copyfile(cached, mp3)
+            sidecar.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(cached_words, sidecar)
+            return
+        # 旧缓存只有 mp3、没有逐字时间：删掉重合成，别让这一屏悄悄降级
+        try:
+            cached.unlink()
+        except OSError:
+            pass
+
+    # 整句中文塞 argv 会撞长度/编码，落成临时文件交给子进程读
+    txt = mp3.with_suffix(".tts.txt")
+    txt.parent.mkdir(parents=True, exist_ok=True)
+    txt.write_text(text, encoding="utf-8")
+    try:
+        r = subprocess.run(
+            [str(python), str(EDGE_TTS_ONCE), "--text", str(txt), "--voice", name,
+             f"--rate={_edge_rate(rate)}", "--out", str(mp3),
+             "--words", str(sidecar)],
+            capture_output=True, text=True, cwd=str(MPT_HOME), timeout=180,
+        )
+        detail = (r.stderr or r.stdout or "no output").strip()[-400:]
+        if not mp3.exists() or mp3.stat().st_size < 1000:
+            raise SlidesError(f"edge tts failed for {name}: {detail}")
+        if not _words_ok(sidecar):
+            raise SlidesError(
+                f"edge tts for {name} produced no word boundaries: {detail}")
+    finally:
+        try:
+            txt.unlink()
+        except OSError:
+            pass
+
+    try:
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(mp3, cached)
+        shutil.copyfile(sidecar, cached_words)
+        prune_tts_cache(cached)
+    except OSError:
+        pass
+
+
+def _tts(text: str, mp3: Path, voice: str, rate: float = 1.0) -> None:
+    """配音：`edge:` / `*Neural` 音色走 edge-tts，其余走 SAMI（默认，行为不变）。
+
+    SAMI 分支：worker 跑在系统 python3 上，没有 MPT venv 的依赖
+    （loguru/websockets），所以**不能在本进程 import sami_tts**，必须用子进程
+    交给 MPT 的解释器跑。edge 分支同理，交给 tools/edge_tts_once.py。
+    """
+    edge_name = _edge_voice(voice)
+    if edge_name:
+        _edge_tts(text, mp3, voice, rate)
+        return
     python = MPT_HOME / ".venv/bin/python"
     script = MPT_HOME / "app/services/sami_tts.py"
     if not python.exists():
@@ -363,6 +463,13 @@ def render(spec: dict[str, Any], job_dir: Path, progress: Progress | None = None
         "logo_b": spec.get("logo_b", "CACHE"),
     }
     voice = spec.get("voice") or DEFAULT_VOICE
+    # 语速只有 edge 音色吃：SAMI 分支保持原样（rate 固定 1.0），现有成片不受影响
+    rate = 1.0
+    if _edge_voice(voice):
+        try:
+            rate = float(spec.get("rate") or 1.0)
+        except (TypeError, ValueError):
+            rate = 1.0
 
     job_dir = Path(job_dir)
     (job_dir / "pages").mkdir(parents=True, exist_ok=True)
@@ -377,7 +484,7 @@ def render(spec: dict[str, Any], job_dir: Path, progress: Progress | None = None
         mp3 = job_dir / "audio" / f"s{i:02d}.mp3"
         page.write_text(_page(sc, i, n, g), encoding="utf-8")
         _shot(page, png)
-        _tts(sc["caption"], mp3, voice)
+        _tts(sc["caption"], mp3, voice, rate)
         segs.append((png, mp3, _dur(mp3)))
 
     say(80, "slides:encoding")
