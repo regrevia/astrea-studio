@@ -877,7 +877,8 @@ def _crop_frame(png: Path, workdir: Path, name: str) -> tuple[Path, int, int, in
     return val
 
 
-def _film_glow(workdir: Path, total: float) -> list[dict]:
+def _film_glow(workdir: Path, total: float, palette_idx: int = 0,
+               mirror: bool = False) -> list[dict]:
     """整片一块环境光：同一条光从开场照到收尾，换屏时不挪位置也不换颜色。
 
     按屏生成柔光，切点就是「旧灯灭、新灯亮」，位置还左右镜像一次；动作
@@ -891,12 +892,13 @@ def _film_glow(workdir: Path, total: float) -> list[dict]:
         (13, 28.0, max(7.0, total / 3.3), -190.0, 880.0, "bob"),
     )):
         png = factcard.render_glow(workdir / f"glow_film{k}.png",
-                                   palette_idx=0, alpha=alpha)
+                                   palette_idx=palette_idx, alpha=alpha)
         out.append({
             "src": str(png), "start": 0.0, "end": round(total, 3),
             "x": x, "y": y, "opacity": 1.0, "width": 1360,
             "fade": 0.0,
-            "motion": {"type": axis, "amplitude": amp, "period": per},
+            "motion": {"type": axis, "amplitude": -amp if mirror else amp,
+                       "period": per},
         })
     return out
 
@@ -983,6 +985,9 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         draw_text=False,
         # 界面层单独贴：卡面要推近、要叠化，HUD 跟着缩放就会在转场里重影
         hud=False,
+        # 批量出片时同一份稿子错开一套版式（进卡方向/色温/转场），
+        # 手势相位那边也用同一个种子，两批看起来才像两条不同的片子
+        variant=variant_seed,
     )
     scenes = spec["scenes"]
     total = len(scenes)
@@ -1152,7 +1157,11 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         else:
             dur = 2.0
         # 卡面在讲述期间慢慢推近/拉远：一秒一帧的静卡最像 PPT
-        z0, z1 = (1.0, 1.07) if i % 2 == 0 else (1.07, 1.0)
+        # 同稿多版时推镜深浅和起手屏都错开（一版从封面开始推、一版从第二屏推），
+        # 两版看起来是两条不同调度的片子，文案和节奏一点没动
+        _flip = variant_seed % 2
+        _deep = 1.07 + 0.015 * ((variant_seed // 2) % 2)
+        z0, z1 = ((1.0, _deep) if (i + _flip) % 2 == 0 else (_deep, 1.0))
         video.append({
             "src": str(card), "out": round(dur, 3), "zoom": [z0, z1],
             # 封面第一帧就是成片封面：平台取首帧当图，黑起头等于没封面
@@ -1468,7 +1477,11 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                                             round(TAIL * 0.30, 3))
         t += TAIL
 
-    bg_overlay.extend(_film_glow(workdir, round(t, 3)))
+    # 整片那块环境光的色温也跟着种子走：深蓝 / 深琥珀 / 深青轮着来，
+    # 色温差得不多，但两条片子并排放能看出来不是同一条
+    bg_overlay.extend(_film_glow(workdir, round(t, 3),
+                                 palette_idx=(0, 3, 1)[variant_seed % 3],
+                                 mirror=bool(variant_seed % 2)))
 
     char_mov = None
     char_x = char_y = 0

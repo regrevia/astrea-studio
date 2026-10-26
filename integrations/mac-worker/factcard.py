@@ -673,7 +673,8 @@ def _parse_point(raw: object) -> tuple[str, str, str]:
 def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
                voice: str, kicker: str, out_dir: Path,
                narration: dict | None = None, logo: Path | None = None,
-               draw_text: bool = True, hud: bool = True) -> dict:
+               draw_text: bool = True, hud: bool = True,
+               variant: int = 0) -> dict:
     """选题/要点 → 完整 scenes spec（含 5 张卡面 PNG）。"""
     scripts = [p for p in (points_raw or []) if str(p).strip()]
     points = [_parse_point(p) for p in scripts]
@@ -682,6 +683,9 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
         raise ValueError("factcard 至少需要一个要点（标题::说明）")
     total = 2 + len(points)  # 开场 + 要点 + 收尾
     slug = re.sub(r"[^0-9a-zA-Z\u4e00-\u9fa5]+", "", topic)[:24] or "episode"
+    # 一次排多条时，同稿要出不同的版：整条片子错开进卡方向和色温顺序，
+    # 文案、句序、时长一个字都不动。默认 0 就是原来的行为。
+    v = int(variant or 0) % 12
     scenes = []
 
     # 1) 开场钩子
@@ -713,7 +717,9 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
     palette_used: list[int] = [0]
     for i, (title, body, say) in enumerate(points, start=1):
         # 色温跟着这句话的语气走，不是跟着第几屏走
-        pal = _tone_palette(title, body, fallback=i, avoid=tuple(palette_used[-1:]))
+        pal = _tone_palette(title, body,
+                            fallback=(i + v) % (len(PALETTES) - 2),
+                            avoid=tuple(palette_used[-1:]))
         palette_used.append(pal)
         img = render_card(out_dir / f"s{i:02d}.png", kicker=kicker, index=f"0{i}",
                           palette_idx=pal, progress=i, total=total, slug=slug, hud=hud,
@@ -730,15 +736,15 @@ def build_spec(*, topic: str, hook: str, points_raw: list, cta: str,
                 "font": TITLE_FONT, "font_size": 12, "transform_y": 0.40,
                 "transform_x": -0.62,
                 "caption_size": 8, "caption_y": -0.78,
-                "text_anim_in": TEXT_ANIMS[i % len(TEXT_ANIMS)],
-                "text_anim_out": TEXT_OUTS[i % len(TEXT_OUTS)],
+                "text_anim_in": TEXT_ANIMS[(i + v) % len(TEXT_ANIMS)],
+                "text_anim_out": TEXT_OUTS[(i + v) % len(TEXT_OUTS)],
                 # 卡面入场动效：光靠转场，切进来那一秒还是硬图
-                "image_anim_in": IMAGE_ANIMS[i % len(IMAGE_ANIMS)],
+                "image_anim_in": IMAGE_ANIMS[(i + v) % len(IMAGE_ANIMS)],
                 "image_anim_in_duration": 0.7,
-                "transition_in": TRANSITIONS[i % len(TRANSITIONS)],
+                "transition_in": TRANSITIONS[(i + v) % len(TRANSITIONS)],
                 "transition_duration": 0.6,
                 # 氛围层：每屏都给一个轻特效，静态卡最怕"没质感"
-                "effect": [SCENE_EFFECTS[(i - 1) % len(SCENE_EFFECTS)]],
+                "effect": [SCENE_EFFECTS[(i - 1 + v) % len(SCENE_EFFECTS)]],
                 "kenburns": True,
             },
         })
