@@ -1332,6 +1332,19 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                                                   "idx": i, "pose": alt2,
                                                   "want": want, "supported": supported,
                                                   "last": False})
+            # 收尾要有个「再见」：讲完最后一屏还在原地换势，等于话停了人还僵着。
+            # 挥手是礼数，不参与线索核算（last=True 的条目本来就不查）。
+            if (char_cfg is not None and i == total - 1 and dur >= 6.0
+                    and not char_cfg.get("pose") and not char_cfg.get("poses")
+                    and char_cfg.get("gesture_sync", True)):
+                last_pose = plan[-1][1] if plan else pose
+                sign_at = round(min(0.93, max(0.55, 1.0 - 1.6 / dur)), 2)
+                if last_pose != "wave" and (not plan or sign_at > plan[-1][0] + 0.10):
+                    plan.append((sign_at, "wave"))
+                    # 收尾挥手是礼数不是「换势太晚」：不进换势表，免得体检报警
+                    gesture_audit.append({"at": round(t + dur * sign_at, 2),
+                                          "idx": i, "pose": "wave", "want": "",
+                                          "supported": [], "last": True})
             # 审计里的 alt 要记真正会播的第二档：句读计划生效后，候选姿势已经被替换
             if ga_base is not None:
                 ga_base["alt"] = plan[0][1] if plan else ""
