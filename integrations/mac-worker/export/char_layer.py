@@ -105,8 +105,18 @@ _STATE_CACHE: dict[str, list[str]] = {}
 _LIP_DWELL = 3
 # 最短口型驻留：50Hz 下 5 格 = 100ms
 _LIP_MIN_RUN = 6
-# 口型开合大小排序，用来判断这次换档是张嘴还是收口
-_LIP_RANK = {"closed": 0, "half": 1, "open": 2, "round": 2}
+# 走 lipsync 的逐字口型时，它内部已经做过协同发音/最小驻留，这里只做轻收口：
+# 50Hz 下 4 格 = 80ms。再按 100ms 扫一遍会把「齿」「努嘴」这些短音并掉。
+_LIP_MIN_RUN_TEXT = 4
+# 口型开合大小排序，用来判断这次换档是张嘴还是收口。
+# closed < teeth/pucker < narrow < mid < wide/open/round
+_LIP_RANK = {"closed": 0, "teeth": 1, "pucker": 1, "narrow": 2,
+             "half": 3, "mid": 3, "wide": 4, "open": 4, "round": 4}
+# 从闭到最开的一把尺：补过渡档时按档位取中点（老档仍走 open↔closed→half）
+_LADDER = ("closed", "teeth", "narrow", "mid", "wide")
+# 嘴部精灵要预先算出来的档：并集框得把它们都算进去
+_LIP_STATES = ("closed", "half", "open", "round",
+               "wide", "mid", "narrow", "pucker", "teeth")
 
 
 def _settle(states: list[str], min_run: int = 0) -> list[str]:
@@ -135,16 +145,30 @@ def _settle(states: list[str], min_run: int = 0) -> list[str]:
 _LIP_BRIDGE = 2   # 40ms 的中间档：张↔闭之间必须有半开，否则嘴是「啪」地翻面
 
 
+def _bridge_state(a: str, b: str) -> str | None:
+    """a→b 直接翻面时该补哪一档；差得不够多就不补。"""
+    ra, rb = _LIP_RANK.get(a, 0), _LIP_RANK.get(b, 0)
+    if abs(ra - rb) < 3:
+        return None
+    if {a, b} == {"open", "closed"}:
+        # 老四档的老约定：张↔闭之间补半张
+        return "half"
+    mid = _LADDER[min(len(_LADDER) - 1, (ra + rb) // 2)]
+    return None if mid in (a, b) else mid
+
+
 def _bridge(states: list[str], span: int = _LIP_BRIDGE) -> list[str]:
-    """开合两个极端之间补半开。
+    """开合两个极端之间补过渡档。
 
     30fps 下张口直接翻成闭嘴，观众看到的是嘴唇「闪一下」。现实里嘴是先
-    收到半开再闭合，补 1–2 格半开，速度不变但读起来是动作不是错帧。
+    收到半开再闭合，补 1–2 格中间档，速度不变但读起来是动作不是错帧。
     """
     out: list[str] = []
     for st in states:
-        if out and {out[-1], st} == {"open", "closed"}:
-            out.extend(["half"] * span)
+        if out:
+            mid = _bridge_state(out[-1], st)
+            if mid:
+                out.extend([mid] * span)
         out.append(st)
     return out
 
@@ -201,17 +225,118 @@ def _mouth_states(mp3: str) -> list[str]:
     return states
 
 
+_LIP_TRACK_CACHE: dict[tuple, list[str]] = {}
+
+
+_LIP_WARNED = False
+
+
+def _warn_envelope(reason) -> None:
+    """逐字口型走不通时提示一次：静默回退会让人以为新路径生效了。"""
+    global _LIP_WARNED
+    if _LIP_WARNED:
+        return
+    _LIP_WARNED = True
+    try:
+        import sys  # noqa: PLC0415
+
+        sys.stderr.write(f"[char_layer] 逐字口型不可用（{reason}），已回退包络四档\n")
+        sys.stderr.flush()
+    except Exception:  # noqa: BLE001 - 打日志失败也不能打断渲染
+        pass
+
+
+def _fit_track(states: list[str], n: float) -> list[str]:
+    """把口型轨钉到 n 格：多截少补，长度不再由下游随手改。
+
+    轨长只要不等于 dur*50，`_lip_mouth` 按 50Hz 索引就会整体慢放/快放，越长越
+    漂。所以长度护栏只有这一处出口：最近邻重采样到 n，再补齐/截断。
+    """
+    n = max(1, int(round(float(n))))
+    if not states:
+        return ["closed"] * n
+    m = len(states)
+    if m == n:
+        return list(states)
+    if n == 1:
+        return [states[0]]
+    return [states[min(m - 1, int(round(i * (m - 1) / (n - 1))))] for i in range(n)]
+
+
+def _mouth_states_text(mp3: str, text: str, dur: float = 0.0) -> list[str]:
+    """逐字口型：段里带台词时交给 lipsync（协同发音/最小驻留在它内部做）。
+
+    lipsync 是 backend-timeline 的模块，可能还没落地；拿不到或它报错一律
+    回包络四档——新增路径不允许把片子打掉。缓存 key 必须带 text：同一条
+    配音配不同台词，口型不能串。
+    """
+    key = (mp3, text, round(float(dur), 3))
+    hit = _LIP_TRACK_CACHE.get(key)
+    if hit is not None:
+        return hit
+    states: list[str] = []
+    if text:
+        try:
+            # 包内相对导入优先：调用方（test/工具脚本）不一定把 export/ 塞进
+            # sys.path，裸 import 会静默找不到模块、退回包络四档，逐字口型白做。
+            try:
+                from . import lipsync as _ls  # noqa: PLC0415
+            except Exception:  # noqa: BLE001 - 不是包内调用（脚本直跑）
+                import lipsync as _ls  # noqa: PLC0415
+            raw = _ls.build(text, mp3, max(0.0, float(dur)), fps=_LIP_HZ) or []
+            # 不认识的档落到 mid：宁可近似，也不要 KeyError/丢帧
+            states = [s if s in _LIP_RANK else "mid" for s in raw]
+            if not states:
+                _warn_envelope("lipsync.build 没产出帧")
+        except Exception as exc:  # noqa: BLE001 - 缺模块/它内部报错都回包络
+            states = []
+            _warn_envelope(exc)
+    if states:
+        # lipsync.build 内部已经做了 20ms 预判 + 90ms 最小驻留；这里再 _settle/
+        # _bridge 会让轨变长（每次换档 +2 格），画到时间轴上就成了慢放——实测
+        # 1677 格对 1609 格音频，全长漂 +1356ms。文本路径长度只许等于 dur*50。
+        states = _fit_track(states, round(max(0.0, float(dur)) * _LIP_HZ))
+    else:
+        states = _mouth_states(mp3)
+    if len(_LIP_TRACK_CACHE) > 64:
+        _LIP_TRACK_CACHE.clear()
+    _LIP_TRACK_CACHE[key] = states
+    return states
+
+
+def _lip_states(seg: dict, mp3: str) -> list[str]:
+    """这段的口型轨：有 lip_text 走逐字口型，否则保持原包络四档。"""
+    text = str(seg.get("lip_text") or "").strip()
+    if not text:
+        return _mouth_states(mp3)
+    dur = float(seg.get("lip_dur") or 0.0)
+    if dur <= 0.0:
+        # 配音本身的长度就是这段的口型长度（lip_t0 再把它对到时间轴上）
+        dur = len(_envelope(mp3)) / _LIP_HZ
+    return _mouth_states_text(mp3, text, dur)
+
+
 def _lip_mouth(seg: dict, t: float):
-    """这一刻的嘴型：closed / half / open / round。没有配音数据返回 None。"""
+    """这一刻的嘴型；可能是四档老名，也可能是逐字口型的新档。没有配音返回 None。"""
     audio = seg.get("lip_audio")
     if not audio:
         return None
-    states = _mouth_states(str(audio))
+    states = _lip_states(seg, str(audio))
     if not states:
         return None
     t0 = seg.get("lip_t0")
     t0 = float(seg["start"] if t0 is None else t0)
-    i = int((t - t0) * _LIP_HZ)
+    # 轨长 ≠ dur 时（插件/上游又插了帧）按实际密度索引，别整体慢放
+    rate = _LIP_HZ
+    dur = float(seg.get("lip_dur") or 0.0)
+    if dur <= 0.0:
+        try:
+            dur = len(_envelope(str(audio))) / _LIP_HZ
+        except Exception:  # noqa: BLE001 - 量不出长度就按 50Hz
+            dur = 0.0
+    if dur > 0.0 and abs(len(states) - dur * _LIP_HZ) > 0.05 * dur * _LIP_HZ:
+        rate = len(states) / dur
+    i = int((t - t0) * rate)
     if i < 0:
         return "closed"
     if i >= len(states):
@@ -807,9 +932,11 @@ def _segment_sprites(seg: dict, render, key_green):
         if frames:
             return [("anim", str(root), anim, k) for k in range(len(frames))], frames
     if seg.get("lip_audio"):
-        # 口型按配音逐帧挑：并集框要把四种嘴型都算进去，否则换嘴时人物被裁掉一截
+        # 口型按配音逐帧挑：并集框要把所有可能出现的嘴型都算进去，
+        # 否则换嘴时人物被裁掉一截。逐字口型档多，但只有带台词的段才多算。
+        states = _LIP_STATES if seg.get("lip_text") else ("closed", "half", "open", "round")
         keys, sprites = [], []
-        for st in ("closed", "half", "open", "round"):
+        for st in states:
             s2 = dict(seg)
             s2["mouth"] = st
             k, sp = _static_sprite(s2, render)
