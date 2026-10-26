@@ -260,6 +260,22 @@ POSE_SETTLE = 0.12
 POSE_FADE_FLOOR = 0.20
 # 交叠最多吃掉一段的一半：全吃进去等于把这段压成 0，下一处交接又变成硬切
 POSE_FADE_SHARE = 0.5
+# 后段特别短、手移又要求长交叠时，上限放宽到「吃掉后段的 55%…… 85%」
+# （见 plan_transitions）：宁可这段几乎整段都在换手，也不让手瞬移。
+POSE_FADE_SHORT_SHARE = 0.55
+
+# 手能有多快。姿态差只回答「像不像换了个姿势」，管不住大动作（伸手指、
+# 摊手）里那只手每秒跑多少像素——观众跟的是指尖。这里按指尖峰值速度反推
+# 时长：need = 峰值斜率 × 手移 / POSE_HAND_SPEED。380 设计稿像素/秒
+# ≈ 1.2 米/秒（人物可视高 517px ≈ 1.6m），是抬手说话的上限，再快就是甩。
+POSE_HAND_SPEED = 380.0
+# 权重曲线形状：两端二次收尾、中间匀速。两端导数为 0 保证换势不「蹦」，
+# 匀速段把峰值压到 1/(1-a) 倍平均速度：a=0.32 时 1.47 倍，而 smootherstep
+# 是 1.875 倍——同样的位移，肉眼看到的最快那一下慢 22%。
+_POSE_EASE = 0.32
+# 起势最早可以提前到「前段起点 + 0.04 秒」：窗口不够时宁可把抬手的前摇
+# （lead-in）往前提，也不把叠化压短。压短就是「手瞬间到位」。
+POSE_LEAD_MIN = 0.04
 
 # 姿态别名归族：同族是同一个体态（只有口型/眼睛在换），不该混姿态；
 # 叫法不同但画的是同一张的，素材里确实存在（stand / base / neutral）。
@@ -315,6 +331,190 @@ def pose_fade_for(diff: float) -> float:
     return POSE_FADE_MIN + (POSE_FADE_MAX - POSE_FADE_MIN) * d
 
 
+def _pose_peak() -> float:
+    """姿态权重曲线的峰值斜率相对平均斜率（匀速中段 = 1/(1-a)）。"""
+    return 1.0 / (1.0 - _POSE_EASE)
+
+
+def _pose_ramp(x: float) -> float:
+    """姿态权重曲线：两端二次收尾（导数 0），中间匀速段。
+
+    smootherstep 峰值 1.875 倍平均速度，大动作的中段会被「甩」一下；这里
+    峰值只有 1.47 倍，两端仍是一阶连续（换势不蹦），中段慢 22%。
+    """
+    x = min(1.0, max(0.0, float(x)))
+    a = _POSE_EASE
+    m = 1.0 / (1.0 - a)
+    if x < a:
+        return m * x * x / (2.0 * a)
+    if x > 1.0 - a:
+        y = 1.0 - x
+        return 1.0 - m * y * y / (2.0 * a)
+    return m * (x - a / 2.0)
+
+
+# 手位量一次就够：路径 + mtime + 尺寸当键，同一张立绘在整条片子里只读一次
+# （2048² 的 PNG 解一次几十毫秒，换姿势十几处，重算就是几百毫秒）。
+_HAND_TIP_CACHE: dict[tuple, tuple | None] = {}
+# 一对姿势的手移（设计稿像素）同进程内复用；键里带各素材目录的 mtime 戳，
+# 素材换了自动重算。
+_HAND_SHIFT_CACHE: dict[tuple, float] = {}
+# 设计稿上人物内容框的高度（width=620 时量出来 517px）：素材是无量纲比，
+# 换算成「每秒多少像素」得有这把尺子。
+_HAND_DESIGN_H = 517.2
+
+
+def _pose_files(root: Path, pose: str) -> list[Path]:
+    """这套角色下这个姿势的静帧（优先 poses/，再退回 base/ 的站姿）。"""
+    fam = _pose_family(pose)
+    hits = sorted(root.glob(f"outfits/*/poses/pose_{fam}_closed.png"))
+    if hits:
+        return hits
+    return sorted(root.glob("outfits/*/base/*base_closed.png"))
+
+
+def _hand_tip(path: Path):
+    """一张立绘的「手位」：肤色像素按脸的左右两侧各聚成一枚（归一到内容框）。
+
+    量重心会被躯干和头发稀释（头发最宽、占了最外侧），量轮廓尖端量到的是
+    头发；手是画面里除了脸以外唯一的一块肤色，按「离脸中心多远」去找它，
+    抬手/指方向位移多少就是多少。
+    """
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    key = (str(path), int(st.st_mtime), st.st_size)
+    if key in _HAND_TIP_CACHE:
+        return _HAND_TIP_CACHE[key]
+    tip = None
+    try:
+        import numpy as np
+        from PIL import Image
+
+        arr = np.asarray(Image.open(path).convert("RGBA"))
+        r = arr[..., 0].astype(np.int16)
+        g = arr[..., 1].astype(np.int16)
+        b = arr[..., 2].astype(np.int16)
+        a = arr[..., 3]
+        skin = (a > 40) & (r > 150) & (r > b + 18) & (g > 110) & (b < 215) & (g < r)
+        ys, xs = np.nonzero(skin)
+        if len(xs) < 400:
+            tip = None
+        else:
+            y0, y1, x0, x1 = int(ys.min()), int(ys.max()), int(xs.min()), int(xs.max())
+            h = max(1, y1 - y0 + 1)
+            w = max(1, x1 - x0 + 1)
+            # 脸 = 肤色像素的上半坨；手的判定基准就是这张脸的中心
+            # 脸 = 肤色最上面那一坨：它的外框要从「手」的候选里剔掉，否则
+            # 脸的两侧边缘会把两只手各拽住一半，量出来永远是「没动」。
+            top = ys <= y0 + 0.32 * h
+            if int(top.sum()) < 200:
+                top = np.ones(len(ys), dtype=bool)
+            fx0, fx1 = int(xs[top].min()), int(xs[top].max())
+            fy1 = int(np.percentile(ys[top], 97))
+            fcx = 0.5 * (fx0 + fx1)
+            pad = 0.03 * h
+            in_face = ((ys <= fy1 + pad) & (xs >= fx0 - pad) & (xs <= fx1 + pad))
+            dx = (xs - fcx) / h
+            dy = (ys - y0) / h
+            out = {}
+            for side, keep in (("L", (dx < 0) & ~in_face), ("R", (dx > 0) & ~in_face)):
+                if int(keep.sum()) < 80:
+                    continue
+                out[side] = (float(dx[keep].mean()), float(dy[keep].mean()))
+            tip = out or None
+    except Exception:  # noqa: BLE001 - 量不出来就当没有，绝不拦着出片
+        tip = None
+    if len(_HAND_TIP_CACHE) > 512:
+        _HAND_TIP_CACHE.clear()
+    _HAND_TIP_CACHE[key] = tip
+    return tip
+
+
+def hand_shift(pose_a, pose_b, outfit_root=None) -> float:
+    """两个姿势之间那只手走了多少设计稿像素（各服装取中位数，量不出返回 0）。
+
+    指尖位置归一化到内容框高度，再乘设计稿上 517px 的等效高度：换一套服装、
+    换一个画布尺寸都不影响这个数。失败一律 0（只影响时长，不影响能不能出片）。
+    """
+    fam_a, fam_b = _pose_family(pose_a), _pose_family(pose_b)
+    if fam_a == fam_b:
+        return 0.0
+    root = None
+    try:
+        if outfit_root is not None:
+            root = Path(outfit_root)
+            if root.parent.name != "outfits" and root.name == "outfits":
+                root = None
+            elif root.parent.name == "outfits":
+                root = root.parent.parent
+            elif (root / "outfits").is_dir():
+                pass
+            elif (root.parent / "outfits").is_dir():
+                root = root.parent
+            else:
+                root = None
+        if root is None:
+            import character
+
+            root = Path(character.outfit_root(None)).parent.parent
+        files_a = _pose_files(root, fam_a)
+        files_b = _pose_files(root, fam_b)
+        if not files_a or not files_b:
+            return 0.0
+        stem_a = {(p.parent.parent.name, p.name): p for p in files_a}
+        stamp = tuple(sorted((k[0], int(p.stat().st_mtime)) for k, p in stem_a.items()))
+        ckey = (stamp, fam_a, fam_b)
+        hit = _HAND_SHIFT_CACHE.get(ckey)
+        if hit is not None:
+            return hit
+        vals = []
+        for key_a, pa in sorted(stem_a.items()):
+            name_b = pa.name.replace(f"pose_{fam_a}_", f"pose_{fam_b}_")
+            pb = pa.parent.parent / key_a[0] / "poses" / name_b
+            if not pb.exists():
+                cand = [p for p in files_b if p.parent.parent.name == key_a[0]]
+                pb = cand[0] if cand else None
+            if pb is None:
+                continue
+            ta, tb = _hand_tip(pa), _hand_tip(pb)
+            if not ta or not tb:
+                continue
+            # 两只手各自找对面最近的一枚：手臂交叉时左右会换边，
+            # 钉死同侧会把「换手」量成「手没动」。
+            a_pts = list(ta.values())
+            b_pts = list(tb.values())
+            if len(a_pts) > len(b_pts):
+                a_pts, b_pts = b_pts, a_pts
+            best = 0.0
+            for p in a_pts:
+                d = min(math.hypot(q[0] - p[0], q[1] - p[1]) for q in b_pts)
+                best = max(best, d)
+            if best > 0:
+                vals.append(best)
+        if not vals:
+            return 0.0
+        vals.sort()
+        med = vals[len(vals) // 2] * _HAND_DESIGN_H
+        _HAND_SHIFT_CACHE[ckey] = med
+        return med
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
+def pose_fade_need(pose_a, pose_b, diff: float, outfit_root=None) -> float:
+    """过渡到底要多长：姿态差给的下限与「手别跑太快」取大。
+
+    need = 峰值斜率 × 手移 / POSE_HAND_SPEED。手移量不出来就只看姿态差。
+    """
+    need = pose_fade_for(diff)
+    px = hand_shift(pose_a, pose_b, outfit_root)
+    if px > 0:
+        need = max(need, _pose_peak() * px / POSE_HAND_SPEED)
+    return need
+
+
 def _shift_seg(seg: dict, dt: float) -> None:
     """整段平移。相位一起挪：动画和口型接着原来的绝对时刻播，不从头起。"""
     seg["start"] = float(seg["start"]) + dt
@@ -363,18 +563,45 @@ def plan_transitions(segments: list[dict], box_of=None) -> list[dict]:
         len_a = max(1e-6, a_end - a_start)
         len_b = max(1e-6, b_end - b_start)
         cap = POSE_FADE_SHARE * min(len_a, len_b)
+        root = a.get("_outfit_root") or b.get("_outfit_root")
+        need = pose_fade_need(a.get("pose"), b.get("pose"), diff, root)
+        b["_fade_need"] = need
+        if need > cap:
+            # 手移要求比「半段」还长：短短一句手势（只剩 0.3~0.4 秒）不能硬塞进
+            # 半段里，否则那只手 0.2 秒走完 150px，读起来就是瞬移。允许吃掉后段
+            # 85%（这段本来就短，看完手势就换下一句了），换手不压缩。
+            cap = min(max(cap, POSE_FADE_SHORT_SHARE * len_b), 0.85 * len_b)
+            b["_fade_short"] = True
         # 入场段提前起会把人从画面下沿提前升起来，和上一段叠在一起
         room = 0.0 if b.get("enter") else max(0.0, a_end - (a_start + POSE_SETTLE))
-        target = min(cap, max(POSE_FADE_FLOOR, pose_fade_for(diff)))
+        target = min(cap, max(POSE_FADE_FLOOR, need))
         cur = max(0.0, min(a_end, b_end) - b_start)
         gap = max(0.0, target - cur)
         if gap > 0.0:
             adv = min(gap, room, max(0.0, b_start))
             if adv > 1e-9:
+                # 只把起点提前，收尾时刻不动：整段往前铺，人不会提前消失
+                b_end_fix = float(b["end"])
                 _shift_seg(b, -adv)
+                b["end"] = b_end_fix
                 b_start -= adv
                 cur += adv
                 gap -= adv
+                b["_lead"] = float(b.get("_lead") or 0.0) + adv
+            if gap > 1e-9:
+                # 窗口还不够长就继续把起势往前挪（lead-in）：只给前段留
+                # POSE_LEAD_MIN 让观众看清上一个手势，剩下的时间都给这次抬手。
+                room2 = (0.0 if b.get("enter") else
+                         max(0.0, a_end - (a_start + POSE_LEAD_MIN) - (b_start - adv)))
+                adv2 = min(gap, room2, max(0.0, b_start - adv))
+                if adv2 > 1e-9:
+                    b_end_fix = float(b["end"])
+                    _shift_seg(b, -adv2)
+                    b["end"] = b_end_fix
+                    b_start -= adv2
+                    cur += adv2
+                    gap -= adv2
+                    b["_lead"] = float(b.get("_lead") or 0.0) + adv2
             if gap > 1e-9:
                 # 挪不动就把前段往后延：合上最后一截，别留下硬切
                 new_end = min(b_end, b_start + target)
@@ -500,7 +727,7 @@ def _active(segments: list[dict], t: float) -> list[tuple[dict, float, float]]:
         # 同一个体态（只换了口型/眼睛）：姿态权重钉在前段。让两帧一模一样的
         # 身体互相权重混，重心会在半秒里来回蹭两下，看着像「抖了一下」。
         return [(a, 1.0 - k, 1.0), (b, k, 0.0)]
-    ks = _smootherstep(x)
+    ks = _pose_ramp(x)
     return [(a, 1.0 - k, 1.0 - ks), (b, k, ks)]
 
 
