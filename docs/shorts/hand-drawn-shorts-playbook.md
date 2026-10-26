@@ -102,9 +102,17 @@ seed 一改整张笔画全变、版式不动——想换手感只动 seed，别�
 
 **别加光。** 立绘周围那圈冷蓝 halo 来自 `jianying_engine._stage_canvas()` 的高斯叠色，逐帧渲染时
 它还会随人物缩放一起被放大，首尾两屏最明显——已经整段删掉，只留脚下一条接触阴影
-（`alpha≈96`，`blur=cw//26`）。背景同样不留中线高光与网格：`#stage` 只用单向下深渐变，
-`.grain` 只保留一层 104° 细斜纹（`opacity .16`）。判断标准是「环带亮度差」：
-人物周围环形带与背景的亮度差要 < 1，改完用 `/tmp/glow_check.py` 那套量一遍再出片。
+（`alpha≈96`，`blur=cw//26`）。背景同样不留中线高光与网格：`#stage` 只用单向下深渐变。
+判断标准是「环带亮度差」：人物周围环形带与背景的亮度差要 < 1，改完用 `/tmp/glow_check.py` 那套量一遍再出片。
+
+**暗色纸面的当前配方**（示图页 `_SVG_STAGE`，2026-10 换掉旧版）：旧的 104° 重复斜纹
+（`repeating-linear-gradient` 1px/3px）在 crf16 下会编码成条纹噪点，是「脏」的主要来源，已删；
+现为四层，全部只压暗、不补亮——低频墨面浓淡（`feTurbulence baseFrequency=".0016 .011"` 3 octaves，
+rect `opacity .03`）、横向笔刷（`.009 .06` 2 octaves + `feDisplacementMap scale 20` + `feGaussianBlur 2.6`，
+六条宽 30–66 的成对深浅笔扫，`opacity .035–.075`）、四角磨损（`.02 .05` 3 octaves + displacement 30，
+四块 `#03070C` `.22–.30`）、`#vign` 径向 + 上下渐变暗角。`#stage` 仍是单向下深渐变。
+两条硬约束：纹理只能压暗，任何亮纤维/亮斑在暗底上会读成漏光；笔扫要落在内容区之外（标题上方一条、
+面板下方两三条），落在标题旁会像污渍。落地前实测整屏 mean/std 不得高于上一版。
 
 **精修 / 变糙的方向**：
 
@@ -262,6 +270,7 @@ ffmpeg -y -v error -i ~/CreatorStudio/deliver/envoy-real-schematic.mp4 \
 | 截图没换，出的还是上一张 | `--shots` 数量少于屏数，多出的屏沿用最后一屏 | `shots` 数量对齐 `plan`，`--caps` 一起对齐 |
 | 渲完找不到 `spec.json`，复现不了 | 没给 `--workdir`，默认 `tempfile.mkdtemp` 渲完即删 | 固定 `--workdir ~/CreatorStudio/work/<slug>` |
 | 中间某屏整屏空白 | CDP 掉帧，帧数不足 | 看引擎日志的 `[paper] x.xxs / n 帧`，重跑；别在机器满载时出片 |
-| 换手势那一下动作突然加速 | 两段交叠太短（按旧段 end 对齐，交叠可能只剩几十毫秒），一帧换完≈硬切 | 走 `char_layer.plan_transitions()`：按姿态语义/重心/高度差铺 0.45–0.80s 交叠，姿势权重用 `smootherstep`（两端速度为 0），只换口型时不造交叠 |
+| 换手势那一下动作突然加速 | 两段交叠太短（按旧段 end 对齐，交叠可能只剩几十毫秒），一帧换完≈硬切 | 走 `char_layer.plan_transitions()`：按姿态语义/重心/高度差铺交叠，姿势权重用 smootherstep（两端速度为 0），只换口型时不造交叠。**交叠时长要按手的位移定**：`pose_fade_need = max(pose_fade_for(diff), 曲线峰值斜率 × 手移 / POSE_HAND_SPEED)`（`POSE_HAND_SPEED=380` 设计 px/s，肤色掩膜剔掉人脸框后逐姿势量手移，按路径+mtime 缓存）；窗口不够先提前起势（lead-in），别压 `end`。混合曲线用两端二次+中段线性，峰值斜率 1.471。改前后：手部单帧最大位移 90.4→24.3 px、加速度尖峰 225626→28088 px/s² |
+| 交叠已经拉到极限，个别句子手还是快 | 那些句子本身只有 0.2–0.3 s，char_layer 内部挪不出 0.75 s 的窗口（前段短、无同姿势邻段可借） | 根治在规划层：`vertical_short.build_spec` 里合并短句、按短语组挂姿势，不在渲染层硬挤 |
 | 换服装后人物忽大忽小 | 母版画布不是一块（1254² 与 2048² 混用），人物占画布比例差近 3% | 摆位宽度乘 `character_assets.sprite_ratio()` 量出的内容框比例（带缓存），基准取同动作跨服装中位数；缺图一律回 1.0，不拦出片 |
 | 立绘右上角飘着一小块橙色 `hh` | 那是 `expressions/anger.png` 的漫画怒气符，按情绪叠上去的，不是脏点 | 别删素材；不想要愤怒情绪就把那一段的 expression 换掉 |
