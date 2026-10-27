@@ -18,6 +18,7 @@
 | GET | `/jobs/<id>/log?tail=200` | 日志尾巴 |
 | POST | `/jobs/<id>/cancel` | 取消（SIGTERM 整个进程组） |
 | GET | `/deliverables?limit=50` | `$STUDIO_HOME/deliver` 下的成片清单 |
+| GET | `/assets` | 资产总览：`deploy/specs/` 的规格（含可提交的 kind）、`$STUDIO_HOME/materials/shots` 的镜头素材、成片清单；纯扫目录 |
 
 任务对象字段：`id kind status progress stage createdAt updatedAt startedAt endedAt`
 + 运行中 `pid`、成功时 `result`、失败时 `error`（一行原因）与 `traceback`（尾 2000 字）。
