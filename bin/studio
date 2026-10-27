@@ -142,6 +142,24 @@ def main(argv: list[str]) -> int:
         f"{f['name']}  {f['bytes'] / 1e6:.1f} MB  {f['mtime']}"
         for f in _call("GET", f"/deliverables?limit={a.n}")["files"])), 0)[1])
 
+    assets = sub.add_parser("assets", help="资产总览：规格 / 素材 / 成片")
+    assets.add_argument("-n", type=int, default=12)
+
+    def _assets(a):
+        d = _call("GET", "/assets")
+        print(f"素材根 {d['root']}")
+        print(f"规格 {len(d['specs'])} 份")
+        for sp in d["specs"][:a.n]:
+            flag = "" if sp.get("ok", True) else "  [读不了]"
+            print(f"  {sp['kind']:<9} {sp['title']}{flag}")
+            print(f"    {sp['path']}")
+        print(f"镜头素材 {d['shots']['count']} 个 · 包 {len(d['packs'])} 个 · 成片 {d['films']['count']} 条")
+        for f in d["films"]["recent"][:a.n]:
+            print(f"  {f['name']}  {f['bytes'] / 1e6:.1f} MB")
+        return 0
+
+    assets.set_defaults(func=_assets)
+
     args = ap.parse_args(argv)
     return args.func(args)
 

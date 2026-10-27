@@ -196,6 +196,8 @@ class Handler(BaseHTTPRequestHandler):
                         ensure_ascii=False).encode())
                 else:
                     self._send(200, json.dumps(jobs.get(jid), ensure_ascii=False).encode())
+            elif path == "/assets":
+                self._send(200, json.dumps(jobs.assets(), ensure_ascii=False).encode())
             elif path == "/deliverables":
                 q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
                 limit = int((q.get("limit") or ["50"])[0])

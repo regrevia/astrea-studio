@@ -304,6 +304,59 @@ def cleanup(job_id: str) -> dict:
     return get(job_id)
 
 
+# ---------------------------------------------------------------- 资产总览
+
+MATERIALS_DIR = Path(os.environ.get("MATERIALS_DIR") or (STUDIO_HOME / "materials"))
+
+_SHOT_EXT = (".png", ".jpg", ".jpeg", ".webp", ".mp4", ".mov")
+
+
+def _scan(root: Path, exts: tuple[str, ...], limit: int = 400) -> list[dict]:
+    rows: list[dict] = []
+    if not root.is_dir():
+        return rows
+    for p in root.rglob("*"):
+        if p.is_file() and p.suffix.lower() in exts:
+            st = p.stat()
+            rows.append({"path": str(p), "bytes": st.st_size,
+                         "mtime": time.strftime("%Y-%m-%dT%H:%M:%S",
+                                                time.localtime(st.st_mtime))})
+    rows.sort(key=lambda r: r["mtime"], reverse=True)
+    return rows[: max(1, min(limit, 2000))]
+
+
+def assets() -> dict:
+    """平台自己管的三样东西：可渲的规格、可用的素材、已出的成片。
+
+    不联网、不启动引擎，纯扫目录——所以它可以在面板里随时刷，
+    也解释了「这条片子用的是什么素材」：所有路径都能直接喂给 submit。
+    """
+    specs = []
+    for p in sorted((REPO_ROOT / "deploy" / "specs").glob("*.json")):
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            specs.append({"path": str(p), "title": p.stem, "engine": "?", "ok": False})
+            continue
+        inner = d.get("spec") if isinstance(d.get("spec"), dict) else d
+        engine = d.get("engine") or inner.get("engine") or "?"
+        # 引擎名和可提交的 kind 不是一一对应：timeline/paper 两类规格都走 paper 任务。
+        kind = engine if engine in ("slides", "motion", "jianying") else "paper"
+        specs.append({"path": str(p), "title": d.get("title") or p.stem,
+                      "engine": engine, "kind": kind, "ok": True})
+    shots = _scan(MATERIALS_DIR / "shots", _SHOT_EXT)
+    packs = sorted(p.name for p in (MATERIALS_DIR / "packs").glob("*")) \
+        if (MATERIALS_DIR / "packs").is_dir() else []
+    films = deliverables(200)
+    return {
+        "root": str(MATERIALS_DIR),
+        "specs": specs,
+        "shots": {"count": len(shots), "recent": shots[:60]},
+        "packs": packs,
+        "films": {"count": len(films), "recent": films[:60]},
+    }
+
+
 def main(argv: list[str]) -> int:
     if len(argv) >= 3 and argv[1] == "--run":
         return run_job(argv[2])

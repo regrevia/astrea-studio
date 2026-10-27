@@ -51,18 +51,23 @@ def render_motion(payload: dict[str, Any], job_dir: Path,
         raise MotionError(f"motion venv missing: {MOTION_PY}")
 
     say(5, "motion:rendering")
-    # cut_render.py 自己会把产物写到 <job_dir>/<spec-stem>/
-    out = _run([str(MOTION_PY), str(MOTION_HOME / "cut_render.py"), str(spec_path)],
+    # cut_render.py 不给 --out 时会写到 <MOTION_HOME>/<spec-stem>（永远是 motion/spec/），
+    # 两个任务同时跑就互相覆盖——必须显式指到本任务的工作目录。
+    out = _run([str(MOTION_PY), str(MOTION_HOME / "cut_render.py"), str(spec_path),
+                "--out", str(job_dir / "motion")],
                cwd=MOTION_HOME, timeout=3600)
+    # cut_render.py 最后一段是 json.dumps(indent=2) 的**多行** JSON：
+    # 按「单行 JSON」找会永远找不到（曾因此把出好的片子判成 no video）。
     result: dict[str, Any] = {}
-    for line in reversed(out.strip().splitlines()):
-        line = line.strip()
-        if line.startswith("{") and line.endswith("}"):
-            try:
-                result = json.loads(line)
-                break
-            except json.JSONDecodeError:
-                continue
+    lines = out.splitlines()
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].strip() != "{":
+            continue
+        try:
+            result = json.loads("\n".join(lines[i:]))
+        except json.JSONDecodeError:
+            continue
+        break
     video = result.get("videoPath")
     if not video or not Path(video).exists():
         raise MotionError(f"motion render produced no video: {out[-800:]}")
