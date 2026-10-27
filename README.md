@@ -24,6 +24,7 @@ Astrea Studio 是基于 [yikart/AiToEarn](https://github.com/yikart/AiToEarn) �
 
 - **统一面板管理多平台**：一屏看到 15 个平台的登录状态与账号，成片按 17 个平台的画幅、码率、封装参数分别交付。
 - **一键采集**：给一个链接就抓正文与页面截图进素材库，不再手工复制粘贴。
+- **本机渲染队列**：`bin/studio jobs submit` 一条命令把四种引擎（paper 竖版讲解片 / slides 卡片分镜 / jianying 剪映草稿 / motion 动效片）排进本机队列，成片统一落到 `~/CreatorStudio/deliver/`；`bin/studio assets` 一眼看到手上有哪些规格、镜头素材和成片，全在本地磁盘，不经过云服务。
 - **对话式生产**：用自然语言说需求，AI 收集信息、写脚本、建渲染任务；"字幕再大一点""换沉稳一点的配音"这类修改按补丁改完重新渲染。
 - **AI 配音**：剪映原生音色 14 个、Edge TTS 9 个，在本机合成。
 - **剪映专业版**：把时间线直接落成剪映草稿（转场、滤镜、文字动画用原生资源），或驱动剪映的导出面板按平台参数导出成片；macOS 需授予辅助功能权限，Windows 不支持该自动化。
@@ -49,6 +50,19 @@ AiToEarn 通过 **AI Agent自动化**，帮助 OPC（一人公司）、创作者
 
 支持渠道：
 抖音、小红书（Rednote）、快手、哔哩哔哩、视频号、公众号、TikTok、YouTube、Facebook、Instagram、Threads、Twitter（X）、Pinterest、LinkedIn
+
+## 本机渲染队列（不用 Docker）
+
+前提：跑过 `scripts/bootstrap*.sh`，能力服务在 `http://127.0.0.1:8899`（`launchctl kickstart -k gui/$(id -u)/local.creatorstudio.capabilities` 起停）。
+
+```bash
+bin/studio assets                                                # 规格 / 镜头素材 / 成片
+bin/studio jobs submit paper  deploy/specs/envoy_real.json   --slug my-film --wait
+bin/studio jobs submit slides deploy/specs/envoy_slides.json --slug my-slides
+bin/studio films                                                 # 已出成片
+```
+
+只需要环境变量：`STUDIO_API`（能力服务地址，默认 `http://127.0.0.1:8899`）、`STUDIO_HOME`（默认 `~/CreatorStudio`）、`JOBS_DIR` / `DELIVER_DIR`（默认 `STUDIO_HOME/state/jobs`、`STUDIO_HOME/deliver`）。字段、失败语义与各引擎的 spec 形状见 `docs/platform/local-jobs-api.md`。
 
 ## 特别感谢 ❤️
 
