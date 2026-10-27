@@ -39,6 +39,112 @@
       "sendFailed": "Send failed: {{message}}",
       "sessionFailed": "Could not load the session: {{message}}",
       "emptyReply": "The console returned nothing. Please send it again."
+    },
+    "context": {
+      "stage": "Étape",
+      "steps": "{{n}} étapes faites",
+      "waiting": "Attend ta confirmation",
+      "noProject": "Aucun projet"
     }
+  },
+  "run": {
+    "status": {
+      "draft": "Brouillon",
+      "queued": "En attente",
+      "running": "En cours",
+      "succeeded": "Terminé",
+      "failed": "Échec",
+      "waitingUser": "En attente de toi",
+      "cancelled": "Annulé",
+      "unknown": "Inconnu"
+    },
+    "group": {
+      "active": "En cours",
+      "waiting": "En attente de toi",
+      "settled": "Terminés"
+    },
+    "empty": "Aucune tâche",
+    "row": {
+      "revision": "v{{n}}"
+    },
+    "artifact": {
+      "master": "Master",
+      "platforms": "{{n}} plateformes",
+      "jianying": "Brouillon JianYing",
+      "publishDraft": "Brouillon de publication"
+    },
+    "action": {
+      "cancel": "Annuler",
+      "retry": "Relancer",
+      "revise": "Demander une modification",
+      "openVideo": "Ouvrir la vidéo"
+    },
+    "confirm": {
+      "cancel": "Les parties rendues sont perdues, tu pourras relancer plus tard.",
+      "retry": "Génère une nouvelle version depuis le script actuel ; l’ancienne vidéo est conservée."
+    },
+    "revise": {
+      "title": "Modifier cette tâche",
+      "placeholder": "Ce qu’il faut changer, par ex. sous-titres trop lents",
+      "cancel": "Annuler",
+      "submit": "Envoyer",
+      "empty": "Décris d’abord le changement"
+    },
+    "error": {
+      "detail": "Détails indisponibles, nouvelle tentative bientôt",
+      "revise": "Modification non envoyée, réessaie",
+      "cancel": "Annulation échouée, réessaie",
+      "retry": "Relance échouée, réessaie"
+    },
+    "detail": {
+      "empty": "Choisis une tâche pour voir la progression",
+      "revision": "v{{n}}",
+      "progress": "{{n}} % terminé",
+      "waitingHint": "Attend ta confirmation",
+      "master": "Vidéo",
+      "duration": "{{n}} s",
+      "noVideo": "Aucune vidéo lisible",
+      "jianying": "Brouillon JianYing",
+      "jianyingDone": "Livré dans les brouillons JianYing",
+      "jianyingPending": "Livré à la fin du rendu",
+      "publishDraft": "Brouillon de publication",
+      "openDraftBox": "Ouvrir les brouillons",
+      "platforms": "Vidéos par plateforme",
+      "qa": "Contrôles du rendu",
+      "log": "Journal des étapes"
+    }
+  },
+  "pub": {
+    "manualCheck": "Reçu incertain, à vérifier",
+    "status": {
+      "planned": "Prévu",
+      "submitting": "Envoi en cours",
+      "submittedUnverified": "Envoyé, non vérifié",
+      "submissionUnknown": "Envoi incertain",
+      "reconciling": "Vérification",
+      "scheduledRemote": "Programmé sur la plateforme",
+      "reviewing": "En révision",
+      "published": "Publié",
+      "rejected": "Rejeté",
+      "waitingUser": "En attente de toi",
+      "notSubmitted": "Non envoyé"
+    }
+  },
+  "overview": {
+    "title": "Studio",
+    "project": "Projet",
+    "allProjects": "Tous les projets",
+    "manual": "Manuel",
+    "retry": "Réessayer",
+    "loadFailed": "Liste non chargée, nouvelle tentative bientôt",
+    "cast": "Personnages",
+    "voice": "Voix",
+    "newTimeline": "Nouvelle tâche timeline",
+    "ledger": "Reçus de publication",
+    "executors": "Machines de rendu",
+    "workerNone": "Aucune machine connectée",
+    "workerOnline": "en ligne",
+    "workerOffline": "hors ligne",
+    "workerAllOffline": "Machines hors ligne, les tâches attendent"
   }
 }

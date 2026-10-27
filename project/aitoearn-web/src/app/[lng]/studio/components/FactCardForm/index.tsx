@@ -7,7 +7,12 @@
  * 出片流程逐屏出卡并配音：mp4 后台渲染，草稿直接落进剪映草稿箱。
  */
 
+import type { CopyScope } from './copyCheck'
+import type { FactCardFormError, FactCardFormValues, FactCardOutput } from './utils'
 import type { FactCardVoice, OutfitInfo } from '@/api/production/production.types'
+import { Clapperboard, Plus, Trash2 } from 'lucide-react'
+import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
 import { createFactCardRun, createFactCardRunBatch, getOutfits } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
 import { Button } from '@/components/ui/button'
@@ -16,25 +21,20 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Clapperboard, Plus, Trash2 } from 'lucide-react'
-import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
 import { checkCopy } from './copyCheck'
-import type { CopyScope, CopyWarn } from './copyCheck'
 import {
+  buildFactCardRunInput,
   DEFAULT_FACT_CARD_KICKER,
   DEFAULT_FACT_CARD_OUTFIT,
   DEFAULT_FACT_CARD_POINTS,
   DEFAULT_FACT_CARD_VOICE,
   FACT_CARD_VOICE_OPTIONS,
-  MAX_FACT_CARD_POINTS,
-  MIN_FACT_CARD_POINTS,
-  buildFactCardRunInput,
   factCardNarrationLineCounts,
   isFactCardVoice,
+  MAX_FACT_CARD_POINTS,
+  MIN_FACT_CARD_POINTS,
   validateFactCardForm,
 } from './utils'
-import type { FactCardFormError, FactCardFormValues, FactCardOutput } from './utils'
 
 const hintClass = 'text-[11px] text-muted-foreground'
 
@@ -52,11 +52,13 @@ const COPY_SCOPE_KEYS: Record<CopyScope, string> = {
 interface FactCardFormProps {
   /** 制作项目 id → 名称，和新建时间轴任务共用同一份项目列表。 */
   projects: Record<string, string>
-  /** 任务创建成功，交给页面接轮询。 */
-  onCreated: (runId: string) => void
+  /** 页面当前选中的项目；为空时回落到第一个项目。 */
+  projectId?: string
+  /** 任务创建成功：批量会带回全部 runId，交给页面选中并刷新。 */
+  onCreated: (runIds: string[]) => void
 }
 
-function FactCardForm({ projects, onCreated }: FactCardFormProps) {
+function FactCardForm({ projects, projectId: selectedProjectId, onCreated }: FactCardFormProps) {
   const { t } = useTransClient('studio')
   const [topic, setTopic] = useState('')
   const [hook, setHook] = useState('')
@@ -102,8 +104,11 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
   }, [])
 
   const projectIds = Object.keys(projects)
-  // 和「新建时间轴任务」一致：没手动选项目时用列表第一个。
-  const effectiveProjectId = projectIds[0] ?? ''
+  const [projectId, setProjectId] = useState('')
+  // 三级回落：本表单手选的项目 → 页面选中的项目 → 列表第一个。
+  const effectiveProjectId = projectIds.includes(projectId)
+    ? projectId
+    : (projectIds.includes(selectedProjectId ?? '') ? (selectedProjectId as string) : (projectIds[0] ?? ''))
 
   function updatePoint(index: number, value: string) {
     setPoints(prev => prev.map((point, i) => (i === index ? value : point)))
@@ -152,7 +157,7 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
       const first = batch.runIds?.[0] ?? batch.runId ?? ''
       setCreatedRunId(first)
       setCreatedCount(batch.runIds?.length ?? 1)
-      onCreated(first)
+      onCreated(batch.runIds?.length ? batch.runIds : (batch.runId ? [batch.runId] : []))
     }
     catch (err) {
       setError({
@@ -176,6 +181,19 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
       </CardHeader>
       <CardContent>
         <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <Label htmlFor="fact-card-project">{t('overview.project')}</Label>
+            <Select value={effectiveProjectId} onValueChange={setProjectId} disabled={projectIds.length === 0}>
+              <SelectTrigger id="fact-card-project" className="cursor-pointer">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {projectIds.map(id => (
+                  <SelectItem key={id} value={id}>{projects[id]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="fact-card-topic">{t('factCard.topic')}</Label>
             <Input
@@ -292,7 +310,13 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="fact-card-voice">{t('factCard.voice')}</Label>
-            <Select value={voice} onValueChange={(value) => { if (isFactCardVoice(value)) setVoice(value) }}>
+            <Select
+              value={voice}
+              onValueChange={(value) => {
+                if (isFactCardVoice(value))
+                  setVoice(value)
+              }}
+            >
               <SelectTrigger id="fact-card-voice">
                 <SelectValue />
               </SelectTrigger>
@@ -322,7 +346,13 @@ function FactCardForm({ projects, onCreated }: FactCardFormProps) {
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="fact-card-output">{t('factCard.output')}</Label>
-            <Select value={output} onValueChange={(value) => { if (value === 'mp4' || value === 'draft') setOutput(value) }}>
+            <Select
+              value={output}
+              onValueChange={(value) => {
+                if (value === 'mp4' || value === 'draft')
+                  setOutput(value)
+              }}
+            >
               <SelectTrigger id="fact-card-output">
                 <SelectValue />
               </SelectTrigger>

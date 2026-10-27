@@ -49,6 +49,12 @@
       "sendFailed": "Send failed: {{message}}",
       "sessionFailed": "Could not load the session: {{message}}",
       "emptyReply": "The console returned nothing. Please send it again."
+    },
+    "context": {
+      "stage": "Stage",
+      "steps": "{{n}} steps done",
+      "waiting": "Waiting for your confirmation",
+      "noProject": "No project selected"
     }
   },
   "factCard": {
@@ -118,5 +124,105 @@
     },
     "count": "Count",
     "batchSuccess": "{{count}} queued"
+  },
+  "run": {
+    "status": {
+      "draft": "Draft",
+      "queued": "Queued",
+      "running": "Running",
+      "succeeded": "Done",
+      "failed": "Failed",
+      "waitingUser": "Needs you",
+      "cancelled": "Cancelled",
+      "unknown": "Unknown"
+    },
+    "group": {
+      "active": "In progress",
+      "waiting": "Needs you",
+      "settled": "Finished"
+    },
+    "empty": "No runs yet",
+    "row": {
+      "revision": "v{{n}}"
+    },
+    "artifact": {
+      "master": "Master",
+      "platforms": "{{n}} platforms",
+      "jianying": "JianYing draft",
+      "publishDraft": "Publish draft"
+    },
+    "action": {
+      "cancel": "Cancel",
+      "retry": "Retry",
+      "revise": "Revise",
+      "openVideo": "Open video"
+    },
+    "confirm": {
+      "cancel": "Rendered parts are dropped; you can start it again later.",
+      "retry": "Renders a new version from the current script; the old video stays."
+    },
+    "revise": {
+      "title": "Revise this run",
+      "placeholder": "Say what to change, e.g. subtitles in the second part are too slow",
+      "cancel": "Cancel",
+      "submit": "Submit",
+      "empty": "Describe the change first"
+    },
+    "error": {
+      "detail": "Could not load run details; retrying shortly",
+      "revise": "Could not submit the revision; try again",
+      "cancel": "Cancel failed; try again",
+      "retry": "Retry failed; try again"
+    },
+    "detail": {
+      "empty": "Pick a run to see progress and video",
+      "revision": "v{{n}}",
+      "progress": "{{n}}% done",
+      "waitingHint": "Waiting for your confirmation",
+      "master": "Video",
+      "duration": "{{n}}s",
+      "noVideo": "No playable video yet",
+      "jianying": "JianYing draft",
+      "jianyingDone": "Delivered to JianYing drafts",
+      "jianyingPending": "Delivered once rendering finishes",
+      "publishDraft": "Publish draft",
+      "openDraftBox": "Open drafts",
+      "platforms": "Per-platform videos",
+      "qa": "Render checks",
+      "log": "Step log"
+    }
+  },
+  "pub": {
+    "manualCheck": "Receipt unclear; check manually",
+    "status": {
+      "planned": "Planned",
+      "submitting": "Submitting",
+      "submittedUnverified": "Sent, unverified",
+      "submissionUnknown": "Submission unclear",
+      "reconciling": "Reconciling",
+      "scheduledRemote": "Scheduled on platform",
+      "reviewing": "Under review",
+      "published": "Published",
+      "rejected": "Rejected",
+      "waitingUser": "Needs you",
+      "notSubmitted": "Not submitted"
+    }
+  },
+  "overview": {
+    "title": "Studio",
+    "project": "Project",
+    "allProjects": "All projects",
+    "manual": "Manual",
+    "retry": "Retry",
+    "loadFailed": "List failed to load; retrying shortly",
+    "cast": "Cast",
+    "voice": "Voice",
+    "newTimeline": "New timeline run",
+    "ledger": "Publish receipts",
+    "executors": "Renderers",
+    "workerNone": "No renderer connected",
+    "workerOnline": "online",
+    "workerOffline": "offline",
+    "workerAllOffline": "All renderers are offline; runs stay queued"
   }
 }

@@ -15,19 +15,21 @@
 'use client'
 
 import type { CharacterInfo, Inventory, ProductionRun, ProductionWorker, PublicationAttempt } from '@/api/production/production.types'
-import { AlertCircle, CheckCircle2, ChevronDown, Clock, Loader2, Mic, Plus, QrCode, RotateCw, Send, UserRound, Video } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronDown, Loader2, Mic, Plus, QrCode, UserRound } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { getCharacters, getHealth, getInventory, getProjects, getPublications, getRun, getRuns } from '@/api/production/production.api'
+import { getCharacters, getHealth, getInventory, getProjects, getPublications, getRuns } from '@/api/production/production.api'
+import { useTransClient } from '@/app/i18n/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Progress } from '@/components/ui/progress'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/utils/className'
 import AssistantPanel from './components/AssistantPanel'
-import AvatarPanel from './components/AvatarPanel'
 import FactCardForm from './components/FactCardForm'
 import NewRunForm from './components/NewRunForm'
-import { formatKib, PLATFORM_LABELS } from './studioConstants'
+import RunDetailPanel from './components/RunDetailPanel'
+import RunRow from './components/RunRow'
+import { groupRuns, publicationStatusMeta } from './utils/status'
 
 /** 每 3 秒刷新一次；渲染本身就是分钟级，再快只是浪费请求。 */
 const POLL_MS = 3000
@@ -35,168 +37,28 @@ const POLL_MS = 3000
 /** 扫码登录坞：独立小服务，只做登录、不发布。 */
 const LOGIN_DOCK = 'http://127.0.0.1:8898/'
 
-const STATUS_META: Record<string, { label: string, tone: string, icon: typeof Clock }> = {
-  queued: { label: '排队中', tone: 'bg-slate-100 text-slate-700', icon: Clock },
-  running: { label: '渲染中', tone: 'bg-blue-100 text-blue-700', icon: Loader2 },
-  succeeded: { label: '已完成', tone: 'bg-emerald-100 text-emerald-700', icon: CheckCircle2 },
-  failed: { label: '失败', tone: 'bg-red-100 text-red-700', icon: AlertCircle },
-  canceled: { label: '已取消', tone: 'bg-slate-100 text-slate-500', icon: AlertCircle },
-}
+/** Radix Select 不接受空字符串值，用哨兵表示「全部项目」。 */
+const ALL_PROJECTS = '__all__'
 
-function statusMeta(status: string) {
-  return STATUS_META[status] ?? { label: status, tone: 'bg-slate-100 text-slate-700', icon: Clock }
-}
-
-function RunRow({ run, projectName }: { run: ProductionRun, projectName?: string }) {
-  const meta = statusMeta(run.status)
-  const Icon = meta.icon
-  const busy = run.status === 'queued' || run.status === 'running'
-  // 各平台成片：后端按平台重新交付后写进 run.output.platforms，没有就是还没出片。
-  const outputPlatforms = Object.entries(run.output?.platforms ?? {})
-  // 文案体检只有 warn 值得上屏；info 是可改可不改的建议，不占位置。
-  const copyWarnings = (run.output?.copyCheck?.findings ?? []).filter(f => f.level === 'warn' && f.detail)
-  // 画面体检同理：黑场、卡面缺字这种硬伤先报，剩下的按顺序带一条。
-  const qaFindings = (run.output?.videoQa?.findings ?? []).filter(f => f.detail)
-  const qaFirst = qaFindings.find(f => f.level === 'error') ?? qaFindings[0]
-  // 有秒数就带上 #t=，点开母版直接停在出问题的那一帧。
-  const qaHref = run.output?.videoUrl && typeof qaFirst?.at === 'number'
-    ? `${run.output.videoUrl}#t=${qaFirst.at}`
-    : null
-
-  return (
-    <div className="flex items-start gap-3 rounded-lg border p-3">
-      <div className={cn('mt-0.5 rounded-md p-1.5', meta.tone)}>
-        <Icon className={cn('h-4 w-4', run.status === 'running' && 'animate-spin')} />
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="truncate font-medium">{run.title}</span>
-          <Badge variant="secondary" className={meta.tone}>{meta.label}</Badge>
-          {projectName && (
-            <span className="text-xs text-muted-foreground">{projectName}</span>
-          )}
-        </div>
-
-        {busy && (
-          <div className="mt-2 flex items-center gap-2">
-            <Progress value={run.progress ?? 0} className="h-1.5 flex-1" />
-            <span className="w-10 text-right text-xs tabular-nums text-muted-foreground">
-              {run.progress ?? 0}
-              %
-            </span>
-          </div>
-        )}
-
-        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          {run.status === 'succeeded' || run.status === 'failed'
-            ? null
-            : <span>阶段：{run.currentStage || '—'}</span>}
-          {run.revision ? <span>第 {run.revision} 版</span> : null}
-          {run.duration ? <span>{run.duration.toFixed(1)}s</span> : null}
-          {run.output?.videoUrl
-            ? <span className="text-emerald-600">已出片</span>
-            : run.materialId ? <span className="text-emerald-600">已进草稿箱</span> : null}
-        </div>
-
-        {run.lastError && (
-          <p className="mt-1 line-clamp-2 text-xs text-red-600">{run.lastError}</p>
-        )}
-
-        {copyWarnings.length > 0 && (
-          <p className="mt-1 line-clamp-2 text-xs text-amber-600">
-            文案 ·
-            {' '}
-            {copyWarnings[0].detail}
-            {copyWarnings.length > 1 ? ` 等 ${copyWarnings.length} 处` : ''}
-          </p>
-        )}
-
-        {qaFirst && (
-          <p className="mt-1 line-clamp-2 text-xs text-amber-600">
-            画面 ·
-            {' '}
-            {qaHref
-              ? (
-                  <a href={qaHref} target="_blank" rel="noreferrer" className="underline underline-offset-2">
-                    {qaFirst.detail}
-                  </a>
-                )
-              : qaFirst.detail}
-            {qaFindings.length > 1 ? ` 等 ${qaFindings.length} 处` : ''}
-          </p>
-        )}
-
-        {outputPlatforms.length > 0 && (
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {run.output?.videoUrl && (
-              <a
-                href={run.output.videoUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-[11px] hover:border-foreground/40"
-              >
-                <span className="font-medium">母版</span>
-                <span className="text-muted-foreground">打开</span>
-              </a>
-            )}
-            {outputPlatforms.map(([platform, video]) => {
-              // 平台名 + 画幅 + 体积，点开就是该平台成片，省得再去草稿箱里翻。
-              const label = (
-                <>
-                  <span className="font-medium">{PLATFORM_LABELS[platform] ?? platform}</span>
-                  <span className="text-muted-foreground">
-                    {video.width}
-                    ×
-                    {video.height}
-                  </span>
-                  <span className="text-muted-foreground">{formatKib(video.bytes)}</span>
-                </>
-              )
-              const chipClass = 'inline-flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-0.5 text-[11px]'
-
-              return video.url
-                ? (
-                    <a
-                      key={platform}
-                      href={video.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={cn(chipClass, 'hover:border-foreground/40')}
-                    >
-                      {label}
-                    </a>
-                  )
-                : <span key={platform} className={chipClass}>{label}</span>
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/**
- * 发布台账。这里刻意把 submission_unknown 单独高亮：它表示「我们不知道作品
- * 到底有没有发出去」，重投会造成重复发布，所以必须人工核对。
- */
 function PublicationRow({ row }: { row: PublicationAttempt }) {
+  const { t } = useTransClient('studio')
+  const meta = publicationStatusMeta(row.status)
   const unknown = row.status === 'submission_unknown'
   return (
-    <div className={cn('flex items-center justify-between rounded-lg border p-3', unknown && 'border-amber-300 bg-amber-50')}>
+    <div className={cn('flex items-center justify-between rounded-lg border p-3', unknown ? 'border-warning/50 bg-warning/10' : 'border-border')}>
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{row.platform}</span>
-          <Badge variant="secondary">{row.status}</Badge>
+          <Badge variant="secondary">{t(meta.labelKey)}</Badge>
         </div>
         <div className="mt-0.5 truncate text-xs text-muted-foreground">
-          {row.accountName || row.accountRef || '未指定账号'}
+          {row.accountName || row.accountRef || '-'}
           {row.workUrl ? ` · ${row.workUrl}` : ''}
         </div>
       </div>
       {unknown && (
-        <span className="shrink-0 text-xs font-medium text-amber-700">
-          回执不明，需人工核对
+        <span className="shrink-0 text-xs font-medium text-warning">
+          {t('pub.manualCheck')}
         </span>
       )}
     </div>
@@ -235,7 +97,7 @@ function PlatformMatrix({ inventory }: { inventory: Inventory | null }) {
           {' '}
           个平台
         </span>
-        {ready.length === 0 && <span className="text-amber-600">还没有任何平台登录</span>}
+        {ready.length === 0 && <span className="text-warning">还没有任何平台登录</span>}
         {pending > 0 && (
           <a
             href={LOGIN_DOCK}
@@ -262,14 +124,14 @@ function PlatformMatrix({ inventory }: { inventory: Inventory | null }) {
               className={cn(
                 'rounded-lg border p-2.5 text-xs transition',
                 p.ready
-                  ? 'border-emerald-200 bg-emerald-50'
+                  ? 'border-success/30 bg-success/10'
                   : 'border-dashed hover:border-foreground/40 hover:bg-muted/40',
               )}
             >
               <div className="flex items-center justify-between">
                 <span className={cn('font-medium', !p.ready && 'text-muted-foreground')}>{p.label}</span>
                 {p.ready
-                  ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                  ? <CheckCircle2 className="h-3.5 w-3.5 text-success" />
                   : <QrCode className="h-3.5 w-3.5 text-muted-foreground/60" />}
               </div>
               {main
@@ -396,19 +258,51 @@ function VoicePanel({ inventory }: { inventory: Inventory | null }) {
 }
 
 export default function StudioOverview() {
+  const { t } = useTransClient('studio')
   const [runs, setRuns] = useState<ProductionRun[]>([])
   const [publications, setPublications] = useState<PublicationAttempt[]>([])
   const [workers, setWorkers] = useState<ProductionWorker[]>([])
-  // 手动出片是给不想对话的人留的备用路径，默认收起，别让它挡住对话。
+  // 手动出片是给不想对话的人留的备用路径，默认收起，别让它挡住列表。
   const [showManual, setShowManual] = useState(false)
   const [projects, setProjects] = useState<Record<string, string>>({})
   const [inventory, setInventory] = useState<Inventory | null>(null)
   const [characters, setCharacters] = useState<CharacterInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  /** 新建任务后需要单独追详情：列表接口只回概览，成片产物在 getRun 的 run 里。 */
-  const [trackedIds, setTrackedIds] = useState<string[]>([])
-  const [runDetails, setRunDetails] = useState<Record<string, ProductionRun>>({})
+  /**
+   * 选中态只有两个字段：projectId 决定列表范围，runId 决定右侧详情。
+   * 两者都写进 URL，刷新同一地址能回到原来的项目和任务，聊天/表单/批量发表单
+   * 都通过 setSelection 落到这同一份状态，不再各自维护一份。
+   */
+  const [projectId, setProjectId] = useState('')
+  const [selectedRunId, setSelectedRunId] = useState('')
+
+  /** 写回地址栏但不新增历史记录：切换项目/任务不该污染浏览器后退。 */
+  const syncUrl = useCallback((next: { projectId?: string, runId?: string }) => {
+    if (typeof window === 'undefined')
+      return
+    const url = new URL(window.location.href)
+    if (next.projectId !== undefined) {
+      if (next.projectId)
+        url.searchParams.set('projectId', next.projectId)
+      else
+        url.searchParams.delete('projectId')
+    }
+    if (next.runId !== undefined) {
+      if (next.runId)
+        url.searchParams.set('runId', next.runId)
+      else
+        url.searchParams.delete('runId')
+    }
+    window.history.replaceState(null, '', `${url.pathname}${url.search}`)
+  }, [])
+
+  /** 首次挂载从地址栏恢复选中态（页面是 ssr:false，读 window 没有预渲染问题）。 */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setProjectId(params.get('projectId') ?? '')
+    setSelectedRunId(params.get('runId') ?? '')
+  }, [])
 
   const refresh = useCallback(async () => {
     try {
@@ -416,7 +310,7 @@ export default function StudioOverview() {
       // payload — the project convention is `res?.data?.list`. Reading `.list`
       // straight off the envelope is undefined and silently renders empty cards.
       const [runsRes, pubsRes, healthRes, inv, chars] = await Promise.all([
-        getRuns({ pageNo: 1, pageSize: 20 }),
+        getRuns({ pageNo: 1, pageSize: 30 }),
         getPublications(),
         getHealth(),
         getInventory(),
@@ -430,12 +324,12 @@ export default function StudioOverview() {
       setError('')
     }
     catch (e) {
-      setError(e instanceof Error ? e.message : '加载失败')
+      setError(e instanceof Error ? e.message : t('overview.loadFailed'))
     }
     finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     // Projects are static per session; fetch once and keep a name lookup.
@@ -455,215 +349,187 @@ export default function StudioOverview() {
     return () => clearInterval(timer)
   }, [refresh])
 
+  /** 项目范围：后端列表不按项目过滤，这里按 run.projectId 收窄。 */
+  const visibleRuns = useMemo(
+    () => (projectId ? runs.filter(run => run.projectId === projectId) : runs),
+    [runs, projectId],
+  )
+  const groups = useMemo(() => groupRuns(visibleRuns), [visibleRuns])
+  const selectedRun = useMemo(
+    () => visibleRuns.find(run => run.id === selectedRunId) ?? null,
+    [visibleRuns, selectedRunId],
+  )
+
+  const selectRun = useCallback((runId: string) => {
+    setSelectedRunId(runId)
+    syncUrl({ runId })
+  }, [syncUrl])
+
+  const changeProject = useCallback((value: string) => {
+    const next = value === ALL_PROJECTS ? '' : value
+    setProjectId(next)
+    setSelectedRunId('')
+    syncUrl({ projectId: next, runId: '' })
+  }, [syncUrl])
+
   /**
-   * 单独追「新建的任务」详情。列表接口只有概览，run.output.platforms 必须读 getRun；
-   * 任务进入终态后停止追，产物留在 runDetails 里继续展示。
+   * 新建任务成功：把新任务选进详情并立刻刷新列表。
+   * 详情不再在本地缓存合并——列表接口本来就带 output，右侧详情按 revision 重新拉，
+   * 改稿后的新 revision 不会被子任务弹回旧成片。
    */
-  useEffect(() => {
-    if (trackedIds.length === 0)
-      return
-    let cancelled = false
-
-    const tick = async () => {
-      const settled: string[] = []
-      for (const id of trackedIds) {
-        const res = await getRun(id)
-        const detail = res?.data?.run
-        if (!detail || cancelled)
-          continue
-        setRunDetails(prev => ({ ...prev, [id]: detail }))
-        if (detail.status !== 'queued' && detail.status !== 'running')
-          settled.push(id)
-      }
-      if (!cancelled && settled.length > 0)
-        setTrackedIds(prev => prev.filter(id => !settled.includes(id)))
+  const handleCreated = useCallback((runIds: string[]) => {
+    const latest = runIds[runIds.length - 1]
+    if (latest) {
+      setSelectedRunId(latest)
+      syncUrl({ runId: latest })
     }
-
-    tick()
-    const timer = setInterval(tick, POLL_MS)
-    return () => {
-      cancelled = true
-      clearInterval(timer)
-    }
-  }, [trackedIds])
-
-  /** 新建任务成功：接入详情轮询，并立刻刷新一次列表让其它卡片同步。 */
-  const handleCreated = useCallback((runId: string) => {
-    setTrackedIds(prev => (prev.includes(runId) ? prev : [...prev, runId]))
     void refresh()
-  }, [refresh])
+  }, [refresh, syncUrl])
 
-  /** 列表数据 + 详情数据合并：成片产物只存在于详情里，列表轮询不能把它冲掉。 */
-  const mergedRuns = useMemo(() => {
-    const list = runs.map((run) => {
-      const detail = runDetails[run.id]
-      return detail ? { ...run, ...detail } : run
-    })
-    const listed = new Set(runs.map(run => run.id))
-    const fresh = Object.values(runDetails).filter(detail => !listed.has(detail.id))
-    // 新任务排在列表最前：列表接口还没收录它时也能立刻看到。
-    return [...fresh, ...list]
-  }, [runs, runDetails])
+  const projectOptions = useMemo(() => Object.entries(projects), [projects])
+  const onlineMachines = workers.filter(w => w.online)
 
-  const active = useMemo(
-    () => mergedRuns.filter(r => r.status === 'queued' || r.status === 'running'),
-    [mergedRuns],
-  )
-  const finished = useMemo(
-    () => mergedRuns.filter(r => r.status !== 'queued' && r.status !== 'running'),
-    [mergedRuns],
-  )
-  const onlineWorkers = workers.filter(w => w.online)
-  const unknownCount = publications.filter(p => p.status === 'submission_unknown').length
+  const sections = [
+    { key: 'run.group.active', items: groups.active },
+    { key: 'run.group.waiting', items: groups.waiting },
+    { key: 'run.group.settled', items: groups.settled.slice(0, 8) },
+  ] as const
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4 p-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Studio 总览</h1>
-          <p className="text-sm text-muted-foreground">
-            渲染与发布都在本机执行，数据只保存在这台机器上。
-          </p>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-semibold text-foreground">{t('overview.title')}</h1>
+          {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         </div>
-        <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
-          <RotateCw className={cn('mr-1.5 h-3.5 w-3.5', loading && 'animate-spin')} />
-          刷新
-        </Button>
+        <div className="flex items-center gap-2">
+          <Select value={projectId || ALL_PROJECTS} onValueChange={changeProject}>
+            <SelectTrigger className="h-8 w-[180px] text-xs" aria-label={t('overview.project')}>
+              <SelectValue placeholder={t('overview.allProjects')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_PROJECTS}>{t('overview.allProjects')}</SelectItem>
+              {projectOptions.map(([id, name]) => (
+                <SelectItem key={id} value={id}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" className="h-8 cursor-pointer" onClick={() => setShowManual(v => !v)}>
+            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', showManual && 'rotate-180')} />
+            {t('overview.manual')}
+          </Button>
+        </div>
       </div>
 
       {error && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="py-3 text-sm text-red-700">{error}</CardContent>
-        </Card>
-      )}
-
-      {unknownCount > 0 && (
-        <Card className="border-amber-300 bg-amber-50">
-          <CardContent className="flex items-start gap-2 py-3 text-sm text-amber-800">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <div>
-              有
-              {' '}
-              {unknownCount}
-              {' '}
-              条发布回执不明。它们不会被自动重投——先到对应平台确认作品是否存在，再到
-              发布台账里回写结果，否则可能重复发布。
-            </div>
+        <Card className="border-destructive/40">
+          <CardContent className="flex items-center justify-between gap-3 p-3">
+            <p role="alert" className="flex items-center gap-2 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4" />
+              {error}
+            </p>
+            <Button variant="outline" size="sm" className="cursor-pointer" onClick={() => void refresh()}>
+              {t('overview.retry')}
+            </Button>
           </CardContent>
         </Card>
       )}
 
-      <AssistantPanel />
+      <AssistantPanel
+        projectId={projectId}
+        projectName={projectId ? projects[projectId] : undefined}
+        runs={visibleRuns}
+        selectedRunId={selectedRunId}
+      />
 
-      <button
-        type="button"
-        onClick={() => setShowManual(value => !value)}
-        className="flex cursor-pointer items-center gap-1.5 self-start text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ChevronDown className={cn('h-4 w-4 transition-transform', showManual && 'rotate-180')} />
-        {showManual ? '收起手动出片' : '手动出片'}
-      </button>
+      <div className="grid items-start gap-3 lg:grid-cols-3">
+        <div className="flex flex-col gap-3 lg:col-span-2">
+          {sections.map(section => (
+            <Card key={section.key}>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  {t(section.key)}
+                  {section.items.length > 0 && <Badge variant="secondary">{section.items.length}</Badge>}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2">
+                {section.items.length === 0
+                  ? <p className="py-3 text-center text-sm text-muted-foreground">{t('run.empty')}</p>
+                  : section.items.map(run => (
+                      <RunRow
+                        key={run.id}
+                        run={run}
+                        projectName={projects[run.projectId]}
+                        selected={run.id === selectedRunId}
+                        onSelect={selectRun}
+                        onChanged={refresh}
+                      />
+                    ))}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        <div className="lg:sticky lg:top-4">
+          {selectedRun
+            ? (
+                <RunDetailPanel
+                  run={selectedRun}
+                  projectName={projects[selectedRun.projectId]}
+                  onChanged={refresh}
+                />
+              )
+            : <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">{t('run.detail.empty')}</p>}
+        </div>
+      </div>
 
       {showManual && (
-        <div className="flex flex-col gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Send className="h-4 w-4" />
-              发布平台
-              {inventory && (
-                <Badge variant="secondary">
-                  {inventory.summary.ready}
-                  /
-                  {inventory.summary.total}
-                </Badge>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <PlatformMatrix inventory={inventory} />
-          </CardContent>
-        </Card>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <UserRound className="h-4 w-4" />
+                {t('overview.cast')}
+                <Badge variant="secondary">{characters.length}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PresenterPanel characters={characters} />
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <UserRound className="h-4 w-4" />
-              主角
-              <Badge variant="secondary">{characters.length}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <PresenterPanel characters={characters} />
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Mic className="h-4 w-4" />
+                {t('overview.voice')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <VoicePanel inventory={inventory} />
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Mic className="h-4 w-4" />
-              配音音色
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <VoicePanel inventory={inventory} />
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Plus className="h-4 w-4" />
+                {t('overview.newTimeline')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <NewRunForm projects={projects} projectId={projectId} onCreated={handleCreated} />
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Plus className="h-4 w-4" />
-              新建时间轴任务
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <NewRunForm projects={projects} onCreated={handleCreated} />
-          </CardContent>
-        </Card>
-
-        <FactCardForm projects={projects} onCreated={handleCreated} />
+          <FactCardForm projects={projects} projectId={projectId} onCreated={handleCreated} />
         </div>
       )}
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Video className="h-4 w-4" />
-            进行中
-            {active.length > 0 && <Badge variant="secondary">{active.length}</Badge>}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          {active.length === 0
-            ? (
-                <p className="py-4 text-center text-sm text-muted-foreground">
-                  没有正在渲染的任务。新建任务后，几秒内就会开始。
-                </p>
-              )
-            : active.map(run => (
-                <RunRow key={run.id} run={run} projectName={projects[run.projectId]} />
-              ))}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">最近完成</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-2">
-          {finished.length === 0
-            ? <p className="py-4 text-center text-sm text-muted-foreground">还没有完成的任务。</p>
-            : finished.slice(0, 8).map(run => (
-                <RunRow key={run.id} run={run} projectName={projects[run.projectId]} />
-              ))}
-        </CardContent>
-      </Card>
 
       {publications.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">发布台账</CardTitle>
+            <CardTitle className="text-base">{t('overview.ledger')}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             {publications.slice(0, 8).map(row => <PublicationRow key={row.id} row={row} />)}
@@ -672,22 +538,22 @@ export default function StudioOverview() {
       )}
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <span>执行器：</span>
+        <span>{t('overview.executors')}</span>
         {workers.length === 0
-          ? <span className="text-red-600">暂时没有可用的出片流程，任务会排队等着</span>
-          : workers.map(w => (
+          ? <span className="text-warning">{t('overview.workerNone')}</span>
+          : workers.map(({ name, online }) => (
               <Badge
-                key={w.name}
+                key={name}
                 variant="secondary"
-                className={w.online ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}
+                className={online ? 'bg-success/10 text-success' : 'text-muted-foreground'}
               >
-                {w.name}
+                {name}
                 {' '}
-                {w.online ? '在线' : '离线'}
+                {online ? t('overview.workerOnline') : t('overview.workerOffline')}
               </Badge>
             ))}
-        {onlineWorkers.length === 0 && workers.length > 0 && (
-          <span className="text-red-600">目前都不可用，任务会排队等着</span>
+        {onlineMachines.length === 0 && workers.length > 0 && (
+          <span className="text-warning">{t('overview.workerAllOffline')}</span>
         )}
       </div>
     </div>

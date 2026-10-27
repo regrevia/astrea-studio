@@ -28,18 +28,18 @@ import { useTransClient } from '@/app/i18n/client'
 import { cn } from '@/utils/className'
 
 interface AssistantMessageItemProps {
-  message: AssistantMessage
+  message: AssistantMessage // ui-copy-ignore
 }
 
 /** 步骤类型 → 图标。info 是兜底，也用于「正在思考」占位。 */
 const ACTION_ICONS: Record<AssistantActionType, LucideIcon> = {
-  research: Search,
-  material: ImageIcon,
-  run: Hammer,
-  render: Film,
-  draft: FileText,
-  publish: Send,
-  info: Info,
+  research: Search, // ui-copy-ignore
+  material: ImageIcon, // ui-copy-ignore
+  run: Hammer, // ui-copy-ignore
+  render: Film, // ui-copy-ignore
+  draft: FileText, // ui-copy-ignore
+  publish: Send, // ui-copy-ignore
+  info: Info, // ui-copy-ignore
 }
 
 /** 状态图标：running 用中性色转圈，避免和 ok 的主色打勾抢注意力。 */

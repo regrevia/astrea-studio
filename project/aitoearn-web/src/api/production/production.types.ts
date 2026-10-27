@@ -5,13 +5,19 @@
  * 只保留 studio 面板实际读取的字段，避免整条 ledger 结构泄漏到前端。
  */
 
-/** 任务状态。 */
+/**
+ * 任务状态。与后端 ProductionRunStatus 枚举一一对应：
+ * draft 是还没排期的草稿，waiting_user 是流水线停下来等人决定，
+ * 两者都不能算进「已完成」。取消的英文是 cancelled（不是 canceled）。
+ */
 export type ProductionRunStatus
-  = | 'queued'
+  = | 'draft'
+    | 'queued'
     | 'running'
     | 'succeeded'
     | 'failed'
-    | 'canceled'
+    | 'waiting_user'
+    | 'cancelled'
 
 /** 制作项目。 */
 export interface ProductionProject {
@@ -97,11 +103,33 @@ export interface ProductionRun {
   materialId?: string
   videoUrl?: string
   duration?: number
+  /**
+   * 渲染通道参数。`engine` 决定出片形态：`jianying` 进剪映草稿箱，
+   * `timeline` 直接出 mp4。后端按它派切渲染 job，前端据它区分产物类型。
+   */
+  spec?: ProductionRunSpec
+  /** 阶段留痕：改稿、重试、人工干预都在这里追加一条。 */
+  checkpoints?: ProductionCheckpoint[]
   /** 渲染完成后的产物；排队/渲染中为 undefined。 */
   output?: ProductionRunOutput
   lastError?: string
   createdAt?: string
   updatedAt?: string
+}
+
+/** 渲染通道参数（后端 spec 只透传，形状由各表单决定）。 */
+export interface ProductionRunSpec {
+  engine?: string
+  template?: string
+  mode?: string
+  [key: string]: unknown
+}
+
+/** 一次阶段留痕。改稿会带 note，例如 `revision 2`。 */
+export interface ProductionCheckpoint {
+  at?: string
+  stage?: string
+  note?: string
 }
 
 /** 任务事件（阶段 / 计时 / 错误）。 */
@@ -121,15 +149,22 @@ export interface PageResult<T> {
   pageSize: number
 }
 
-/** 发布台账状态。submission_unknown 表示回执不明，不可自动重投。 */
+/**
+ * 发布台账状态。与后端 PublicationStatus 枚举一一对应：
+ * submission_unknown 表示回执不明，不可自动重投；waiting_user 是等人补齐账号或确认。
+ */
 export type PublicationStatus
   = | 'planned'
     | 'submitting'
     | 'submitted_unverified'
-    | 'published'
     | 'submission_unknown'
-    | 'failed'
-    | 'canceled'
+    | 'reconciling'
+    | 'scheduled_remote'
+    | 'reviewing'
+    | 'published'
+    | 'rejected'
+    | 'waiting_user'
+    | 'not_submitted'
 
 /** 发布尝试记录。 */
 export interface PublicationAttempt {

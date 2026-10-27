@@ -39,6 +39,112 @@
       "sendFailed": "送信に失敗しました：{{message}}",
       "sessionFailed": "セッションを読み込めませんでした：{{message}}",
       "emptyReply": "コンソールから内容が返りませんでした。もう一度送信してください。"
+    },
+    "context": {
+      "stage": "現在の段階",
+      "steps": "{{n}} ステップ完了",
+      "waiting": "確認すると続行します",
+      "noProject": "プロジェクト未選択"
     }
+  },
+  "run": {
+    "status": {
+      "draft": "下書き",
+      "queued": "待機中",
+      "running": "実行中",
+      "succeeded": "完了",
+      "failed": "失敗",
+      "waitingUser": "確認待ち",
+      "cancelled": "キャンセル済み",
+      "unknown": "状態不明"
+    },
+    "group": {
+      "active": "進行中",
+      "waiting": "確認待ち",
+      "settled": "終了"
+    },
+    "empty": "タスクはまだありません",
+    "row": {
+      "revision": "第 {{n}} 版"
+    },
+    "artifact": {
+      "master": "マスター",
+      "platforms": "{{n}} プラットフォーム",
+      "jianying": "JianYing 下書き",
+      "publishDraft": "公開下書き"
+    },
+    "action": {
+      "cancel": "キャンセル",
+      "retry": "再実行",
+      "revise": "修正する",
+      "openVideo": "動画を開く"
+    },
+    "confirm": {
+      "cancel": "キャンセルすると描画済みの部分は破棄されます。後で再実行できます。",
+      "retry": "現在の原稿で新しい版を作ります。以前の動画は残ります。"
+    },
+    "revise": {
+      "title": "このタスクを修正",
+      "placeholder": "変えたい点を書いてください。例：2 段落目の字幕が遅い",
+      "cancel": "キャンセル",
+      "submit": "送信",
+      "empty": "変更点を先に入力してください"
+    },
+    "error": {
+      "detail": "詳細を取得できません。しばらくして再試行します",
+      "revise": "修正を送信できませんでした。もう一度お試しください",
+      "cancel": "キャンセルできませんでした。もう一度お試しください",
+      "retry": "再実行できませんでした。もう一度お試しください"
+    },
+    "detail": {
+      "empty": "タスクを選ぶと進捗と動画が表示されます",
+      "revision": "第 {{n}} 版",
+      "progress": "{{n}}% 完了",
+      "waitingHint": "確認すると続行します",
+      "master": "動画",
+      "duration": "{{n}} 秒",
+      "noVideo": "再生できる動画はまだありません",
+      "jianying": "JianYing 下書き",
+      "jianyingDone": "JianYing の下書きに送信済み",
+      "jianyingPending": "描画完了後に自動で送信",
+      "publishDraft": "公開下書き",
+      "openDraftBox": "下書き一覧へ",
+      "platforms": "プラットフォーム別動画",
+      "qa": "仕上がりチェック",
+      "log": "ステップログ"
+    }
+  },
+  "pub": {
+    "manualCheck": "受領不明。手動で確認してください",
+    "status": {
+      "planned": "公開予定",
+      "submitting": "送信中",
+      "submittedUnverified": "送信済み・未確認",
+      "submissionUnknown": "送信結果不明",
+      "reconciling": "照合中",
+      "scheduledRemote": "プラットフォームで予約済み",
+      "reviewing": "審査中",
+      "published": "公開済み",
+      "rejected": "却下",
+      "waitingUser": "確認待ち",
+      "notSubmitted": "未送信"
+    }
+  },
+  "overview": {
+    "title": "スタジオ",
+    "project": "プロジェクト",
+    "allProjects": "すべてのプロジェクト",
+    "manual": "手動で作成",
+    "retry": "再試行",
+    "loadFailed": "一覧を読み込めません。まもなく再試行します",
+    "cast": "出演者",
+    "voice": "音声",
+    "newTimeline": "タイムラインで作成",
+    "ledger": "公開の受領記録",
+    "executors": "レンダリング端末",
+    "workerNone": "レンダリング端末が未接続",
+    "workerOnline": "オンライン",
+    "workerOffline": "オフライン",
+    "workerAllOffline": "端末がすべてオフラインです。タスクは待機します"
   }
 }

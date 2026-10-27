@@ -37,8 +37,10 @@ import {
 interface NewRunFormProps {
   /** projectId → 项目名。面板加载完成后才有值。 */
   projects: Record<string, string>
-  /** 创建成功回调：把新 runId 交给面板接入轮询。 */
-  onCreated: (runId: string) => void
+  /** 页面当前选中的项目；为空时回落到第一个项目。 */
+  projectId?: string
+  /** 创建成功回调：把新任务 id 交给页面选中。 */
+  onCreated: (runIds: string[]) => void
 }
 
 /** 表单里统一的小标签样式，避免每个字段重复写一遍提示。 */
@@ -51,7 +53,7 @@ const SCRIPT_PLACEHOLDER = [
   '不换代码就能接 :: 回到面板 :: 旧服务不用改代码，加一行配置就进来了',
 ].join('\n')
 
-export default function NewRunForm({ projects, onCreated }: NewRunFormProps) {
+export default function NewRunForm({ projects, projectId: selectedProjectId, onCreated }: NewRunFormProps) {
   const projectIds = Object.keys(projects)
   const [projectId, setProjectId] = useState('')
   const [topic, setTopic] = useState('')
@@ -78,7 +80,9 @@ export default function NewRunForm({ projects, onCreated }: NewRunFormProps) {
   }, [])
 
   // 项目列表是异步加载的：选中项为空时回落到第一个项目，避免用户被迫先点一次下拉框。
-  const effectiveProjectId = projectIds.includes(projectId) ? projectId : (projectIds[0] ?? '')
+  const effectiveProjectId = projectIds.includes(projectId)
+    ? projectId
+    : (projectIds.includes(selectedProjectId ?? '') ? (selectedProjectId as string) : (projectIds[0] ?? ''))
   const parsed = useMemo(() => parseScriptText(scriptText), [scriptText])
   const estimated = useMemo(() => estimateSeconds(parsed.lines, voice), [parsed.lines, voice])
   const limit = maxSeconds ?? DEFAULT_MAX_SECONDS
@@ -122,7 +126,7 @@ export default function NewRunForm({ projects, onCreated }: NewRunFormProps) {
         return
       }
       setRunId(res.data.runId)
-      onCreated(res.data.runId)
+      onCreated(res.data.runId ? [res.data.runId] : [])
     }
     finally {
       setSubmitting(false)

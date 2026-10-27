@@ -29,6 +29,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/utils/className'
+import { isRunBusy, runStatusMeta } from '../../utils/status'
 import { AssistantMessageItem } from './components/AssistantMessageItem'
 import { EndpointFields } from './components/EndpointFields'
 import {
@@ -41,7 +42,7 @@ import {
   writeAssistantSessionId,
 } from './utils'
 
-export function AssistantPanel({ className }: AssistantPanelProps) {
+export function AssistantPanel({ className, projectId, projectName, runs, selectedRunId }: AssistantPanelProps) {
   const { t, ready } = useTransClient('studio')
   const [sessionId, setSessionId] = useState('')
   const [messages, setMessages] = useState<AssistantMessage[]>([])
@@ -142,15 +143,15 @@ export function AssistantPanel({ className }: AssistantPanelProps) {
 
     const userMessage: AssistantMessage = {
       id: createLocalMessageId('user'),
-      role: 'user',
-      content: text,
+      role: 'user', // ui-copy-ignore
+      content: text, // ui-copy-ignore
       createdAt: new Date().toISOString(),
     }
     // 一条占位回复：带 running 的「正在处理」，回复到了整条替换掉。
     const placeholder: AssistantMessage = {
       id: createLocalMessageId('reply'),
-      role: 'assistant',
-      content: '',
+      role: 'assistant', // ui-copy-ignore
+      content: '', // ui-copy-ignore
       createdAt: new Date().toISOString(),
       actions: [{ id: createLocalMessageId('action'), type: 'info', status: 'running', label: t('assistant.thinking') }],
     }
@@ -222,6 +223,20 @@ export function AssistantPanel({ className }: AssistantPanelProps) {
     )
   }
 
+  /**
+   * 上下文条只做一件事：说明「现在在哪一步、等你做什么」。
+   * 阶段和步骤全部来自已有字段（run.currentStage / run.status / 消息里的 action），
+   * 没有新增接口，也没有本地推测的进度。
+   */
+  const contextRun = selectedRunId
+    ? (runs?.find(run => run.id === selectedRunId) ?? null)
+    : (runs?.find(run => isRunBusy(run.status)) ?? null)
+  const okActionCount = messages.reduce(
+    (total, message) => total + (message.actions ?? []).filter(action => action.status === 'ok').length,
+    0,
+  )
+  const contextLabel = projectName || projectId || t('assistant.context.noProject')
+
   return (
     <Card className={cn('border-primary/20', className)}>
       <CardHeader className="pb-2">
@@ -267,6 +282,24 @@ export function AssistantPanel({ className }: AssistantPanelProps) {
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
+          <span className="font-medium text-foreground">{contextLabel}</span>
+          {contextRun && (
+            <>
+              <span className="text-muted-foreground">
+                {t('assistant.context.stage')}
+                {' '}
+                {contextRun.currentStage || t(runStatusMeta(contextRun.status).labelKey)}
+              </span>
+              {okActionCount > 0 && (
+                <span className="text-muted-foreground">{t('assistant.context.steps', { n: okActionCount })}</span>
+              )}
+              {contextRun.status === 'waiting_user' && (
+                <span className="text-warning">{contextRun.lastError || t('assistant.context.waiting')}</span>
+              )}
+            </>
+          )}
+        </div>
         {!endpoint.baseUrl && (
           <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 p-3">
             <div>

@@ -39,6 +39,112 @@
       "sendFailed": "Send failed: {{message}}",
       "sessionFailed": "Could not load the session: {{message}}",
       "emptyReply": "The console returned nothing. Please send it again."
+    },
+    "context": {
+      "stage": "현재 단계",
+      "steps": "{{n}}단계 완료",
+      "waiting": "확인하면 계속 진행됩니다",
+      "noProject": "프로젝트 미선택"
     }
+  },
+  "run": {
+    "status": {
+      "draft": "초안",
+      "queued": "대기 중",
+      "running": "진행 중",
+      "succeeded": "완료",
+      "failed": "실패",
+      "waitingUser": "확인 필요",
+      "cancelled": "취소됨",
+      "unknown": "상태 알 수 없음"
+    },
+    "group": {
+      "active": "진행 중",
+      "waiting": "확인 필요",
+      "settled": "종료"
+    },
+    "empty": "아직 작업이 없습니다",
+    "row": {
+      "revision": "{{n}}번째"
+    },
+    "artifact": {
+      "master": "원본",
+      "platforms": "플랫폼 {{n}}개",
+      "jianying": "JianYing 초안",
+      "publishDraft": "게시 초안"
+    },
+    "action": {
+      "cancel": "취소",
+      "retry": "다시 만들기",
+      "revise": "수정 요청",
+      "openVideo": "영상 열기"
+    },
+    "confirm": {
+      "cancel": "취소하면 렌더링된 부분은 버려지며 나중에 다시 만들 수 있습니다.",
+      "retry": "현재 원고로 새 버전을 만듭니다. 이전 영상은 남습니다."
+    },
+    "revise": {
+      "title": "이 작업 수정",
+      "placeholder": "무엇을 바꿀지 적어 주세요. 예: 2번째 자막이 너무 느림",
+      "cancel": "취소",
+      "submit": "제출",
+      "empty": "바꿀 내용을 먼저 적어 주세요"
+    },
+    "error": {
+      "detail": "상세 정보를 불러오지 못했습니다. 잠시 후 다시 시도합니다",
+      "revise": "수정 요청을 보내지 못했습니다. 다시 시도해 주세요",
+      "cancel": "취소하지 못했습니다. 다시 시도해 주세요",
+      "retry": "다시 만들지 못했습니다. 다시 시도해 주세요"
+    },
+    "detail": {
+      "empty": "작업을 선택하면 진행 상황과 영상이 표시됩니다",
+      "revision": "{{n}}번째",
+      "progress": "{{n}}% 완료",
+      "waitingHint": "확인하면 계속 진행됩니다",
+      "master": "영상",
+      "duration": "{{n}}초",
+      "noVideo": "재생할 영상이 아직 없습니다",
+      "jianying": "JianYing 초안",
+      "jianyingDone": "JianYing 초안함에 전달됨",
+      "jianyingPending": "렌더링이 끝나면 자동 전달",
+      "publishDraft": "게시 초안",
+      "openDraftBox": "초안함 열기",
+      "platforms": "플랫폼별 영상",
+      "qa": "결과 점검",
+      "log": "단계 로그"
+    }
+  },
+  "pub": {
+    "manualCheck": "접수 불명. 직접 확인해 주세요",
+    "status": {
+      "planned": "게시 예정",
+      "submitting": "제출 중",
+      "submittedUnverified": "전송됨·미확인",
+      "submissionUnknown": "전송 결과 불명",
+      "reconciling": "대조 중",
+      "scheduledRemote": "플랫폼 예약됨",
+      "reviewing": "검토 중",
+      "published": "게시됨",
+      "rejected": "반려됨",
+      "waitingUser": "확인 필요",
+      "notSubmitted": "미전송"
+    }
+  },
+  "overview": {
+    "title": "스튜디오",
+    "project": "프로젝트",
+    "allProjects": "모든 프로젝트",
+    "manual": "직접 만들기",
+    "retry": "다시 시도",
+    "loadFailed": "목록을 불러오지 못했습니다. 곧 다시 시도합니다",
+    "cast": "주인공",
+    "voice": "음성",
+    "newTimeline": "타임라인 작업 만들기",
+    "ledger": "게시 접수 기록",
+    "executors": "렌더링 장치",
+    "workerNone": "렌더링 장치가 없습니다",
+    "workerOnline": "온라인",
+    "workerOffline": "오프라인",
+    "workerAllOffline": "모든 장치가 오프라인입니다. 작업은 대기합니다"
   }
 }

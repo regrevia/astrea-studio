@@ -39,6 +39,112 @@
       "sendFailed": "Send failed: {{message}}",
       "sessionFailed": "Could not load the session: {{message}}",
       "emptyReply": "The console returned nothing. Please send it again."
+    },
+    "context": {
+      "stage": "Phase",
+      "steps": "{{n}} Schritte erledigt",
+      "waiting": "Wartet auf deine Bestätigung",
+      "noProject": "Kein Projekt"
     }
+  },
+  "run": {
+    "status": {
+      "draft": "Entwurf",
+      "queued": "In Warteschlange",
+      "running": "Läuft",
+      "succeeded": "Fertig",
+      "failed": "Fehlgeschlagen",
+      "waitingUser": "Wartet auf dich",
+      "cancelled": "Abgebrochen",
+      "unknown": "Unbekannt"
+    },
+    "group": {
+      "active": "Läuft",
+      "waiting": "Wartet auf dich",
+      "settled": "Beendet"
+    },
+    "empty": "Noch keine Aufträge",
+    "row": {
+      "revision": "v{{n}}"
+    },
+    "artifact": {
+      "master": "Master",
+      "platforms": "{{n}} Plattformen",
+      "jianying": "JianYing-Entwurf",
+      "publishDraft": "Veröffentlichungsentwurf"
+    },
+    "action": {
+      "cancel": "Abbrechen",
+      "retry": "Erneut versuchen",
+      "revise": "Überarbeiten",
+      "openVideo": "Video öffnen"
+    },
+    "confirm": {
+      "cancel": "Gerenderte Teile gehen verloren; du kannst später neu starten.",
+      "retry": "Erzeugt eine neue Version aus dem aktuellen Skript; das alte Video bleibt."
+    },
+    "revise": {
+      "title": "Auftrag überarbeiten",
+      "placeholder": "Was soll sich ändern, z. B. Untertitel im zweiten Teil zu langsam",
+      "cancel": "Abbrechen",
+      "submit": "Senden",
+      "empty": "Beschreibe zuerst die Änderung"
+    },
+    "error": {
+      "detail": "Details konnten nicht geladen werden; neuer Versuch folgt",
+      "revise": "Überarbeitung nicht übermittelt; bitte erneut versuchen",
+      "cancel": "Abbrechen fehlgeschlagen; bitte erneut versuchen",
+      "retry": "Erneut versuchen fehlgeschlagen; bitte erneut versuchen"
+    },
+    "detail": {
+      "empty": "Wähle einen Auftrag für Fortschritt und Video",
+      "revision": "v{{n}}",
+      "progress": "{{n}} % fertig",
+      "waitingHint": "Wartet auf deine Bestätigung",
+      "master": "Video",
+      "duration": "{{n}} s",
+      "noVideo": "Noch kein abspielbares Video",
+      "jianying": "JianYing-Entwurf",
+      "jianyingDone": "In JianYing-Entwürfe geliefert",
+      "jianyingPending": "Wird nach dem Rendern geliefert",
+      "publishDraft": "Veröffentlichungsentwurf",
+      "openDraftBox": "Zu den Entwürfen",
+      "platforms": "Videos je Plattform",
+      "qa": "Rendern-Prüfungen",
+      "log": "Schrittprotokoll"
+    }
+  },
+  "pub": {
+    "manualCheck": "Beleg unklar; bitte manuell prüfen",
+    "status": {
+      "planned": "Geplant",
+      "submitting": "Wird gesendet",
+      "submittedUnverified": "Gesendet, unbestätigt",
+      "submissionUnknown": "Sendung unklar",
+      "reconciling": "Wird abgeglichen",
+      "scheduledRemote": "Auf Plattform geplant",
+      "reviewing": "In Prüfung",
+      "published": "Veröffentlicht",
+      "rejected": "Abgelehnt",
+      "waitingUser": "Wartet auf dich",
+      "notSubmitted": "Nicht gesendet"
+    }
+  },
+  "overview": {
+    "title": "Studio",
+    "project": "Projekt",
+    "allProjects": "Alle Projekte",
+    "manual": "Manuell",
+    "retry": "Erneut",
+    "loadFailed": "Liste nicht geladen; neuer Versuch folgt",
+    "cast": "Darsteller",
+    "voice": "Stimme",
+    "newTimeline": "Neuer Timeline-Auftrag",
+    "ledger": "Veröffentlichungsbelege",
+    "executors": "Renderer",
+    "workerNone": "Kein Renderer verbunden",
+    "workerOnline": "online",
+    "workerOffline": "offline",
+    "workerAllOffline": "Alle Renderer offline; Aufträge warten"
   }
 }

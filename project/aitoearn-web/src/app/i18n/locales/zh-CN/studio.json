@@ -49,6 +49,12 @@
       "sendFailed": "发送失败：{{message}}",
       "sessionFailed": "读取会话失败：{{message}}",
       "emptyReply": "指挥台没有返回内容，请再发一次。"
+    },
+    "context": {
+      "stage": "当前阶段",
+      "steps": "已完成 {{n}} 步",
+      "waiting": "等你确认后才继续",
+      "noProject": "未选项目"
     }
   },
   "factCard": {
@@ -118,5 +124,105 @@
     },
     "count": "条数",
     "batchSuccess": "{{count}} 条已排队"
+  },
+  "run": {
+    "status": {
+      "draft": "草稿",
+      "queued": "排队中",
+      "running": "进行中",
+      "succeeded": "已完成",
+      "failed": "失败",
+      "waitingUser": "等你决定",
+      "cancelled": "已取消",
+      "unknown": "状态未知"
+    },
+    "group": {
+      "active": "进行中",
+      "waiting": "等你决定",
+      "settled": "已结束"
+    },
+    "empty": "暂无任务",
+    "row": {
+      "revision": "第 {{n}} 版"
+    },
+    "artifact": {
+      "master": "母版",
+      "platforms": "{{n}} 个平台",
+      "jianying": "剪映草稿",
+      "publishDraft": "发布草稿"
+    },
+    "action": {
+      "cancel": "取消任务",
+      "retry": "重新出片",
+      "revise": "提修改",
+      "openVideo": "打开成片"
+    },
+    "confirm": {
+      "cancel": "取消后已渲染的部分不再保留，可以稍后重新出片。",
+      "retry": "会用当前稿子重新出一版，旧成片保留。"
+    },
+    "revise": {
+      "title": "提修改",
+      "placeholder": "要改什么，直接说。例如：第二段字幕太慢，结尾换成关注引导",
+      "cancel": "取消",
+      "submit": "提交修改",
+      "empty": "先写要改的地方"
+    },
+    "error": {
+      "detail": "任务详情没取到，稍后自动重试",
+      "revise": "修改没提交成功，稍后重试",
+      "cancel": "取消失败，稍后重试",
+      "retry": "重新出片没成功，稍后重试"
+    },
+    "detail": {
+      "empty": "选一条任务看进度和成片",
+      "revision": "第 {{n}} 版",
+      "progress": "已完成 {{n}}%",
+      "waitingHint": "需要你确认后才会继续",
+      "master": "成片",
+      "duration": "{{n}} 秒",
+      "noVideo": "还没有可播放的成片",
+      "jianying": "剪映草稿",
+      "jianyingDone": "已送进剪映草稿箱",
+      "jianyingPending": "出片后自动送达",
+      "publishDraft": "发布草稿",
+      "openDraftBox": "去草稿箱",
+      "platforms": "分平台成片",
+      "qa": "出片检查",
+      "log": "步骤日志"
+    }
+  },
+  "pub": {
+    "manualCheck": "回执不明，需要人工核对",
+    "status": {
+      "planned": "待发布",
+      "submitting": "提交中",
+      "submittedUnverified": "已提交，待确认",
+      "submissionUnknown": "提交结果不明",
+      "reconciling": "核对中",
+      "scheduledRemote": "平台已排期",
+      "reviewing": "平台审核中",
+      "published": "已发布",
+      "rejected": "被驳回",
+      "waitingUser": "等你决定",
+      "notSubmitted": "未提交"
+    }
+  },
+  "overview": {
+    "title": "制作台",
+    "project": "项目",
+    "allProjects": "全部项目",
+    "manual": "手动出片",
+    "retry": "重试",
+    "loadFailed": "列表没加载出来，稍后自动重试",
+    "cast": "主角",
+    "voice": "配音",
+    "newTimeline": "新建时间轴任务",
+    "ledger": "发布回执",
+    "executors": "渲染机器",
+    "workerNone": "还没接渲染机器",
+    "workerOnline": "在线",
+    "workerOffline": "离线",
+    "workerAllOffline": "渲染机器都离线了，任务会排队等着"
   }
 }
