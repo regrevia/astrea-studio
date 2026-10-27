@@ -28,6 +28,7 @@ import json
 import math
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 _ANIM_CACHE: dict[tuple, list] = {}
@@ -236,6 +237,14 @@ _LIP_DB_SILENT = -45.0
 _LIP_TAIL_PAD = 0.120
 _LIP_PAUSE_MIN = 0.100   # 算"句间停顿"的最短静音长度
 _LIP_TAIL_CATCH = 0.060  # 长停顿前补闭的时长（收字尾）
+# 验收口径（tools/lipsync_qa.py 的 `_silence_spec`）：10ms 不重叠格、阈值取
+# 全段峰值 -40dB、连续 ≥120ms 才算「停顿」。25ms 重叠窗 + 绝对 -45dB 是另一把
+# 尺子：句首低电平段里只要混进一个响样本，整格就不算静音，于是"我这边关了、
+# 成片那格还开着"。同一部片子只能有一把尺——这里按验收的定义再补一遍，覆盖
+# 整段静音区（含两端各一格余量），长度不变。
+_LIP_SILENCE_REL_DB = -40.0
+_LIP_SILENCE_MIN = 0.120
+_DB10_CACHE: dict[str, list[float]] = {}
 _DB_CACHE: dict[str, list[float]] = {}
 
 
@@ -281,6 +290,71 @@ def _envelope_db(mp3: str) -> list[float]:
             levels.append(20.0 * _math.log10(max(rms, 1e-7)))
     _DB_CACHE[mp3] = levels
     return levels
+
+
+def _envelope_db10(mp3: str) -> list[float]:
+    """10ms 不重叠的 dBFS（与验收 `_silence_spec` 同一把尺）。
+
+    和 `_envelope_db` 的区别不只是窗长：这里阈值要用**全段峰值 -40dB**，因为
+    验收就是这么判的。两把尺在句首/句尾的低电平段会给出相反结论，只有钉住
+    同一个定义，成片上「这格该不该闭」才不会有第二种答案。
+    """
+    hit = _DB10_CACHE.get(mp3)
+    if hit is not None:
+        return hit
+    import array
+    import math as _math
+    import subprocess
+
+    levels: list[float] = []
+    try:
+        proc = subprocess.run(
+            ["ffmpeg", "-v", "error", "-i", mp3, "-vn", "-ac", "1", "-ar", "16000",
+             "-f", "f32le", "-"], capture_output=True, timeout=180)
+        raw = proc.stdout or b""
+    except Exception:  # noqa: BLE001 - 缺 ffmpeg 就退化成「没有静音信息」
+        raw = b""
+    if raw:
+        arr = array.array("f")
+        arr.frombytes(raw[: len(raw) // 4 * 4])
+        win = 160  # 10ms @16k
+        for s in range(0, len(arr) - win + 1, win):
+            total = 0.0
+            for v in arr[s:s + win]:
+                total += v * v
+            rms = (total / win) ** 0.5
+            levels.append(20.0 * _math.log10(max(rms, 1e-7)))
+    _DB10_CACHE[mp3] = levels
+    return levels
+
+
+def _silence_run_frames(mp3: str, total: int) -> set[int]:
+    """验收口径下「整段闭口」的帧号：峰值 -40dB、连 ≥120ms 的静音区全覆盖。
+
+    两端各多闭一格（20ms）：成片是 30fps 从 50Hz 轨上按 int(t*50) 取样，取样
+    相位可能落在静音区前一格，余量不够就漏出一帧张着的嘴。
+    """
+    db10 = _envelope_db10(mp3)
+    out: set[int] = set()
+    if not db10 or total <= 0:
+        return out
+    thr = max(db10) + _LIP_SILENCE_REL_DB
+    cpf = 100.0 / float(_LIP_HZ)  # 每个 50Hz 帧盖几格 10ms
+    need = int(round(_LIP_SILENCE_MIN * 100.0))
+    i, n = 0, len(db10)
+    while i < n:
+        if db10[i] >= thr:
+            i += 1
+            continue
+        j = i
+        while j + 1 < n and db10[j + 1] < thr:
+            j += 1
+        if (j - i + 1) >= max(1, need):
+            k0 = max(0, int(math.floor(i / cpf)) - 1)
+            k1 = min(total, int(math.ceil((j + 1) / cpf)) + 1)
+            out.update(range(k0, k1))
+        i = j + 1
+    return out
 
 
 def _word_window(mp3: str, text: str) -> tuple[float, float] | None:
@@ -365,6 +439,8 @@ def _enforce_quiet(states: list[str], mp3: str,
         tail_from = max(0, int(math.floor((last + _LIP_TAIL_PAD) * fps + 1e-9)))
         for k in range(tail_from, total):
             closed.add(k)
+    # 5. 验收口径整段覆盖：≥120ms 的停顿，嘴一帧都不许开（含两端余量）
+    closed.update(_silence_run_frames(mp3, total))
     for k in closed:
         out[k] = "closed"
     return out
@@ -782,16 +858,20 @@ def pose_fade_need(pose_a, pose_b, diff: float, outfit_root=None) -> float:
 
 
 def _shift_seg(seg: dict, dt: float) -> None:
-    """整段平移。相位一起挪：动画和口型接着原来的绝对时刻播，不从头起。"""
+    """整段平移。动画相位跟着挪，口型相位**钉死在音频在片里的位置**。
+
+    口型不是跟着立绘走的：这一段配的声音在片子里固定在 `lip_t0` 那一秒起播，
+    立绘为了跟上一段叠出过渡而提前 100ms 抬手，声音并不会跟着提前。以前这里把
+    `lip_t0` 一起平移，于是每个句首人物都比声音早张嘴 ~120ms —— 静音段里那两三
+    帧「提前张开」是这么来的，不是阈值问题，也不是包络问题。
+    """
     seg["start"] = float(seg["start"]) + dt
     seg["end"] = float(seg["end"]) + dt
     if seg.get("anim_t0") is not None:
         seg["anim_t0"] = float(seg["anim_t0"]) + dt
-    if seg.get("lip_t0") is not None:
-        seg["lip_t0"] = float(seg["lip_t0"]) + dt
-    elif seg.get("lip_audio"):
-        # 没显式给相位就是「从段首开始」：段首提前了，相位得钉住原时刻
-        seg["lip_t0"] = -dt
+    if seg.get("lip_t0") is None and seg.get("lip_audio"):
+        # 没显式给相位就是「从原段首开始」：原段首 = 现段首 - dt
+        seg["lip_t0"] = float(seg["start"]) - dt
     if seg.get("fade_in") is not None:
         # 入场提前了，但淡入要在原来的时刻结束：时长跟着缩（到 0 就是直接实心）
         seg["fade_in"] = max(0.0, float(seg["fade_in"]) + dt)
@@ -1088,6 +1168,48 @@ def _segment_sprites(seg: dict, render, key_green):
     return [key], [sprite]
 
 
+def _clamp_lip_to_audio(lip_log: dict[int, str], segs: list[dict],
+                        fps: int) -> int:
+    """成片级最后一道：把「静音里还开着」的帧改回 closed。
+
+    逐段那道 `_enforce_quiet` 在轨上做，但轨到成片帧之间还有重采样、段位移、
+    上游另插的口型段；每换一层都可能漏掉一两帧。实测 f40 在 4 处换场开头各开了
+    2 帧（67ms，−78dBFS 里嘴是 mid），验收按「开场领先张开 133ms」记一笔。
+    这里直接对成片帧号复核：拿该段自己的配音包络，帧落在段内且当格 <−45dBFS
+    就闭口。只改档、不动轨道长度，所以不会把口型整体挪慢。
+    """
+    if not lip_log:
+        return 0
+    fixed = 0
+    for seg in segs:
+        mp3 = seg.get("lip_audio")
+        if not mp3:
+            continue
+        try:
+            db = _envelope_db(str(mp3))
+        except Exception:  # noqa: BLE001 - 量不出包络就交给上游那两道
+            continue
+        if not db:
+            continue
+        t0 = seg.get("lip_t0")
+        t0 = float(seg["start"] if t0 is None else t0)
+        start = float(seg["start"])
+        end = float(seg["end"])
+        f0 = max(0, int(math.floor((start - t0) * _LIP_HZ)))
+        f1 = min(len(db), int(math.ceil((end - t0) * _LIP_HZ)) + 1)
+        for k in range(max(0, int(start * fps) - 1), min(len(lip_log), int(end * fps) + 2)):
+            st = lip_log.get(k)
+            if st is None or st == "closed":
+                continue
+            i = f0 + int(round((k / fps - start) * _LIP_HZ))
+            if i < f0 or i >= f1:
+                continue
+            if db[i] < _LIP_DB_SILENT:
+                lip_log[k] = "closed"
+                fixed += 1
+    return fixed
+
+
 def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: Path,
           duration: float, render, key_green, name: str = "char_layer",
           seed: int = 0,
@@ -1171,6 +1293,23 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
     # 人物身高整条片子必须一条直线：素材或摆位一变，观众读到的就是「人在跳」
     heights: list[int] = []
     lip_log: dict[int, str] = {}
+    # 成片级静音兜底必须跑在**画之前**：它改的是「这一帧画什么嘴」，帧一旦编码
+    # 进 webm 就改不回来。f41 的兜底跑在编码之后 —— lip.json 认了错，画面还是
+    # 静音里张着嘴，验收照样记「开场领先张开 2 帧 / 67ms」。先把整条轨口型试算
+    # 一遍、按段配音包络闭掉不该开的帧，再带着结论去画。
+    _pre_lip: dict[int, str] = {}
+    for _i in range(frames):
+        for _s, _w, _wp in _active(segs, _i / fps):
+            _m = _lip_mouth(_s, _i / fps)
+            if _m:
+                _pre_lip[_i] = _m
+    try:
+        _clamped = _clamp_lip_to_audio(_pre_lip, segs, fps)
+    except Exception as _exc:  # noqa: BLE001 - 兜底崩了也不能没有人物层
+        _clamped = -1
+        sys.stderr.write(f"[char_layer] 成片级静音兜底失败: {_exc!r}\n")
+        sys.stderr.flush()
+    _pre_closed = {k for k, v in _pre_lip.items() if v == "closed"}
     for i in range(frames):
         t = i / fps
         canvas = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
@@ -1179,6 +1318,9 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
         for idx, (seg, weight, _wpose) in enumerate(active):
             _mt = _lip_mouth(seg, t)
             if _mt:
+                if i in _pre_closed:
+                    # 兜底判过：这一帧配音在静音里，四档口型统统闭口
+                    _mt = "closed"
                 # 记一张「第几帧张的什么口型」：误差不靠肉眼猜，出片后拿它对帧
                 lip_log[i] = _mt
             key, sprite = _sprite(seg, t, render, key_green, _mt)
@@ -1275,13 +1417,15 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
         subprocess.run(cmd, check=True)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
     _mix: dict[str, int] = {}
     for _st in lip_log.values():
         _mix[_st] = _mix.get(_st, 0) + 1
     (Path(workdir) / f"{name}_lip.json").write_text(
         json.dumps({"fps": fps, "frames": frames,
                     "states": {str(k): v for k, v in sorted(lip_log.items())},
-                    "mix": _mix}, ensure_ascii=False))
+                    "mix": _mix, "lip_clamped_to_audio": _clamped},
+                   ensure_ascii=False))
     log(json.dumps({"layer": name, "frames": frames, "segments": len(segs),
                     "draws": draws, "box": [bx0, by0, bw, bh],
                     # 每段实际拿到几帧：全是 1 就说明动画素材没接进来，
@@ -1289,7 +1433,7 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
                     "anims": anim_stats,
                     "h": ([min(heights), sorted(heights)[len(heights) // 2], max(heights)]
                           if heights else []),
-                    "lip_mix": _mix,
+                    "lip_mix": _mix, "lip_clamped_to_audio": _clamped,
                     "mov_mb": round(mov.stat().st_size / 1e6, 1)}, ensure_ascii=False))
     return mov, bx0, by0
 

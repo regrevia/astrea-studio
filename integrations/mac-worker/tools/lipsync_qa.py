@@ -67,6 +67,10 @@ SILENCE_REL_DB = -40.0
 SILENCE_WIN_MS = 10.0
 SILENCE_MIN_S = 0.12
 
+# 分段延迟只统计「有声占比 >= 这个数」的窗：静音窗里的互相关峰值是噪声，
+# 会把极差和斜率都抬歪（f44 片尾窗 -220ms 就属这类）。
+WINDOW_ACTIVE_MIN = 0.5
+
 # 8 档口型 → 开口度 0..1。数值只用来排序和算相关，不参与出片。
 OPENNESS = {
     "closed": 0.00,
@@ -206,24 +210,32 @@ def _window_lags(mouth: np.ndarray, energy: np.ndarray, win_s: float = WIN_S,
     这是「嘴对不上」最常见的两种病，一个总数看不出来，必须分窗。"""
     n = min(len(mouth), len(energy))
     if n < 2:
-        return {"windows": [], "slope_ms_per_s": 0.0, "span_ms": 0.0}
+        return {"windows": [], "skipped": 0, "total": 0,
+                "slope_ms_per_s": 0.0, "span_ms": 0.0}
     win = max(1, int(win_s * DENSE_HZ))
     hop = max(1, int(hop_s * DENSE_HZ))
-    wins = []
+    rows = []
     for start in range(0, max(1, n - win // 2), hop):
         end = min(n, start + win)
         if end - start < int(DENSE_HZ):
             continue
-        xc = _xcorr(mouth[start:end], energy[start:end], lag_max_ms=250.0)
-        wins.append({"t": round(start / DENSE_HZ, 2), "lag_ms": round(xc["lag_ms"], 0),
-                     "r": round(xc["r"], 2)})
+        seg_e = energy[start:end]
+        # 有效窗判据：这一窗里至少一半时间是有声的。几乎全静音的窗（片尾、句间长停）
+        # 里嘴和音量都没有可对齐的起伏，互相关峰值会落到任意值——实测 f44 片尾窗
+        # 报 -220ms，和真漂移毫无关系，却足以把「极差」抬到 260ms。
+        active = float((seg_e > DB_SILENT).mean())
+        xc = _xcorr(mouth[start:end], seg_e, lag_max_ms=250.0)
+        rows.append({"t": round(start / DENSE_HZ, 2), "lag_ms": round(xc["lag_ms"], 0),
+                     "r": round(xc["r"], 2), "active": round(active, 2)})
+    wins = [r for r in rows if r["active"] >= WINDOW_ACTIVE_MIN]
     slope, span = 0.0, 0.0
     if len(wins) >= 2:
         ts = np.array([w["t"] for w in wins])
         ls = np.array([w["lag_ms"] for w in wins])
         slope = float(np.polyfit(ts, ls, 1)[0])
         span = float(ls.max() - ls.min())
-    return {"windows": wins, "slope_ms_per_s": round(slope, 1), "span_ms": round(span, 0)}
+    return {"windows": wins, "skipped": len(rows) - len(wins), "total": len(rows),
+            "slope_ms_per_s": round(slope, 1), "span_ms": round(span, 0)}
 
 
 def _runs(series: np.ndarray) -> list[int]:
@@ -263,10 +275,12 @@ def _switch_stats(series: np.ndarray, fps: float) -> dict:
 # ———————————————————— 口型轨模式 ————————————————————
 
 def _early_open(states: np.ndarray, db: np.ndarray, fps: float) -> dict:
-    """开场领先张开：每个语音起点前 200ms 内已经有非闭合档，就是嘴先动。
+    """开场领先张开：语音起点前 200ms 内「紧贴起点的连续开口段」有多长。
 
-    只数「从静音切进有声」的起点：起点前的窗口里本来就在说话（句中重音/换气）不算，
-    否则一个长句子会被数成十几个起点。窗口一旦有非闭合档，记下提前量取最大。
+    只数「从静音切进有声」的起点：起点前窗口里本来就在响（句中重音/换气）不算。
+    提前量从起点往回数 **连续** 非闭合帧：中间已经被闭口隔开的更早开口属于上一句
+    的尾巴（说话人换气前嘴还张着），不算这一句抢跑——老实现数窗口内任意开口，
+    会把上一句尾帧当成抢跑，报出 133ms 这种假值。
     """
     voiced = db >= DB_SILENT
     onsets_idx = np.flatnonzero(voiced & ~np.concatenate(([False], voiced[:-1])))
@@ -279,11 +293,13 @@ def _early_open(states: np.ndarray, db: np.ndarray, fps: float) -> dict:
         if voiced[lo:i].sum() > max(1, look // 2):
             continue  # 前面本来就在响，是句中重音，不是句子起点
         onsets += 1
-        seg = openish[lo:i]
-        if seg.any():
+        j = i - 1
+        while j >= lo and openish[j]:
+            j -= 1
+        lead = i - 1 - j
+        if lead > 0:
             early += 1
-            first = int(np.argmax(seg))
-            leads.append((seg[first:].sum()) / fps * 1000.0)
+            leads.append(lead / fps * 1000.0)
     return {"window_ms": EARLY_OPEN_MS, "onsets": onsets, "early": early,
             "rate": round(early / onsets, 3) if onsets else 0.0,
             "lead_ms_max": round(max(leads), 0) if leads else 0.0}
@@ -311,20 +327,31 @@ def _silence_spec(pcm: np.ndarray, states: np.ndarray, fps: float) -> dict:
     - ``long_silent`` / ``long_bad``：>=120ms 的静音段数、其中没全 closed 的段数
     - ``stop_gaps`` / ``stop_misclosed``：40~80ms 的句内空隙数、被整段闭成 closed 的数
       （塞音空隙不该被 120ms 静音规则误闭；这一项数越小越好，0 是目标）
+
+    帧↔格的对齐按时间算（``ceil(k*1000/fps/win)`` 到 ``ceil((k+1)*1000/fps/win)``），
+    同一段音频在 50fps / 30fps 下结论应一致；固定 per 会让 30fps 每帧累计超前 3.33ms。
     """
     win_ms = SILENCE_WIN_MS
     db10 = _rms_db(pcm, 16000, win_ms)
     thr = float(np.max(db10)) + SILENCE_REL_DB
     silent10 = db10 < thr
-    # 10ms 格 → 口型帧：一帧内多数 10ms 格静音就算静音帧
-    per = max(1, int(round(1000.0 / win_ms / fps)))
-    n = int(min(len(states), len(silent10) // per))
+    # 10ms 格 → 口型帧：按**时间**取每帧覆盖的格（起 ceil(k*1000/fps/win)，止同式 k+1），
+    # 一帧内多数格静音就算静音帧。绝不能用固定 per：30fps 一帧 33.3ms 只吃 3 格会
+    # 每帧累 3.33ms 漂移，末帧能偏到半秒，还会把尾巴上的音频整段丢掉。
+    n_cells = len(silent10)
+    n = int(min(len(states), int(round(n_cells * win_ms / 1000.0 * fps))))
     if n < 2:
         return {"win_ms": win_ms, "rel_db": SILENCE_REL_DB, "threshold_db": round(thr, 1),
                 "frames": 0, "silent_ratio": 0.0, "false_open": 0.0, "lead_frames": 0,
                 "tail_frames": 0, "long_silent": 0, "long_bad": 0,
                 "stop_gaps": 0, "stop_misclosed": 0}
-    sf = silent10[:n * per].reshape(n, per).mean(axis=1) >= 0.5
+    edges = np.ceil(np.arange(n + 1) * (1000.0 / fps) / win_ms).astype(int)
+    sf = np.zeros(n, dtype=bool)
+    for k in range(n):
+        a, b = int(edges[k]), min(int(edges[k + 1]), n_cells)
+        if b <= a:  # 帧比格还窄（fps 很低时），退化成最近一格
+            a, b = min(a, n_cells - 1), min(a + 1, n_cells)
+        sf[k] = bool(silent10[a:b].mean() >= 0.5)
     st = np.asarray([str(x) for x in states], dtype=object)[:n]
     openish = st != "closed"
 

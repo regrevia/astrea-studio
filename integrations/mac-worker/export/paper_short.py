@@ -92,8 +92,12 @@ def _audio_chain(spec: dict[str, Any], total: float, first: int) -> tuple[list[s
         chain += f",apad=whole_dur={total:g}[a{k}]"
         parts.append(chain)
     mix = "".join(f"[a{k}]" for k in range(len(spec["audio"])))
+    # 末尾必须再 apad 一次：loudnorm 会吃掉尾巴 ~80ms，atrim 只是设上限，
+    # 不会把帧补回来——成片音轨就比画面短 78ms，口型体检按「音轨长度 vs 口型
+    # 轨长度」算全长漂移，于是永远报 +89ms。补回定长后两者才对得上。
     parts.append(f"{mix}amix=inputs={len(spec['audio'])}:duration=longest:normalize=0,"
-                 f"loudnorm=I=-16:TP=-1.5:LRA=11,atrim=0:{total:g}[aout]")
+                 f"loudnorm=I=-16:TP=-1.5:LRA=11,atrim=0:{total:g},"
+                 f"apad=whole_dur={total:g}[aout]")
     return parts, inputs, "[aout]"
 
 
@@ -177,7 +181,9 @@ def render(script: dict[str, Any], workdir: Path, out_mp4: Path, *,
     cmd += a_inputs + ["-filter_complex", ";".join(filt), "-map", last, "-map", aout,
                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "16",
                        "-profile:v", "high", "-pix_fmt", "yuv420p", "-r", f"{FPS:g}",
-                       "-t", f"{total:g}", "-c:a", "aac", "-b:a", "192k",
+                       # 不要在这里加 -t：-t 和 loudnorm 同用时会把音频截到 33.844s
+                       # （比画面短 78ms），而 atrim 已经在滤镜里限长，长度是确定的。
+                       "-c:a", "aac", "-b:a", "192k",
                        "-ar", "48000", "-ac", "2", "-movflags", "+faststart",
                        str(out_mp4)]
     log("[paper] 合成人物层 + 音轨")
