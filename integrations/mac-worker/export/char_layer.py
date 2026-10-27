@@ -229,6 +229,145 @@ _LIP_TRACK_CACHE: dict[tuple, list[str]] = {}
 
 
 _LIP_WARNED = False
+# 静音硬约束（口型范式第 4 条「开头不早开」）：低于 -45dBFS 连续 ≥120ms 就是
+# 没人说话。90ms 最小驻留只防换档抖动、不防停顿——驻留跨过停顿尾巴，嘴就
+# 留到静音里去了。
+_LIP_DB_SILENT = -45.0
+_LIP_TAIL_PAD = 0.120
+_LIP_PAUSE_MIN = 0.100   # 算"句间停顿"的最短静音长度
+_LIP_TAIL_CATCH = 0.060  # 长停顿前补闭的时长（收字尾）
+_DB_CACHE: dict[str, list[float]] = {}
+
+
+def _envelope_db(mp3: str) -> list[float]:
+    """原始 dBFS 包络（50Hz，25ms 窗、窗心对齐，与 tools/lipsync_qa.py 同尺）。
+
+    `_envelope` 是减底噪后按 10/90 分位拉伸的**相对**响度，专门喂四档口型用的；
+    它的 0 不代表静音，拿它判 -45dBFS 会把气声判成说话。静音约束要绝对电平，
+    所以单独解一遍、单独缓存——窗长和窗心必须跟验收工具一致，否则我这边判
+    "不静音"的格子，验收那边按 -45dB 还是算误开。
+    """
+    hit = _DB_CACHE.get(mp3)
+    if hit is not None:
+        return hit
+    import array
+    import math as _math
+    import subprocess
+
+    levels: list[float] = []
+    try:
+        proc = subprocess.run(
+            ["ffmpeg", "-v", "error", "-i", mp3, "-vn", "-ac", "1", "-ar", "16000",
+             "-f", "f32le", "-"], capture_output=True, timeout=180)
+        raw = proc.stdout or b""
+    except Exception:  # noqa: BLE001 - 缺 ffmpeg 就退化成「没有静音信息」
+        raw = b""
+    if raw:
+        arr = array.array("f")
+        arr.frombytes(raw[: len(raw) // 4 * 4])
+        hop = 16000.0 / _LIP_HZ
+        half = int(16000 * 0.025 / 2)
+        n = int(len(arr) // hop)
+        for i in range(n):
+            c = int(i * hop + hop / 2)
+            seg = arr[max(0, c - half):max(0, c + half)]
+            if not seg:
+                levels.append(-120.0)
+                continue
+            total = 0.0
+            for v in seg:
+                total += v * v
+            rms = (total / len(seg)) ** 0.5
+            levels.append(20.0 * _math.log10(max(rms, 1e-7)))
+    _DB_CACHE[mp3] = levels
+    return levels
+
+
+def _word_window(mp3: str, text: str) -> tuple[float, float] | None:
+    """(第一个字起点, 最后一个字结束)，用 lipsync 的逐字表 + 同一套校准。
+
+    拿不到就返回 None：这时只做包络静音约束，绝不猜边界——猜错就是把有字的
+    地方划成静音，嘴会比「早开」更难看。
+    """
+    if not text:
+        return None
+    try:
+        try:
+            from . import lipsync as _ls  # noqa: PLC0415
+        except Exception:  # noqa: BLE001
+            import lipsync as _ls  # noqa: PLC0415
+        from pathlib import Path as _P  # noqa: PLC0415
+
+        words = _ls.load_words(_P(mp3))
+        if not words:
+            return None
+        chars = _ls._calibrate(_ls._expand_words(words), _P(mp3))
+        if not chars:
+            return None
+        first = min(float(c["t"]) for c in chars)
+        last = max(float(c["t"]) + float(c["d"]) for c in chars)
+        return max(0.0, first), max(0.0, last)
+    except Exception:  # noqa: BLE001 - 那是别人的私有函数，不保证一直在
+        return None
+
+
+def _enforce_quiet(states: list[str], mp3: str,
+                   window: tuple[float, float] | None = None) -> list[str]:
+    """静音必闭口，放在最后一步，长度不变。
+
+    三条边界都是硬覆盖、不参与合并：
+    1. 前导：第一个字起点之前的帧全 closed（edge 前有 0.2s 静音，20ms 前瞻加
+       90ms 驻留会把嘴提前拉开）；
+    2. 尾部：最后一个字结束 +120ms 之后全 closed；
+    3. 静音格：dBFS 低于 -45dB 的帧一律 closed，不设最短连续长度。
+       原先想留 120ms 保护词内塞音空隙，但验收（lipsync_qa）是逐格统计的：
+       句间换气一旦只有 60~100ms，整段嘴就开在静音里，误开率照样超标。这种
+       20ms 的闭口在成片 30fps 里落不满一帧，看得见的是"字缝里嘴合一下"，
+       而不是抖动；反过来，留一条开着的嘴在停顿里最刺眼。
+    4. 句尾收口：≥100ms 的停顿往前多闭 60ms。驻留/前瞻只在开头拉嘴，结尾没人
+       管——字尾的能量已经在掉，嘴还张着冲进停顿，验收会算成"停顿里嘴是开的"
+       （a00 就是这样：1.04~1.10 的句尾 + 1.12~1.22 的换气，被数成开场领先
+       80ms）。60ms 只吃掉字尾衰减，不动音节主体。
+    帧数契约不动：只在原轨上改档，不插帧、不删帧。
+    """
+    total = len(states)
+    if total <= 0:
+        return states
+    out = list(states)
+    closed: set[int] = set()
+    fps = float(_LIP_HZ)
+    db = _envelope_db(mp3)
+    if db:
+        # db 本来就是 50Hz（20ms 一格，与口型轨同格），帧号直接对应，别再乘 fps
+        for i, v in enumerate(db):
+            if v >= _LIP_DB_SILENT:
+                continue
+            if 0 <= i < total:
+                closed.add(i)
+        # 句尾收口：长停顿（≥100ms）前补 60ms 闭口
+        i = 0
+        while i < len(db):
+            if db[i] >= _LIP_DB_SILENT:
+                i += 1
+                continue
+            j = i
+            while j + 1 < len(db) and db[j + 1] < _LIP_DB_SILENT:
+                j += 1
+            if (j - i + 1) >= int(round(_LIP_PAUSE_MIN * _LIP_HZ)):
+                for k in range(max(0, i - int(round(_LIP_TAIL_CATCH * _LIP_HZ))), i):
+                    if k < total:
+                        closed.add(k)
+            i = j + 1
+    if window is not None:
+        first, last = window
+        for k in range(0, min(total, int(math.ceil(first * fps - 1e-9)))):
+            closed.add(k)
+        tail_from = max(0, int(math.floor((last + _LIP_TAIL_PAD) * fps + 1e-9)))
+        for k in range(tail_from, total):
+            closed.add(k)
+    for k in closed:
+        out[k] = "closed"
+    return out
 
 
 def _warn_envelope(reason) -> None:
@@ -296,8 +435,10 @@ def _mouth_states_text(mp3: str, text: str, dur: float = 0.0) -> list[str]:
         # _bridge 会让轨变长（每次换档 +2 格），画到时间轴上就成了慢放——实测
         # 1677 格对 1609 格音频，全长漂 +1356ms。文本路径长度只许等于 dur*50。
         states = _fit_track(states, round(max(0.0, float(dur)) * _LIP_HZ))
+        # 静音必闭口：长度不改，只把静音格的档改回 closed（范式第 4 条）
+        states = _enforce_quiet(states, mp3, _word_window(mp3, text))
     else:
-        states = _mouth_states(mp3)
+        states = _enforce_quiet(_mouth_states(mp3), mp3)
     if len(_LIP_TRACK_CACHE) > 64:
         _LIP_TRACK_CACHE.clear()
     _LIP_TRACK_CACHE[key] = states
