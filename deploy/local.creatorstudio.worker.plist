@@ -7,7 +7,8 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/python3</string>
+        <!-- 统一走 .python3 shim：系统 /usr/bin/python3 未同意 Xcode 许可前 exit 69 -->
+        <string>__HOME__/CreatorStudio/runtime/integrations/mac-worker/.python3</string>
         <string>__HOME__/CreatorStudio/runtime/integrations/mac-worker/worker.py</string>
         <string>--verbose</string>
     </array>

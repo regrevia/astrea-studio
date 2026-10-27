@@ -8,6 +8,9 @@
 # 每个脚本都套 alarm，宁可报超时也不要让门禁无声无息地停在这一步。
 set -uo pipefail
 
+. "$(cd "$(dirname "$0")" && pwd)/py3.sh"
+PY3=$(studio_py3)
+
 HERE=$(cd "$(dirname "$0")" && pwd)
 MW="$HERE/../integrations/mac-worker"
 LIMIT="${STUDIO_PREFLIGHT_TIMEOUT:-420}"
@@ -15,7 +18,7 @@ LIMIT="${STUDIO_PREFLIGHT_TIMEOUT:-420}"
 run() {
   local label="$1" script="$2"
   printf '  %s ... ' "$label"
-  perl -e 'alarm shift; exec @ARGV' "$LIMIT" /usr/bin/python3 "$script" >/tmp/preflight_$(basename "$script" .py).log 2>&1
+  perl -e 'alarm shift; exec @ARGV' "$LIMIT" "$PY3" "$script" >/tmp/preflight_$(basename "$script" .py).log 2>&1
   local rc=$?
   if [ "$rc" -eq 0 ]; then
     echo "通过"

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import subprocess
+
+import pylocator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -129,7 +131,8 @@ def check_platform_cookie(platform: str, account: str, timeout: int = 120) -> di
     注意：``check`` 只读 cookie 并访问平台首页，不上传任何内容。
     """
     venv_py = SAU_DIR / ".venv" / "bin" / "python"
-    py = str(venv_py) if venv_py.exists() else "python3"
+    # 不能回退到裸 "python3"：launchd 的 PATH 里它就是 /usr/bin/python3（exit 69）
+    py = str(venv_py) if venv_py.exists() else pylocator.resolve_python()[0]
     cmd = [py, "sau_cli.py", platform, "check", "--account", account]
     try:
         res = subprocess.run(

@@ -25,6 +25,7 @@ from typing import Any
 from api import ApiError, StudioClient
 from capture_web import CaptureError, capture_to_materials
 from config import CONFIG_DIR, STUDIO_HOME, WorkerConfig, job_log_path
+import pylocator
 import capabilities
 from publish_sau import PublishError, submit as publish_submit
 from render_mpt import RenderError, render as render_mpt
@@ -102,6 +103,8 @@ class Worker:
             return 2
 
         log.info("worker up: api=%s capabilities=%s", self.cfg.api_base, ",".join(self.cfg.capabilities))
+        # 解释器放在启动日志第二行：先看它，再看任务是否 exit 69
+        log.info("%s", pylocator.describe())
         try:
             self.sync_capabilities()
         except Exception as exc:  # noqa: BLE001 - 启动时后端没起来不该让 worker 退出
@@ -176,6 +179,8 @@ class Worker:
         lease = int(job.get("leaseVersion") or 0)
         payload = job.get("payload") or {}
         log.info("claimed job %s kind=%s attempt=%s", job_id, kind, job.get("attempt"))
+        # job log 首行固定是解释器：渲染失败先看这一行排掉 exit 69 类问题
+        pylocator.stamp_job_log(job_log_path(job_id))
 
         def progress(pct: int, stage: str) -> None:
             try:

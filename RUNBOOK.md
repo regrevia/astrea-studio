@@ -187,8 +187,12 @@ tail -5 ~/CreatorStudio/logs/worker-stderr.log       # 应为空
 ```
 
 Without the LaunchAgent the worker still runs (`cd integrations/mac-worker &&
-/usr/bin/python3 worker.py --verbose`), but it dies with the terminal session.
-It is stdlib-only, so no venv is needed.
+.python3 worker.py --verbose`), but it dies with the terminal session.
+It is stdlib-only, so no venv is needed — but never launch it with
+`/usr/bin/python3`: that interpreter exits 69 until the Xcode licence is accepted.
+`.python3` is the shim that picks the MPT venv; `deploy/py3.sh` resolves the same
+thing from shell scripts, and the worker writes the resolved path to the first line
+of every job log.
 
 ### Timeline render lane (`render_timeline`)
 

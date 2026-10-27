@@ -11,7 +11,7 @@
 
 用法（Codex config.toml）：
   [mcp_servers.creator_studio]
-  command = "python3"
+  command = "$HOME/CreatorStudio/runtime/integrations/mac-worker/.python3"
   args = ["$HOME/CreatorStudio/bin/studio_mcp_bridge.py"]  # 换成自己的路径
   startup_timeout_sec = 60
 

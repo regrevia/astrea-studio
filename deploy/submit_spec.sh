@@ -14,6 +14,8 @@ API="${STUDIO_API:-http://127.0.0.1:8080}"
 TOKEN="${STUDIO_TOKEN:-$HOME/CreatorStudio/config/user.token}"
 [ -f "$TOKEN" ] && TOKEN=$(cat "$TOKEN")
 HERE=$(cd "$(dirname "$0")" && pwd)
+. "$(cd "$(dirname "$0")" && pwd)/py3.sh"
+PY3=$(studio_py3)
 
 if [ "${STUDIO_SKIP_PREFLIGHT:-0}" = "1" ]; then
   echo "跳过出片前回归（STUDIO_SKIP_PREFLIGHT=1）"
@@ -21,7 +23,7 @@ else
   bash "$HERE/preflight_copy.sh" || exit 1
 fi
 
-BODY=$(/usr/bin/python3 - "$SPEC" "$N" "$API" "$TOKEN" <<'PY'
+BODY=$("$PY3" - "$SPEC" "$N" "$API" "$TOKEN" <<'PY'
 import json, os, subprocess, sys
 spec_path, count, api, tok = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
 raw = json.load(open(spec_path))
@@ -53,7 +55,7 @@ PY
 echo "提交 $N 条（$(basename "$SPEC")）"
 OUT=$(curl -s -m 180 -X POST "$API/api/production/runs/batch" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" --data "$BODY")
-IDS=$(printf '%s' "$OUT" | /usr/bin/python3 -c '
+IDS=$(printf '%s' "$OUT" | "$PY3" -c '
 import json,sys
 d=json.load(sys.stdin)
 if d.get("code") != 0:
@@ -64,7 +66,7 @@ printf '  %s\n' $IDS
 for i in $(seq 1 60); do
   sleep 15
   LINE=$(curl -s -m 25 -H "Authorization: Bearer $TOKEN" "$API/api/production/runs?limit=20" \
-    | /usr/bin/python3 -c '
+    | "$PY3" -c '
 import json,sys
 want=set(sys.argv[1:]); d=json.load(sys.stdin).get("data") or {}
 done, rows = 0, []

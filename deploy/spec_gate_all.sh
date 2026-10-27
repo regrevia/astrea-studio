@@ -3,6 +3,9 @@
 # 用法：bash deploy/spec_gate_all.sh [条数]
 # 项目 id 默认取平台最近一条任务的，也可以用 STUDIO_PROJECT_ID 指定。
 set -uo pipefail
+DEPLOY_DIR=$(cd "$(dirname "$0")" && pwd)
+. "$DEPLOY_DIR/py3.sh"
+PY3=$(studio_py3)
 cd "$(dirname "$0")/.." || exit 1
 COUNT="${1:-1}"
 SPECS="deploy/specs/envoy_intro.json deploy/specs/kv_cache.json deploy/specs/softmax.json"
@@ -12,7 +15,7 @@ if [ -z "$PROJECT_ID" ]; then
   TOKEN=$(cat "$HOME/CreatorStudio/config/user.token" 2>/dev/null || true)
   PROJECT_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
     "http://127.0.0.1:8080/api/production/runs?limit=1" \
-    | /usr/bin/python3 -c 'import json,sys
+    | "$PY3" -c 'import json,sys
 try:
   print(json.load(sys.stdin)["data"]["list"][0].get("projectId") or "")
 except Exception:

@@ -1,0 +1,3 @@
+#!/bin/sh
+# 固定解释器：系统 /usr/bin/python3 会被 Xcode license 拦（exit 69），统一走 MPT venv
+exec "$HOME/CreatorStudio/runtime/integrations/vendor/MoneyPrinterTurbo/.venv/bin/python" "$@"

@@ -6,15 +6,18 @@
 # 用法：bash deploy/batch_smoke.sh <spec.json> [条数]
 set -uo pipefail
 
+. "$(cd "$(dirname "$0")" && pwd)/py3.sh"
+PY3=$(studio_py3)
+
 # 出片前先把文案判据回归跑一遍：判据一改，好稿被误判就会在这里先炸，不用等三分钟渲染
-/usr/bin/python3 "$(dirname "$0")/../integrations/mac-worker/test_copy_calibration.py" || {
+"$PY3" "$(dirname "$0")/../integrations/mac-worker/test_copy_calibration.py" || {
   echo "文案判据回归未通过，先修判据再出片"; exit 1; }
-/usr/bin/python3 "$(dirname "$0")/../integrations/mac-worker/test_gesture_sync.py" || {
+"$PY3" "$(dirname "$0")/../integrations/mac-worker/test_gesture_sync.py" || {
   echo "手势同步回归未通过，先修手势再出片"; exit 1; }
-/usr/bin/python3 "$(dirname "$0")/../integrations/mac-worker/test_character_assets.py" || {
+"$PY3" "$(dirname "$0")/../integrations/mac-worker/test_character_assets.py" || {
   echo "立绘接图回归未通过，先修接图再出片"; exit 1; }
 # 配音不稳，同稿两次出片的口型和时长就不一样，母版比对也失去意义
-/usr/bin/python3 "$(dirname "$0")/test_tts_cache.py" || {
+"$PY3" "$(dirname "$0")/test_tts_cache.py" || {
   echo "配音缓存回归未通过，先修配音再出片"; exit 1; }
 
 SPEC="${1:?用法: batch_smoke.sh <spec.json> [条数]}"
@@ -40,7 +43,7 @@ else
   # macOS 自带 bash 3.2 没有 mapfile：用 while read 收 id
   while IFS= read -r line; do
     [ -n "$line" ] && IDS+=("$line")
-  done < <(/usr/bin/python3 - "$SPEC" "$N" <<'PYAPI'
+  done < <("$PY3" - "$SPEC" "$N" <<'PYAPI'
 import json, subprocess, sys, os
 spec_path, count = sys.argv[1], int(sys.argv[2])
 raw = json.load(open(spec_path))
@@ -89,7 +92,7 @@ for round in $(seq 1 90); do
   sleep 15
   pending=0
   for id in "${IDS[@]}"; do
-    st=$(get "$id" | /usr/bin/python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["run"]["status"])' 2>/dev/null || echo unknown)
+    st=$(get "$id" | "$PY3" -c 'import sys,json;print(json.load(sys.stdin)["data"]["run"]["status"])' 2>/dev/null || echo unknown)
     case "$st" in
       succeeded|failed|canceled) ;;
       *) pending=$((pending + 1)) ;;
@@ -103,7 +106,7 @@ echo
 fail=0
 hashes=()
 for id in "${IDS[@]}"; do
-  line=$(get "$id" | /usr/bin/python3 -c '
+  line=$(get "$id" | "$PY3" -c '
 import sys, json, hashlib, os, glob
 run = json.load(sys.stdin)["data"]["run"]
 out = run.get("output") or {}

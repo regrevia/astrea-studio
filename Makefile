@@ -5,7 +5,7 @@ REPO := $(shell cd "$(dir $(lastword $(MAKEFILE_LIST)))" && pwd)
 STUDIO_HOME ?= $(HOME)/CreatorStudio
 CFG := $(STUDIO_HOME)/config
 COMPOSE := docker compose -p creatorstudio --env-file $(CFG)/compose.env -f $(CFG)/compose.yml
-PY := python3
+PY := $(shell sh $(REPO)/deploy/py3.sh 2>/dev/null || echo python3)
 
 help:
 	@echo "Creator Studio — local stack"
