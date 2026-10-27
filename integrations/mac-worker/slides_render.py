@@ -17,6 +17,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 import tempfile
 from pathlib import Path
@@ -310,6 +311,43 @@ def _edge_rate(rate: float) -> str:
     return f"{pct:+.0f}%"
 
 
+def _voice_params(voice: str) -> tuple[str, dict[str, str]]:
+    """`edge:zh-CN-XiaoxiaoNeural@rate=0.96&pitch=+2%` → (音色本体, {rate, pitch})。
+
+    参数只对 edge 生效；SAMI 解析出参数后由 `_tts` 记一行日志并忽略，旧稿行为不变。
+    """
+    raw = str(voice or "").strip()
+    base, sep, query = raw.partition("@")
+    params: dict[str, str] = {}
+    if sep:
+        for part in re.split(r"[&;]", query):
+            key, _, val = part.partition("=")
+            key, val = key.strip().lower(), val.strip()
+            if key and val:
+                params[key] = val
+    return base.strip(), params
+
+
+def _voice_rate(val: str | None, fallback: float = 1.0) -> float:
+    """`rate=0.96` 和 `rate=-8%` 都认；认不出就退回 fallback。"""
+    if not val:
+        return fallback
+    txt = str(val).strip()
+    try:
+        return 1.0 + float(txt[:-1]) / 100.0 if txt.endswith("%") else float(txt)
+    except ValueError:
+        return fallback
+
+
+_PITCH_RE = re.compile(r"^[+-]?\d+(?:\.\d+)?(?:%|Hz)$")
+
+
+def _voice_pitch(val: str | None, fallback: str = "+0Hz") -> str:
+    """pitch 只收 `+2%` / `-1.5Hz` 这类 SSML prosody 写法，别的退回默认。"""
+    txt = str(val or "").strip()
+    return txt if _PITCH_RE.match(txt) else fallback
+
+
 def _words_path(mp3: Path) -> Path:
     """逐字 sidecar 与 mp3 同目录同 stem：export/lipsync.py 就按这个约定找。"""
     return mp3.with_suffix(".words.json")
@@ -324,7 +362,8 @@ def _words_ok(path: Path) -> bool:
     return isinstance(chars, list) and bool(chars)
 
 
-def _edge_tts(text: str, mp3: Path, voice: str, rate: float) -> None:
+def _edge_tts(text: str, mp3: Path, voice: str, rate: float,
+              pitch: str = "+0Hz") -> None:
     """edge-tts 合成 + 逐字 sidecar；两者同进同出缓存，缺一个就重新合成。
 
     有 mp3 没 sidecar 时不能静默退回包络猜口型（那样口型与真声音只是「差不多」），
@@ -339,7 +378,9 @@ def _edge_tts(text: str, mp3: Path, voice: str, rate: float) -> None:
     if not EDGE_TTS_ONCE.exists():
         raise SlidesError(f"edge_tts_once.py not found at {EDGE_TTS_ONCE}")
 
-    cached = _tts_cache(text, f"edge:{name}", rate)
+    # pitch 会改音高，必须进缓存键：同文同 rate 不同 pitch 是两份音频
+    cache_voice = f"edge:{name}" if pitch == "+0Hz" else f"edge:{name}@{pitch}"
+    cached = _tts_cache(text, cache_voice, rate)
     cached_words = _words_path(cached)
     sidecar = _words_path(mp3)
     if cached.exists() and cached.stat().st_size >= 1000:
@@ -361,7 +402,7 @@ def _edge_tts(text: str, mp3: Path, voice: str, rate: float) -> None:
     try:
         r = subprocess.run(
             [str(python), str(EDGE_TTS_ONCE), "--text", str(txt), "--voice", name,
-             f"--rate={_edge_rate(rate)}", "--out", str(mp3),
+             f"--rate={_edge_rate(rate)}", f"--pitch={pitch}", "--out", str(mp3),
              "--words", str(sidecar)],
             capture_output=True, text=True, cwd=str(MPT_HOME), timeout=180,
         )
@@ -386,17 +427,26 @@ def _edge_tts(text: str, mp3: Path, voice: str, rate: float) -> None:
         pass
 
 
-def _tts(text: str, mp3: Path, voice: str, rate: float = 1.0) -> None:
+def _tts(text: str, mp3: Path, voice: str, rate: float = 1.0,
+         pitch: str = "+0Hz") -> None:
     """配音：`edge:` / `*Neural` 音色走 edge-tts，其余走 SAMI（默认，行为不变）。
+
+    音色可带内联参数：`edge:zh-CN-XiaoxiaoNeural@rate=0.96&pitch=+2%`。
+    参数只对 edge 生效；SAMI 收到时记一行日志并忽略，旧稿不受影响。
 
     SAMI 分支：worker 跑在系统 python3 上，没有 MPT venv 的依赖
     （loguru/websockets），所以**不能在本进程 import sami_tts**，必须用子进程
     交给 MPT 的解释器跑。edge 分支同理，交给 tools/edge_tts_once.py。
     """
-    edge_name = _edge_voice(voice)
+    base, params = _voice_params(voice)
+    edge_name = _edge_voice(base)
     if edge_name:
-        _edge_tts(text, mp3, voice, rate)
+        _edge_tts(text, mp3, base, _voice_rate(params.get("rate"), rate),
+                  _voice_pitch(params.get("pitch"), pitch))
         return
+    if params:
+        print(f"[slides_render] {voice}: SAMI 不支持 rate/pitch，参数已忽略",
+              file=sys.stderr)
     python = MPT_HOME / ".venv/bin/python"
     script = MPT_HOME / "app/services/sami_tts.py"
     if not python.exists():
@@ -420,7 +470,7 @@ def _tts(text: str, mp3: Path, voice: str, rate: float = 1.0) -> None:
             shutil.copyfile(cached, mp3)
             return
     r = subprocess.run(
-        [str(python), "-c", code, text, voice, str(mp3), f"{rate:.3f}"],
+        [str(python), "-c", code, text, base, str(mp3), f"{rate:.3f}"],
         capture_output=True, text=True, cwd=str(MPT_HOME), env=env, timeout=180,
     )
     if not mp3.exists() or mp3.stat().st_size < 1000:
@@ -466,13 +516,18 @@ def render(spec: dict[str, Any], job_dir: Path, progress: Progress | None = None
         "logo_b": spec.get("logo_b", "CACHE"),
     }
     voice = spec.get("voice") or DEFAULT_VOICE
-    # 语速只有 edge 音色吃：SAMI 分支保持原样（rate 固定 1.0），现有成片不受影响
+    # 语速/音高只有 edge 音色吃；SAMI 分支保持原样（rate 固定 1.0），现有成片不受影响。
+    # 内联写法 `edge:name@rate=0.96&pitch=+2%` 优先于 spec.rate。
+    base_voice, voice_params = _voice_params(voice)
     rate = 1.0
-    if _edge_voice(voice):
+    if _edge_voice(base_voice):
         try:
-            rate = float(spec.get("rate") or 1.0)
+            rate = _voice_rate(voice_params.get("rate"), float(spec.get("rate") or 1.0))
         except (TypeError, ValueError):
             rate = 1.0
+    elif spec.get("rate") is not None:
+        print(f"[slides_render] {voice}: SAMI 不支持 rate，spec.rate 已忽略",
+              file=sys.stderr)
 
     job_dir = Path(job_dir)
     (job_dir / "pages").mkdir(parents=True, exist_ok=True)

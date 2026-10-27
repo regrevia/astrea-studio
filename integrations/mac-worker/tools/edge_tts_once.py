@@ -20,6 +20,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -35,6 +36,22 @@ RETRY_SLEEP = 2.0
 
 def _units(word: str) -> list[str]:
     return [c for c in word if c not in PUNCT and not c.isspace()]
+
+
+def _pitch_hz(val: str, base_hz: float = 200.0) -> str:
+    """edge-tts 只收整数 Hz（校验 ``^[+-]\\d+Hz$``），`+2%` 这类相对写法要折算。
+
+    基准按成人说话的 200Hz 取整：+2% → +4Hz，-3% → -6Hz，夹在 ±100Hz 避免拉坏。
+    """
+    txt = str(val or "").strip()
+    m = re.fullmatch(r"([+-]?\d+(?:\.\d+)?)%", txt)
+    if m:
+        hz = max(-100.0, min(100.0, float(m.group(1)) / 100.0 * base_hz))
+        return f"{hz:+.0f}Hz"
+    m = re.fullmatch(r"([+-]?\d+(?:\.\d+)?)Hz", txt)
+    if m:
+        return f"{float(m.group(1)):+.0f}Hz"
+    return "+0Hz"
 
 
 async def _synth(text: str, voice: str, rate: str, pitch: str,
@@ -66,7 +83,7 @@ def main() -> int:
     ap.add_argument("--text", required=True, help="UTF-8 纯文本文件")
     ap.add_argument("--voice", required=True, help="如 zh-CN-XiaoxiaoNeural")
     ap.add_argument("--rate", default="+0%", help="如 -8%%，范围 ±30%% 由调用方夹")
-    ap.add_argument("--pitch", default="+0Hz", help="如 +2Hz")
+    ap.add_argument("--pitch", default="+0Hz", help="如 +4Hz / +2%（%按200Hz基准折算）")
     ap.add_argument("--out", required=True, help="输出 mp3")
     ap.add_argument("--words", required=True, help="输出逐字 sidecar json")
     args = ap.parse_args()
@@ -80,12 +97,13 @@ def main() -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     words_path.parent.mkdir(parents=True, exist_ok=True)
 
+    pitch = _pitch_hz(args.pitch)
     last: Exception | None = None
     chars: list[dict[str, float | str]] = []
     for attempt in range(1, RETRIES + 1):
         try:
             chars = asyncio.run(_synth(text, args.voice, args.rate,
-                                       args.pitch, out))
+                                       pitch, out))
             if out.stat().st_size <= 0:
                 raise RuntimeError("edge-tts returned empty audio")
             if not chars:
@@ -107,7 +125,7 @@ def main() -> int:
     blob = {
         "voice": args.voice,
         "rate": args.rate,
-        "pitch": args.pitch,
+        "pitch": pitch,
         "chars": chars,
     }
     tmp = words_path.with_suffix(words_path.suffix + ".tmp")
