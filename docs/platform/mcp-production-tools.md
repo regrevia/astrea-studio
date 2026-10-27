@@ -9,6 +9,7 @@
 | `reviseProductionRun` | 在既有任务上出新版本，`revision` 递增。 |
 | `listProductionEvents` | 读任务事件流，按阶段回放。 |
 | `createJianyingDraft` | 把已完成任务的成片落成剪映工程，进用户素材库默认分组；同一任务重复调用复用同一工程。任务没有成片时直接报错，不会凭空造工程。 |
+| `startJianyingExport` | 给已有剪映工程的任务排一条独立导出任务。默认只排队：macOS 上剪映要人点导出，任务停到 `awaiting_manual_export`、任务状态转 `waiting_user`，不写假成片；带 `allowGui: true` 时本机驱动导出面板，机器被占用则退避。 |
 | `submitRender` / `getRenderJob` / `cancelRenderJob` | 本机渲染队列下单、查进度、取消。`getRenderJob` 成功时给出成片路径、时长与画面尺寸。 |
 | `planPublication` / `listPublications` | 只登记发布意向与查看登记结果；提交发布必须由用户在面板确认。 |
 
