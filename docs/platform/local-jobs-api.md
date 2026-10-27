@@ -25,7 +25,7 @@
 `status` 取 `queued | running | succeeded | failed | cancelled`。
 不存在的 id 返回 404（`{"error":"没有这个任务：'xxx'"}`），未知引擎返回 500 且原因里带可选值。
 
-## 四种引擎
+## 六种引擎
 
 `kind` 与提交的 payload（路径都用绝对路径；`spec` 可直接给对象，提交时落盘到
 `$STUDIO_HOME/state/jobs/<id>/spec.json`，同时兼容 `specPath`）：
@@ -35,8 +35,9 @@
 | `paper` | `specPath` / `spec` | `shots` `caps` `style`(`paper`/`schematic`) `slug` `out` | 手绘纸片成片 mp4 |
 | `slides` | `specPath` / `spec` | 引擎自己的字段原样透传 | 幻灯片成片 |
 | `jianying` | `specPath` / `spec` | `draftName` | 剪映草稿目录（可直接开） |
+| `timeline` | `specPath` / `spec` | `slug` `out` | ffmpeg 合成成片 mp4（画布/多片段/字幕/浮层/BGM，见下） |
 | `motion` | `specPath` / `spec` | `{engine, voice, meta, scenes[{id,kick,shots}]}`，见 `deploy/specs/envoy_motion.json`（**voice 只能给 SAMI 音色**，引擎内部写死 sami_tts） | 动效成片 |
-| `slides` | `specPath` / `spec` | `scenes[{title,caption}]` + 可选 `chapters/logo_a/logo_b`，见 `deploy/specs/envoy_slides.json` | 卡片分镜（**1920×1080 横版**，引擎写死） |
+| `factcard` | `specPath` / `spec` | `points[{...}]` + 可选 `scenes/palette`，见 `deploy/specs/envoy_real.json` | 卡片分镜（**1920×1080 横版**，引擎写死） |
 
 规格文件允许两层：外层 `{"projectId","title","spec":{...}}` 或裸 spec —— 引擎拿到的
 永远是内层（`points`/`narration`/`scenes` 在那一层）。这条不做的话，`factcard` 会报
@@ -136,3 +137,36 @@ deliver/                     成片（DELIVER_DIR 可覆盖）
    launchctl kickstart -k gui/$(id -u)/local.creatorstudio.capabilities
    ```
 
+## `timeline`：任意画布的时间线合成
+
+`integrations/mac-worker/export/timeline_render.py` 是唯一的通用合成器：不再受「某个引擎只会
+横版/只会竖版」的限制，`canvas` 自己定，片段、字幕、浮层、音轨都按绝对秒数排。
+
+外层可以包 `{"projectId","title","spec":{...}}`（`_timeline` 会取内层）；直接跑 CLI 时
+`load_spec` **不**解包，所以给 CLI 的必须是内层 spec。`src` 一律写绝对路径，相对路径按
+spec 所在目录解析，容易踩空。
+
+| 字段 | 说明 |
+| --- | --- |
+| `canvas` | `{width,height,fps}`，竖版就写 `1080x1920` |
+| `video[]` | `{src,in,out,fit,speed,zoom,fade_in,fade_out,xfade_in}`；**`out` 必填**，缺了就 `SpecError`；`xfade_in` 吃掉与上一段的重叠，每段起始时间照旧写绝对秒数；图片当片段可用（自动做 zoom-pan） |
+| `text[]` | `{text,start,end,x,y,size,color,stroke,box,radius,align,fade}`；`x/y` 是 0–1 比例，`size` 是**画布高度的比例**；不自动换行，中文一行别超过 10 字 |
+| `overlay[]` | `{src,start,end,x,y,width,opacity,fade,motion}`；`x/y` 是**左上角像素**，`width` 必须是偶数；后出现的盖住先出现的，遮罩类浮层放最后 |
+| `audio[]` | `{src,start,in,out,volume,loop,fade,role}`；`out` 不给就是一直播到片尾 —— BGM 千万别乱给 `out`（给了 `out>in` 就只播 `out-in` 秒） |
+
+浮层视频没有 `in` 偏移，所以要做「录屏里只取第 3–10 秒」这种切片，得先用 ffmpeg 切成独立
+文件再引用；切片同时顺手把帧率/尺寸统一到画布，省得合成时再缩放。
+
+```bash
+# 队列出片（产物默认落 $STUDIO_HOME/deliver/<slug>-<jobId>.mp4）
+curl -s -X POST http://127.0.0.1:8899/jobs -H 'Content-Type: application/json' -d '{
+  "kind": "timeline",
+  "payload": {"specPath": "/abs/state/promo/product_promo.json", "slug": "product-promo"}
+}'
+
+# 直接跑引擎（调试用，慢一步但省掉队列）
+python3 integrations/mac-worker/export/timeline_render.py --spec <内层spec.json> --out <out.mp4> --json
+```
+
+`scripts/promo/build_promo.py` 是这条路的成品例子：旁白合成 → 录屏切片 → 窗口遮罩 → 排到
+`timeline` spec → 提交队列，一条命令出产品演示片。
