@@ -51,6 +51,11 @@ LOOKAHEAD_MS = 20
 # 最短可读口型段：短于 90ms 观众读到的不是「这个字」，是「抽了一下」
 MIN_DWELL_MS = 90
 
+# 静音闭口的硬边界（范式定义，不是可调美化参数）
+SILENCE_MIN_S = 0.12   # 包络连续低于阈值 >=120ms 才算静音段；词内塞音空隙 40~80ms 够不到
+TAIL_PAD_S = 0.12      # 最后一个字结束之后再闭口 120ms
+_CAL_TOL_S = 0.04      # 逐字表对齐容差，超过就整体平移（40ms 就够早了）
+
 # 开口大小排序：只看「这次换档是不是张嘴」，张嘴立刻生效，收口才驻留
 _RANK = {
     "closed": 0,
@@ -411,10 +416,11 @@ def _expand_words(words: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _calibrate(words: list[dict[str, Any]], audio: Path) -> list[dict[str, Any]]:
     """把逐字表对齐到音频真实的第一个有声帧。
 
-    edge-tts 的 offset 从 0.1s 起（前面是一段静音），如果按 offset 直接铺，
-    口型会整体比声音晚 100ms —— 那正是「对不上」的来源。这里用包络量出真实
-    起点，差得多就整体平移；差得不多（< 80ms）就认为 offset 已经是相对音频
-    起点的，不动。
+    edge-tts 的 offset 固定从 0.1s 附近起，而音频前面还有 0.2s 静音，按 offset 直接铺
+    口型会整体早 90~160ms。这里用包络量出真实起点，差值超过 40ms 就整体平移：
+    80ms 的老阈值会漏掉 40~80ms 的偏移，成片里表现为「每场开头嘴先动一下」。
+    反方向（音频比边界更早出声，多半是前导音乐/气口）不往前拉，交给静音约束兜住，
+    否则会把口型拖进静音。
     """
     if not words:
         return words
@@ -422,10 +428,9 @@ def _calibrate(words: list[dict[str, Any]], audio: Path) -> list[dict[str, Any]]
     if heard is None:
         return words
     delta = heard - words[0]["t"]
-    if abs(delta) < 0.08:
+    if abs(delta) < _CAL_TOL_S or delta < 0:
         return words
-    shifted = [dict(c, t=max(0.0, c["t"] + delta)) for c in words]
-    return shifted
+    return [dict(c, t=max(0.0, c["t"] + delta)) for c in words]
 
 
 def _timeline(text: str, audio: Path, duration: float) -> tuple[list[dict[str, Any]], str]:
@@ -485,13 +490,20 @@ def _coarticulate(track: list[str], fps: int) -> list[str]:
     return _settle(out, min_run)
 
 
-def _settle(track: list[str], min_run: int) -> list[str]:
+def _settle(
+    track: list[str],
+    min_run: int,
+    protected: list[bool] | None = None,
+) -> list[str]:
     """把短于 min_run 的段并进相邻段。反复扫到稳定：一次扫过去会漏掉
     「并完又变短」的连锁，最后还是会闪一下。
+
+    ``protected`` 里的帧是硬约束（静音/前导/尾部），整段不能被合并掉。
     """
     out = list(track)
     if min_run <= 1 or len(out) < 2:
         return out
+    protected = protected or []
     for _ in range(64):
         runs: list[list[int]] = []   # [state_id, start, count]
         i = 0
@@ -503,19 +515,40 @@ def _settle(track: list[str], min_run: int) -> list[str]:
             i = j + 1
         if len(runs) < 2:
             return out
-        short = next(((k, runs[k][1]) for k in range(len(runs)) if runs[k][1] < min_run), None)
+        short = None
+        for k in range(len(runs)):
+            start, count = runs[k][0], runs[k][1]
+            if count >= min_run:
+                continue
+            if protected and any(protected[start:start + count]):
+                continue
+            short = (k, count)
+            break
         if short is None:
             return out
         k, count = short
         start = runs[k][0]
-        target = runs[k - 1][0] if k > 0 else runs[k + 1][0]
+        if k > 0 and k + 1 < len(runs):
+            prev_prot = bool(protected and protected[runs[k - 1][0]])
+            next_prot = bool(protected and protected[runs[k + 1][0]])
+            # 不能把短段并进保护段的闭口里：那会把静音往后拉 40~100ms，
+            # 首字开口跟着晚，成片就是「嘴慢半拍」。优先并进前一段（常规），
+            # 前一段是保护闭口时改并进后一段。
+            target = runs[k + 1][0] if (prev_prot and not next_prot) else runs[k - 1][0]
+        else:
+            target = runs[k - 1][0] if k > 0 else runs[k + 1][0]
         fill = out[target]
         for i in range(start, start + count):
             out[i] = fill
     return out
 
 
-def _silence_mask(audio: Path, duration: float, fps: int) -> list[bool]:
+def _silence_mask(
+    audio: Path,
+    duration: float,
+    fps: int,
+    min_seconds: float = 0.10,
+) -> list[bool]:
     """哪几格是静音。只认够长的静音段：字与字之间 40ms 的能量谷是塞音，
     不是静音，把它也涂成闭口，嘴就会一路在抖。
     """
@@ -548,7 +581,7 @@ def _silence_mask(audio: Path, duration: float, fps: int) -> list[bool]:
         else:
             i += 1
     for start, end in spans:
-        if (end - start + 1) * 0.01 < 0.10:   # 短于 100ms 不是静音
+        if (end - start + 1) * 0.01 < min_seconds:   # 短于阈值不是静音
             continue
         t0, t1 = start * 0.01, (end + 1) * 0.01
         for frame in range(total):
@@ -556,6 +589,39 @@ def _silence_mask(audio: Path, duration: float, fps: int) -> list[bool]:
             if t0 <= t < t1:
                 mask[frame] = True
     return mask
+
+
+def _enforce_silence(
+    track: list[str],
+    chars: list[dict[str, Any]],
+    audio: Path,
+    duration: float,
+    fps: int,
+) -> list[str]:
+    """静音必闭口 —— 范式约束，必须在协同发音与驻留之后最后落一次。
+
+    三条边界叠加，都是硬约束、不再参与合并：
+    1. 前导：第一个字起点之前的帧全 closed（edge 前面有 0.2s 静音，20ms 前瞻会把嘴提前拉开）；
+    2. 尾部：最后一个字结束 + 120ms 之后全 closed；
+    3. 静音段：包络连续 >=120ms 低于阈值，整段 closed，盖过 20ms 前瞻与 90ms 驻留；
+       词内 40~80ms 的塞音空隙够不到 120ms，不会被误闭。
+    """
+    total = len(track)
+    if total <= 0:
+        return track
+    min_run = max(2, int(math.ceil(MIN_DWELL_MS / 1000 * fps)))
+    protected = _silence_mask(audio, duration, fps, min_seconds=SILENCE_MIN_S)
+    if chars:
+        first = min(c["t"] for c in chars)
+        lead = min(total, int(math.ceil(first * fps - 1e-9)))
+        for i in range(lead):
+            protected[i] = True
+        tail_at = max(c["t"] + c["d"] for c in chars) + TAIL_PAD_S
+        tail_from = max(0, int(math.floor(tail_at * fps + 1e-9)))
+        for i in range(tail_from, total):
+            protected[i] = True
+    out = ["closed" if m else st for st, m in zip(track, protected)]
+    return _settle(out, min_run, protected)
 
 
 def _cache_key(text: str, audio: Path, fps: int) -> tuple[str, str, float, int]:
@@ -576,11 +642,8 @@ def build(text: str, audio: Path, duration: float, *, fps: int = _DEFAULT_FPS) -
     chars, _source = _timeline(text, audio, duration)
     track = _frames(chars, duration, fps)
     track = _coarticulate(track, fps)
-    # 静音一定闭口，且静音段够长（>=100ms），不会被后面的驻留合并吃掉
-    mask = _silence_mask(audio, duration, fps)
-    track = ["closed" if m else st for st, m in zip(track, mask)]
-    min_run = max(2, int(math.ceil(MIN_DWELL_MS / 1000 * fps)))
-    track = _settle(track, min_run)
+    # 静音必闭口放最后：前瞻与驻留都不能把静音重新拉开
+    track = _enforce_silence(track, chars, audio, duration, fps)
     if len(_CACHE) >= _CACHE_LIMIT:
         _CACHE.pop(next(iter(_CACHE)))
     _CACHE[key] = list(track)
