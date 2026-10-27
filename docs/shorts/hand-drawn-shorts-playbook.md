@@ -9,7 +9,7 @@
 先备一条 spec 和几张截图，然后一条命令直出：
 
 ```bash
-cd /Users/apple/Desktop/work/Studio/creator-studio
+cd <repo>
 mkdir -p ~/CreatorStudio/deliver ~/CreatorStudio/work
 
 /usr/bin/python3 deploy/schematic_preview.py deploy/specs/envoy_real.json \

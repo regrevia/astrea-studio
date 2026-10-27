@@ -37,10 +37,12 @@ _CHROME_CANDIDATES = [
 
 
 def _node() -> str:
-    for cand in (shutil.which("node"), "/Users/apple/.local/opt/node-current/bin/node"):
-        if cand and Path(cand).exists():
-            return cand
-    raise RuntimeError("找不到 node")
+    """node 的位置：环境变量 NODE_BIN > PATH > 用户级安装，都不行就报错。"""
+    for cand in (os.environ.get("NODE_BIN"), shutil.which("node"),
+                 Path.home() / ".local/opt/node-current/bin/node"):
+        if cand and Path(cand).expanduser().exists():
+            return str(Path(cand).expanduser())
+    raise RuntimeError("找不到 node（装一个，或设 NODE_BIN 指向 node）")
 
 
 def _chrome() -> str:

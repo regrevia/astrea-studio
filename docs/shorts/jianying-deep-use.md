@@ -34,9 +34,9 @@ bash $D/export-to-jianying.sh
 
 | 产物 | 路径 | 说明 |
 | --- | --- | --- |
-| 满配草稿 | `/Users/apple/CreatorStudio/deliver/jianying-draft/envoy-18s-full/` | 直接拖进剪映可开 |
-| 探针草稿 | `/Users/apple/CreatorStudio/deliver/jianying-draft/envoy-18s-probe-bezier/` | 多写了未验证字段，只用来试 GUI 兼容性 |
-| ffmpeg 预览 | `/Users/apple/CreatorStudio/deliver/jianying-demo-preview.mp4` | **不是剪映导出**，仅还原节奏/版式 |
+| 满配草稿 | `~/CreatorStudio/deliver/jianying-draft/envoy-18s-full/` | 直接拖进剪映可开 |
+| 探针草稿 | `~/CreatorStudio/deliver/jianying-draft/envoy-18s-probe-bezier/` | 多写了未验证字段，只用来试 GUI 兼容性 |
+| ffmpeg 预览 | `~/CreatorStudio/deliver/jianying-demo-preview.mp4` | **不是剪映导出**，仅还原节奏/版式 |
 | 生成脚本 | `deliver/jianying-draft/build_draft.py` / `patch_draft.py` | 幂等，可反复重跑 |
 | 导出脚本 | `deliver/jianying-draft/export-to-jianying.sh` | 导入 + 注册 + 尝试 Cmd+E |
 
@@ -77,7 +77,7 @@ bash $D/export-to-jianying.sh
 
 ## 4. 字段解剖（每条都是本机草稿里的真字段）
 
-引用草稿：`/Users/apple/CreatorStudio/deliver/jianying-draft/envoy-18s-full/draft_content.json`
+引用草稿：`~/CreatorStudio/deliver/jianying-draft/envoy-18s-full/draft_content.json`
 
 ### 4.1 转场：`is_overlap` 决定时间线是否被吃掉
 
@@ -230,7 +230,7 @@ bash $D/export-to-jianying.sh
 # 依赖：VectCutAPI 服务在 127.0.0.1:9100（ensure_service 自动拉起）
 curl -m 5 -s http://127.0.0.1:9100/health -o /dev/null -w "%{http_code}\n"   # 404 = 活着
 ls ~/CreatorStudio/materials/shots/envoy/                                    # 6 张主图素材
-python3 -c "import json;d=json.load(open('/Users/apple/CreatorStudio/deliver/jianying-draft/envoy-18s-full/draft_content.json'));print(len(d['tracks']),{k:len(v) for k,v in d['materials'].items() if isinstance(v,list) and v})"
+python3 -c "import json;d=json.load(open('~/CreatorStudio/deliver/jianying-draft/envoy-18s-full/draft_content.json'));print(len(d['tracks']),{k:len(v) for k,v in d['materials'].items() if isinstance(v,list) and v})"
 ```
 
 生成脚本已放进交付目录：`build_draft.py`（25 个 API 调用，自带合法骨架 `skeleton/`）+ `patch_draft.py`（回填素材 / 关键帧 / 混合模式 / 画布比例），两次跑出来字节数一致，可安全重跑。要长期用应搬进 `integrations/mac-worker/`（本轮未动，避免和他人改动冲突）。

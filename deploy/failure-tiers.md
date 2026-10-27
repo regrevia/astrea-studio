@@ -8,7 +8,7 @@
 job log 首行由 `integrations/mac-worker/pylocator.py` 写入，形如：
 
 ```
-interpreter=/Users/apple/CreatorStudio/runtime/integrations/mac-worker/.python3 source=shim:runtime python=3.11.15
+interpreter=~/CreatorStudio/runtime/integrations/mac-worker/.python3 source=shim:runtime python=3.11.15
 ```
 
 ## 1. 解释器缺失
@@ -83,7 +83,7 @@ interpreter=/Users/apple/CreatorStudio/runtime/integrations/mac-worker/.python3 
 ## 今晚的一条可用链路（实测命令）
 
 ```bash
-cd /Users/apple/Desktop/work/Studio/creator-studio
+cd <repo>
 STUDIO_SKIP_PREFLIGHT=1 bash deploy/submit_spec.sh deploy/specs/kv_cache.json 1
 ```
 
@@ -94,9 +94,9 @@ STUDIO_SKIP_PREFLIGHT=1 bash deploy/submit_spec.sh deploy/specs/kv_cache.json 1
 实测（2026-10-27，runtime 副本 + launchd worker）：
 
 - `kv_cache.json`（engine=timeline，表单「出 mp4」）= run `6adff53798849e9680310566`，
-  17.152s，qa=True，母版 `/Users/apple/CreatorStudio/timeline/6adff53798849e9680310568/master.mp4`（5.1 MB）
+  17.152s，qa=True，母版 `~/CreatorStudio/timeline/6adff53798849e9680310568/master.mp4`（5.1 MB）
 - `envoy_jianying.json`（engine=jianying，表单「出草稿」）= run `6adff60498849e96803107cf`，
-  30.821s，草稿目录 `/Users/apple/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6adff60498849e96803107d1/`
+  30.821s，草稿目录 `~/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6adff60498849e96803107d1/`
 
 已知缺口：草稿通道的 `draftPath` 只进了 worker 日志，服务端 complete 的白名单
 没有这个字段，所以 run 的 `output` 里查不到草稿路径（只有 `duration` / `copyCheck`）。

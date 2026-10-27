@@ -6,7 +6,8 @@ cookies 目录和 ffmpeg/vhs 二进制。而这份「哪些平台能发、有哪
 本来就是宿主事实，在容器里看反而失真。
 
 所以：宿主起一个零依赖的 stdlib HTTP 服务，只做 GET /inventory 和
-GET /characters，面板跨域直读。全部只读、不联网、不启动浏览器、不碰发布。
+GET /characters，面板跨域直读。只读、不联网、不启动浏览器、不碰发布；
+另外挂上 /jobs 这组写接口，让平台自己接单出片（见 jobs.py）。
 
 用法:
     python3 capabilities_server.py --port 8899
@@ -21,8 +22,10 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs
 
 import capabilities
+import jobs
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "export"))
 
@@ -175,8 +178,35 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, body)
             elif path == "/healthz":
                 self._send(200, b'{"ok":true}')
+            elif path == "/jobs":
+                q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+                limit = int((q.get("limit") or ["30"])[0])
+                body = json.dumps({"jobs": jobs.list_jobs(limit)},
+                                  ensure_ascii=False).encode()
+                self._send(200, body)
+            elif path.startswith("/jobs/"):
+                parts = [x for x in path.split("/") if x]
+                jid = parts[1] if len(parts) > 1 else ""
+                tail = parts[2] if len(parts) > 2 else ""
+                if tail == "log":
+                    q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+                    n = int((q.get("tail") or ["200"])[0])
+                    self._send(200, json.dumps(
+                        {"id": jid, "log": jobs.log_text(jid, n)},
+                        ensure_ascii=False).encode())
+                else:
+                    self._send(200, json.dumps(jobs.get(jid), ensure_ascii=False).encode())
+            elif path == "/deliverables":
+                q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+                limit = int((q.get("limit") or ["50"])[0])
+                self._send(200, json.dumps({"files": jobs.deliverables(limit)},
+                                           ensure_ascii=False).encode())
             else:
                 self._send(404, b'{"error":"not found"}')
+        except KeyError as exc:
+            payload = json.dumps({"error": f"没有这个任务：{exc}"},
+                                 ensure_ascii=False).encode()
+            self._send(404, payload)
         except Exception as exc:  # noqa: BLE001
             payload = json.dumps({"error": f"{type(exc).__name__}: {exc}"[:300]}).encode()
             self._send(500, payload)
@@ -192,6 +222,15 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.dumps(import_outfit(parts[1], payload),
                                   ensure_ascii=False).encode()
                 self._send(200, body)
+            elif len(parts) >= 1 and parts[0] == "jobs":
+                if len(parts) >= 3 and parts[2] == "cancel":
+                    body = json.dumps(jobs.cancel(parts[1]), ensure_ascii=False).encode()
+                    self._send(200, body)
+                elif len(parts) == 1:
+                    job = jobs.submit(payload.get("kind"), payload.get("payload") or payload)
+                    self._send(202, json.dumps(job, ensure_ascii=False).encode())
+                else:
+                    self._send(404, b'{"error":"not found"}')
             elif len(parts) >= 3 and parts[0] == "characters" and parts[2] == "default-outfit":
                 body = json.dumps(set_default_outfit(parts[1], payload.get("outfit")),
                                   ensure_ascii=False).encode()
@@ -201,6 +240,10 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as exc:
             self._send(400, json.dumps({"error": str(exc)[:300]},
                                        ensure_ascii=False).encode())
+        except KeyError as exc:
+            payload = json.dumps({"error": f"没有这个任务：{exc}"},
+                                 ensure_ascii=False).encode()
+            self._send(404, payload)
         except Exception as exc:  # noqa: BLE001
             payload = json.dumps({"error": f"{type(exc).__name__}: {exc}"[:300]}).encode()
             self._send(500, payload)

@@ -20,7 +20,7 @@
 `cdp_grab.mjs`（Node 内建 `WebSocket` 直连 CDP，无第三方依赖，从 `paper/cdp_shots.mjs` 那套结果复用）。
 
 ```bash
-cd /Users/apple/Desktop/work/Studio/creator-studio
+cd <repo>
 
 # 一串 URL，竖屏 1080x1920，每个页面抓 2 张（超出视口就分段下滚）
 python3 integrations/mac-worker/tools/grab_material.py \
@@ -110,7 +110,7 @@ envoy_read(source={kind:"article", url:"https://en.wikipedia.org/wiki/Enigma_mac
 ```
 
 预算被截断时接着 `envoy_expand(material_id=…, offset=2976, max_chars=8000)`，不要重读 URL。
-实测记录和可直接用的句子存在 [enigma.md](/Users/apple/CreatorStudio/materials/probe/envoy-read/enigma.md)。
+实测记录和可直接用的句子存在 [enigma.md](~/CreatorStudio/materials/probe/envoy-read/enigma.md)。
 
 边界（都实测过）：GitHub 仓库页返回 `Envoy read blocked … need authenticate · read_source`，
 Envoy 不在非交互会话里弹窗，这类页只能本机带可见浏览器跑一次或导 cookies；图片 block 只给
@@ -135,8 +135,8 @@ qlmanage -t -s 2000 -o /tmp/ch/ql /tmp/ch/doc.pdf     # → /tmp/ch/ql/doc.pdf.p
 `qlmanage` 只出**第一页**；`sips -s format png doc.pdf --out x.png` 能跑但只有 **612×792**，
 放大就是糊的，竖屏片里别用。多页要么一页一个 PDF，要么在 Chrome 里逐页截图。
 
-产物：[doc.pdf](/Users/apple/CreatorStudio/materials/probe/pdf/doc.pdf)、
-[doc-page1.png](/Users/apple/CreatorStudio/materials/probe/pdf/doc-page1.png)。
+产物：[doc.pdf](~/CreatorStudio/materials/probe/pdf/doc.pdf)、
+[doc-page1.png](~/CreatorStudio/materials/probe/pdf/doc-page1.png)。
 
 ## 4. 视频抽帧：现成录屏/素材视频变静帧
 
@@ -153,7 +153,7 @@ ffmpeg -v error -y -ss 2 -i in.mp4 -vf "crop=ih*9/16:ih,scale=1080:1920" -frames
 ```
 
 实测：`demo_bg.mp4`（1080×1920，6.000000s）取第 2 秒 → **1080×1920** PNG、10389 字节。
-产物：[demo_bg-2s.png](/Users/apple/CreatorStudio/materials/probe/frame/demo_bg-2s.png)。
+产物：[demo_bg-2s.png](~/CreatorStudio/materials/probe/frame/demo_bg-2s.png)。
 抽帧的好处是帧序稳定、可复现，比录屏反复跑一遍强。
 
 ## 5. 剪映素材库：**不能当素材源**
@@ -161,7 +161,7 @@ ffmpeg -v error -y -ss 2 -i in.mp4 -vf "crop=ih*9/16:ih,scale=1080:1920" -frames
 结论：素材库不可程序化枚举。VectCutAPI 只有 `/add_sticker`（贴纸 id 要你自己给）和 12 个
 `get_*_types` 目录接口，返回的是 `{"name":"圆形"}` 这种纯名字，没有 resource_id、没有搜索、
 没有分页、没有下载；素材库/BGM/贴纸/音效都没有对应路由。详细证据见
-[capability.md](/Users/apple/Desktop/work/Studio/creator-studio/docs/probe/jianying-agent/capability.md)。
+[capability.md](<repo>/docs/probe/jianying-agent/capability.md)。
 
 磁盘上只有「用户用过」的特效缓存，可以拿来看、不能拿来选品：
 
@@ -170,8 +170,8 @@ ls "$HOME/Movies/JianyingPro/User Data/Cache/effect" | head -50   # 本机 249 �
 find "$HOME/Movies/JianyingPro/User Data/Cache/effect" -type f | head -20
 ```
 
-实测产物：[effect-dirs.txt](/Users/apple/CreatorStudio/materials/probe/jianying/effect-dirs.txt)、
-[effect-files-sample.txt](/Users/apple/CreatorStudio/materials/probe/jianying/effect-files-sample.txt)。
+实测产物：[effect-dirs.txt](~/CreatorStudio/materials/probe/jianying/effect-dirs.txt)、
+[effect-files-sample.txt](~/CreatorStudio/materials/probe/jianying/effect-files-sample.txt)。
 数量取决于用户用过多少，不能当素材池；`Cache/music/thirdparty`、`onlineMaterial`、`Download`、
 `EMaterial`、`Resources/Lut` 在本机都是 0 文件。
 
@@ -186,7 +186,7 @@ find ~/Pictures -maxdepth 3 -type f \( -iname '*.png' -o -iname '*.jpg' -o -inam
 ```
 
 实测：`screencapture` 出 71227 字节 PNG，见
-[desktop.png](/Users/apple/CreatorStudio/materials/probe/screen/desktop.png)。
+[desktop.png](~/CreatorStudio/materials/probe/screen/desktop.png)。
 相册要走 Photos.app 导出（GUI/需要自动化授权），脚本别指望；现成录屏 `.mp4` 一律走第 4 条抽帧。
 
 ## 7. 接进 spec：`pack:<slug>/<name>`
@@ -205,8 +205,8 @@ MATERIALS_ROOT=~/CreatorStudio/materials ~/CreatorStudio/.motionvenv/bin/python 
 
 已实测跑通：上面这条命令 35.06s 出 6 屏片（1052 帧，1859 KB 静音轨 + 人物层），
 抓下来的 GitHub 仓库截图确实贴进了首屏版位（角标「抓下来的图」），
-成片 [pack-ref.mp4](/Users/apple/CreatorStudio/materials/probe/render/pack-ref.mp4)、
-抽帧对照 [pack-ref-frames.png](/Users/apple/CreatorStudio/materials/probe/render/pack-ref-frames.png)。
+成片 [pack-ref.mp4](~/CreatorStudio/materials/probe/render/pack-ref.mp4)、
+抽帧对照 [pack-ref-frames.png](~/CreatorStudio/materials/probe/render/pack-ref-frames.png)。
 
 spec JSON 顶层也能写，命令行 `--shots` 为空时生效（临时换图不用改 spec）：
 

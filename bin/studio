@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""studio —— 本机平台的命令行入口。
+
+所有出片动作都走这里：它只跟本机能力服务（默认 127.0.0.1:8899）说话，
+不自己拼 ffmpeg、不自己找 spec 路径。这样口型/版式/响度三处校准只有一份实现。
+
+    studio jobs submit paper spec.json --shots sketch:link --out /abs/a.mp4
+    studio jobs list
+    studio jobs status <id>
+    studio jobs log <id> -n 60
+    studio jobs wait <id>            # 轮询到终态，失败时打印 error 并退出码 1
+    studio jobs cancel <id>
+    studio films                     # ~/CreatorStudio/deliver 下的成片
+
+环境变量：STUDIO_API（默认 http://127.0.0.1:8899）。
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+API = os.environ.get("STUDIO_API", "http://127.0.0.1:8899").rstrip("/")
+
+
+def _call(method: str, path: str, payload: dict | None = None, timeout: float = 30.0) -> dict:
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib.request.Request(
+        API + path, data=data, method=method,
+        headers={"Content-Type": "application/json", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode(errors="replace")
+        raise SystemExit(f"失败（HTTP {exc.code}）：{body[:400]}") from None
+    except (urllib.error.URLError, OSError) as exc:
+        raise SystemExit(f"连不上能力服务 {API}：{exc}") from None
+    return json.loads(raw) if raw else {}
+
+
+def _fmt(job: dict) -> str:
+    bits = [job.get("id", "?"), job.get("kind", "?"), job.get("status", "?"),
+            f"{job.get('progress', 0)}%", str(job.get("stage") or "")]
+    if job.get("error"):
+        bits.append(f"error={job['error'][:120]}")
+    return "  ".join(bits)
+
+
+def cmd_submit(args: argparse.Namespace) -> int:
+    payload: dict = {"specPath": str(Path(args.spec).expanduser().resolve())}
+    if args.shots:
+        payload["shots"] = args.shots
+    if args.caps:
+        payload["caps"] = args.caps
+    if args.style:
+        payload["style"] = args.style
+    if args.slug:
+        payload["slug"] = args.slug
+    if args.out:
+        payload["out"] = str(Path(args.out).expanduser().resolve())
+    if args.draft_name:
+        payload["draftName"] = args.draft_name
+    for kv in args.set or []:
+        if "=" not in kv:
+            raise SystemExit(f"--set 要 k=v：{kv}")
+        k, v = kv.split("=", 1)
+        payload[k] = json.loads(v) if v[:1] in "[{\"" else v
+    job = _call("POST", "/jobs", {"kind": args.kind, "payload": payload})
+    print(_fmt(job))
+    if not args.wait:
+        return 0
+    return _wait(job["id"])
+
+
+def _wait(job_id: str) -> int:
+    while True:
+        job = _call("GET", f"/jobs/{job_id}")
+        sys.stderr.write("\r" + _fmt(job) + " " * 10)
+        sys.stderr.flush()
+        if job.get("status") in ("succeeded", "failed", "cancelled"):
+            sys.stderr.write("\n")
+            if job.get("status") != "succeeded":
+                print(job.get("error") or job.get("status"))
+                return 1
+            print(json.dumps(job.get("result"), ensure_ascii=False, indent=2))
+            return 0
+        time.sleep(float(os.environ.get("STUDIO_POLL", "3")))
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="studio", description="creator-studio 本机平台入口")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    jobs = sub.add_parser("jobs", help="任务相关").add_subparsers(dest="jobs_cmd", required=True)
+    s = jobs.add_parser("submit", help="提交一条出片任务")
+    s.add_argument("kind", choices=["paper", "slides", "jianying", "motion"])
+    s.add_argument("spec")
+    s.add_argument("--shots", nargs="*")
+    s.add_argument("--caps", nargs="*")
+    s.add_argument("--style", default="paper")
+    s.add_argument("--slug")
+    s.add_argument("--out")
+    s.add_argument("--draft-name", dest="draft_name")
+    s.add_argument("--set", action="append", metavar="K=V", help="其它引擎字段，值可写 JSON")
+    s.add_argument("--wait", action="store_true", help="等到终态")
+    s.set_defaults(func=cmd_submit)
+
+    lst = jobs.add_parser("list", help="最近任务")
+    lst.add_argument("-n", type=int, default=10)
+    lst.set_defaults(func=lambda a: (print("\n".join(_fmt(j) for j in _call(
+        "GET", f"/jobs?limit={a.n}")["jobs"])), 0)[1])
+
+    st = jobs.add_parser("status", help="单条状态")
+    st.add_argument("id")
+    st.set_defaults(func=lambda a: (print(json.dumps(
+        _call("GET", f"/jobs/{a.id}"), ensure_ascii=False, indent=2)), 0)[1])
+
+    lg = jobs.add_parser("log", help="日志尾巴")
+    lg.add_argument("id")
+    lg.add_argument("-n", type=int, default=40)
+    lg.set_defaults(func=lambda a: (print(_call(
+        "GET", f"/jobs/{a.id}/log?tail={a.n}").get("log", "")), 0)[1])
+
+    w = jobs.add_parser("wait", help="等到终态")
+    w.add_argument("id")
+    w.set_defaults(func=lambda a: _wait(a.id))
+
+    c = jobs.add_parser("cancel", help="取消")
+    c.add_argument("id")
+    c.set_defaults(func=lambda a: (print(_fmt(_call("POST", f"/jobs/{a.id}/cancel"))), 0)[1])
+
+    films = sub.add_parser("films", help="成片清单")
+    films.add_argument("-n", type=int, default=20)
+    films.set_defaults(func=lambda a: (print("\n".join(
+        f"{f['name']}  {f['bytes'] / 1e6:.1f} MB  {f['mtime']}"
+        for f in _call("GET", f"/deliverables?limit={a.n}")["files"])), 0)[1])
+
+    args = ap.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
