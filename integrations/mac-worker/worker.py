@@ -39,6 +39,46 @@ from export import deliver as delivery
 
 LOG_FORMAT = "%(asctime)s %(levelname)-7s %(message)s"
 
+# 失败原因码：后端 /fail 只有一个 error 文本字段（见 api.StudioClient.fail），
+# 所以原因码写成文本前缀 reasonCode=<code>，平台侧按前缀解析、人看后半句。
+# 没有原因码的失败等于没有归因，重试策略和用户提示都无从下手。
+REASON_BY_EXC = {
+    "CaptureError": "capture_failed",
+    "RenderError": "render_failed",
+    "PublishError": "publish_failed",
+    "SlidesError": "slides_failed",
+    "MotionError": "motion_failed",
+    "TimelineError": "timeline_failed",
+    "JianyingError": "jianying_draft_failed",
+}
+REASON_CODES = (
+    "unsupported_job_kind",
+    "worker_exception",
+    "jianying_export_failed",
+    "export_needs_manual_gui",
+    "export_user_busy",
+    "export_output_exists",
+    "export_ambiguous_output",
+    "export_timeout",
+    "export_invalid_profile",
+    "export_aspect_mismatch",
+    "export_param_not_applied",
+    "export_panel_unavailable",
+    "export_probe_failed",
+)
+
+
+def reason_text(code: str, message: str) -> str:
+    """把原因码拼到错误文本最前面（后端只收文本，这是唯一能带归因的位置）。"""
+    return "reasonCode=%s %s" % (code or "unknown", message or "")
+
+
+def reason_of(exc: BaseException) -> str:
+    for klass, code in REASON_BY_EXC.items():
+        if type(exc).__name__ == klass:
+            return code
+    return REASON_BY_EXC.get(type(exc).__name__, "job_failed")
+
 log = logging.getLogger("studio.worker")
 
 
@@ -71,6 +111,12 @@ def load_s3_creds() -> dict[str, str]:
         "access": values.get("STUDIO_S3_ACCESS_KEY", ""),
         "secret": values.get("STUDIO_S3_SECRET_KEY", ""),
     }
+
+
+# 任务种类：定义在 worker 侧，jobs.py 只负责把字符串发过来。
+# jianying_draft 出草稿（中间态），jianying_export 收导出产物，两步分开记。
+JOB_JIANYING_DRAFT = "jianying_draft"
+JOB_JIANYING_EXPORT = "jianying_export"
 
 
 class Worker:
@@ -265,6 +311,13 @@ class Worker:
                             fh.write(f"DRAFT_PATH={draft_path}\n")
                     except OSError as exc:
                         log.warning("job %s could not record draft path: %s", job_id, exc)
+            elif kind == JOB_JIANYING_EXPORT:
+                # 剪映在 macOS 上没有无头导出：这一步要么等人工点完导出后归位产物，
+                # 要么在 payload 显式 allowGui=true 时驱动导出面板（仍要求用户空闲）。
+                result = self.do_jianying_export(job_id, payload, progress)
+                self.client.complete(job_id, lease, result)
+                log.info("job %s jianying export: stage=%s path=%s",
+                         job_id, result.get("stage"), (result.get("output") or {}).get("videoPath"))
             elif kind == "publish_sau":
                 result = self.do_publish(job_id, payload, progress)
                 # Publication status is decided by the ledger, not by this process.
@@ -295,16 +348,25 @@ class Worker:
                     len(result.get("voices", {}).get("jianying", [])) + len(result.get("voices", {}).get("edge", [])),
                 )
             else:
-                self.client.fail(job_id, lease, f"unsupported job kind: {kind}", "failed")
-        except (CaptureError, RenderError, PublishError, SlidesError, MotionError, TimelineError) as exc:
+                self.client.fail(
+                    job_id, lease,
+                    reason_text("unsupported_job_kind", f"unsupported job kind: {kind}"),
+                    "failed",
+                )
+        except (CaptureError, RenderError, PublishError, SlidesError, MotionError,
+                TimelineError, JianyingError) as exc:
             log.error("job %s failed: %s", job_id, exc)
-            self.client.fail(job_id, lease, str(exc)[:1500], "failed")
+            self.client.fail(job_id, lease, reason_text(reason_of(exc), str(exc)[:1400]), "failed")
         except ApiError as exc:
             log.error("job %s could not report back: %s", job_id, exc)
         except Exception as exc:  # noqa: BLE001 - a worker must never die on one job
             log.exception("job %s crashed", job_id)
             try:
-                self.client.fail(job_id, lease, f"worker exception: {exc}"[:1500], "failed")
+                self.client.fail(
+                    job_id, lease,
+                    reason_text("worker_exception", f"worker exception: {exc}"[:1400]),
+                    "failed",
+                )
             except ApiError:
                 pass
         finally:
@@ -390,13 +452,112 @@ class Worker:
         unsupported_platform；自动导出仅 Windows + 剪映≤5.9），
         所以本方法的交付物是「草稿目录」而不是 mp4：
         平台侧把 draftPath 展示给用户，人工在剪映点导出后回填。
+
+        这里是**中间态**：draft ready ≠ 成片。所以返回值里 videoPath 恒为 None、
+        stage 恒为 draft_ready，出片由 jianying_export 那一步接。
+        原生效果没能写进草稿时，report 里的 unsupported/missing 原样带上并标 degraded，
+        不能把「草稿建成了但特效丢了」包成一次干净的成功。
         """
         run_id = payload.get("runId") or ""
-        result = render_jianying(payload, STUDIO_HOME / "jianying" / job_id, progress)
-        if run_id:
-            result["runId"] = run_id
+        revision = int(payload.get("revision") or 1)
+        spec_payload = dict(payload)
+        spec_payload["runId"] = run_id
+        spec_payload["revision"] = revision
+        result = render_jianying(spec_payload, STUDIO_HOME / "jianying" / job_id, progress)
+        result["runId"] = run_id or result.get("runId")
+        result["revision"] = revision
+        result["jobId"] = job_id
         result["engine"] = "jianying"
+        result["stage"] = "draft_ready"
+        result.setdefault("output", {"videoPath": None, "requiresManualExport": True})
+        caps = result.get("capabilities") or {}
+        if caps.get("unsupported") or caps.get("missing"):
+            result["degraded"] = True
+            result["degradedReason"] = "部分原生效果未写入草稿，明细见 report"
         return result
+
+    def do_jianying_export(self, job_id: str, payload: dict[str, Any],
+                           progress: Any) -> dict[str, Any]:
+        """剪映出片：把「人点完导出」之后的产物绑到本任务并体检。
+
+        默认不动 GUI——剪映的导出面板必须真人点（Qt 控件对 AXPress 无效），
+        没有 allowGui=true 时这里只回报「排队等人工导出」，不假装自己导出了。
+        带 allowGui=true 才驱动 export/jianying_export.py，且导出端本身要求
+        用户空闲（等不到就退 9），绝不为了跑任务把用户正在打字的鼠标挪走。
+        """
+        run_id = payload.get("runId") or ""
+        revision = int(payload.get("revision") or 1)
+        draft_path = str(payload.get("draftPath") or payload.get("draft_path") or "")
+        platform = str(payload.get("platform") or "douyin")
+        outdir = str(payload.get("outdir") or (STUDIO_HOME / "out"))
+        base = {
+            "jobId": job_id, "runId": run_id, "revision": revision,
+            "platform": platform, "draftPath": draft_path or None,
+        }
+        if not payload.get("allowGui"):
+            # 明确不替你动鼠标：把活留在队列里，等人工在剪映点导出。
+            return dict(base, **{
+                "stage": "awaiting_manual_export",
+                "reasonCode": "export_needs_manual_gui",
+                "output": {"videoPath": None, "requiresManualExport": True},
+                "expectedOutputDir": str(Path(outdir) / job_id / f"r{revision}"),
+                "note": ("macOS 上剪映只能人工点导出。导出后带 allowGui=true 再跑一次本任务，"
+                         "产物会绑到 out/<jobId>/r<rev>/ 并做体检。"),
+            })
+
+        if not draft_path:
+            raise JianyingError("jianying_export 需要 draftPath（草稿目录），不猜最新草稿")
+
+        progress(20, "jianying:export")
+        script = Path(__file__).with_name("export") / "jianying_export.py"
+        argv = [
+            sys.executable, str(script),
+            "--job-id", job_id,
+            "--revision", str(revision),
+            "--platform", platform,
+            "--outdir", outdir,
+            "--draft-path", draft_path,
+            "--wait-idle", str(float(payload.get("waitIdle") or 30.0)),
+            "--timeout", str(int(payload.get("exportTimeout") or 900)),
+        ]
+        if payload.get("canvas"):
+            argv += ["--canvas", str(payload["canvas"])]
+        if payload.get("allowAspectMismatch"):
+            argv.append("--allow-aspect-mismatch")
+        try:
+            proc = subprocess.run(argv, capture_output=True, text=True, timeout=1800)
+        except subprocess.TimeoutExpired:
+            raise JianyingError(f"导出进程 1800s 没结束（{script}）")
+        tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-1200:]
+        code = proc.returncode
+        if code == 0:
+            final_dir = Path(outdir) / job_id / f"r{revision}"
+            made = sorted(final_dir.glob("*")) if final_dir.is_dir() else []
+            video = next((str(f) for f in made if f.suffix.lower() in (".mp4", ".mov")), None)
+            if not video:
+                raise JianyingError(f"导出进程返回 0 但 {final_dir} 里没有产物")
+            return dict(base, **{
+                "stage": "exported",
+                "output": {"videoPath": video, "requiresManualExport": False},
+                "videoPath": video,
+                "log": tail,
+            })
+        if code == 9:
+            # 用户一直在用机器：排队，不是失败
+            return dict(base, **{
+                "stage": "awaiting_manual_export",
+                "reasonCode": "export_user_busy",
+                "output": {"videoPath": None, "requiresManualExport": True},
+                "note": "用户在忙，这轮没动鼠标；等下一轮或人工点导出。",
+                "log": tail,
+            })
+        codes = {2: "export_invalid_profile", 3: "export_param_not_applied",
+                 4: "export_panel_unavailable", 5: "export_timeout",
+                 6: "export_probe_failed", 7: "export_aspect_mismatch",
+                 8: "export_output_exists", 10: "export_ambiguous_output",
+                 11: "export_draft_revision_mismatch"}
+        raise JianyingError(reason_text(codes.get(code, "jianying_export_failed"),
+                                        f"导出失败 rc={code}: {tail}"))
 
     def do_slides(self, job_id: str, payload: dict[str, Any],
                   progress: Any) -> dict[str, Any]:

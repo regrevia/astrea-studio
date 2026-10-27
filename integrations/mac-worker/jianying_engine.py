@@ -47,6 +47,9 @@ VCUT_BASE = f"http://127.0.0.1:{VCUT_PORT}"
 
 DRAFT_ROOT = HOME / "Movies" / "JianyingPro" / "User Data" / "Projects" / "com.lveditor.draft"
 
+# 出片侧靠这个版本号判断「草稿是哪个适配器写的」，语义变了必须加一
+ADAPTER_VERSION = "jianying-engine/2"
+
 
 # ---------------------------------------------------------------- HTTP 层
 
@@ -111,35 +114,85 @@ def ensure_service() -> None:
 
 # ---------------------------------------------------------------- 草稿部署
 
-def _deploy(draft_dir: Path, project_name: str) -> Path:
-    """把 VectCutAPI 产出的草稿拷进剪映草稿根目录（macOS 无 auto_deploy）。"""
+def _deploy(draft_dir: Path, project_name: str,
+            sidecar_extra: dict[str, Any] | None = None,
+            allow_overwrite: bool = False) -> Path:
+    """把 VectCutAPI 产出的草稿拷进剪映草稿根目录（macOS 无 auto_deploy）。
+
+    **修订版必须落独立目录。** 旧实现是同名目录先 rename 成 `.bak` 再 copytree，
+    等于把用户正在剪映里编辑的那份草稿整目录搬走——草稿列表里的条目会变成
+    另一条片的时间线，正在手工调整的字幕/转场全部丢失。现在默认不覆盖：
+    目录已存在就追加 `__v1/__v2…` 另起一个，冲突只增不毁；只有显式
+    `allow_overwrite=True`（人工修草稿）才走原来的 rename 路径。
+    """
     DRAFT_ROOT.mkdir(parents=True, exist_ok=True)
     dest = DRAFT_ROOT / project_name
-    if dest.exists():
+    if dest.exists() and not allow_overwrite:
+        for n in range(1, 100):
+            cand = DRAFT_ROOT / f"{project_name}__v{n}"
+            if not cand.exists():
+                dest = cand
+                break
+        else:
+            raise JianyingError(f"草稿目录重名过多，无法为新修订版分配独立目录: {project_name}")
+    elif dest.exists():
         backup = dest.with_suffix(dest.suffix + ".bak")
         if backup.exists():
             shutil.rmtree(backup, ignore_errors=True)
         dest.rename(backup)
     shutil.copytree(draft_dir, dest)
 
+    deployed_name = dest.name
     meta_path = dest / "draft_meta_info.json"
     if meta_path.exists():
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        meta["draft_name"] = project_name
+        meta["draft_name"] = deployed_name
         meta["draft_fold_path"] = str(dest)
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-    _normalize_draft(dest, project_name)
-    _write_export_sidecar(dest, project_name)
+    _normalize_draft(dest, deployed_name)
+    _write_export_sidecar(dest, deployed_name, extra=sidecar_extra)
     os.utime(dest, None)
     return dest
 
 
-def _write_export_sidecar(dest: Path, project_name: str) -> dict[str, Any]:
+# 导出端读的必须字段：缺一个就无法把产物绑到任务/修订版，宁可写盘时就炸。
+SIDECAR_REQUIRED = ("runId", "revision", "draftId", "sourceSpecHash", "appBuild",
+                    "adapterVersion", "expectedCanvas", "expectedDuration")
+
+
+def _sidecar_extra(payload: dict[str, Any], spec: dict[str, Any],
+                   built: dict[str, Any]) -> dict[str, Any]:
+    """草稿的修订版身份：写盘那一刻定死，导出端只认这份，不靠目录名猜。"""
+    run_id = str(payload.get("runId") or "")
+    raw_rev = str(payload.get("revision") or "").strip()
+    revision = int(raw_rev) if raw_rev.isdigit() else None
+    return {
+        "runId": run_id or None,
+        "revision": revision,
+        "draftId": built.get("draft_id"),
+        "sourceSpecHash": _spec_hash(spec),
+        "appBuild": payload.get("appBuild") or None,
+        "adapterVersion": ADAPTER_VERSION,
+        "expectedCanvas": {"width": int(spec.get("width") or 1920),
+                           "height": int(spec.get("height") or 1080)},
+        "expectedDuration": round(float(built.get("duration") or 0.0), 3),
+        "capabilities": (built.get("report") or {}).get("counts") or {},
+        # 草稿是中间态：导出端据此知道 videoPath 还不存在
+        "intermediate": True,
+    }
+
+
+def _write_export_sidecar(dest: Path, project_name: str,
+                          extra: dict[str, Any] | None = None) -> dict[str, Any]:
     """把"这次草稿是什么规格"写到草稿目录，给导出环节当唯一可信来源。
 
     为什么需要：剪映 11.6 **保存后会把 draft_info.json 加密**（实测 draft_info.json
     首字节变成 `GGHbtvxhfjg...` 这种密文），所以导出时读不到画布尺寸/时长。
     我们自己的规格必须在写明文的那一刻就落盘。
+
+    `extra` 带修订版身份（runId / revision / draftId / sourceSpecHash …），
+    导出端只认这份 sidecar：草稿目录名可能因为重名被改成 `__v1`，
+    而 runId+revision 不会因为目录改名而对不上。
     """
     side: dict[str, Any] = {"project": project_name, "engine": "jianying",
                             "written_at": time.strftime("%Y-%m-%dT%H:%M:%S")}
@@ -158,6 +211,17 @@ def _write_export_sidecar(dest: Path, project_name: str) -> dict[str, Any]:
     side["tracks"] = len(data.get("tracks") or [])
     side["materials"] = {k: len(v) for k, v in (data.get("materials") or {}).items()
                          if isinstance(v, list) and v}
+    if extra:
+        missing = [k for k in SIDECAR_REQUIRED if extra.get(k) in (None, "", {})]
+        # runId/appBuild 允许为空（本地复跑没有这些），但键必须存在：
+        # 键都没有说明调用方根本没打算绑定任务，那就别写出一个看着像成功的 sidecar
+        absent = [k for k in SIDECAR_REQUIRED if k not in extra]
+        if absent:
+            raise JianyingError(f"sidecar 缺字段 {absent}：导出端无法把产物绑到任务")
+    # 修订版身份最后覆盖：它是导出端绑定任务的钥匙，不能被推导值盖掉
+    for key, value in (extra or {}).items():
+        if value is not None:
+            side[key] = value
     (dest / "studio_export_meta.json").write_text(
         json.dumps(side, ensure_ascii=False, indent=2), encoding="utf-8")
     return side
@@ -623,6 +687,263 @@ def _as_list(value: Any) -> list[Any]:
     return list(value) if isinstance(value, (list, tuple)) else [value]
 
 
+# ------------------------------------------------------- 素材探测 / 能力账本
+
+_PROBE_CACHE: dict[str, dict[str, Any]] = {}
+
+
+def _spec_hash(spec: dict[str, Any]) -> str:
+    """spec 的稳定指纹：导出端用它判断「这条片子的草稿是不是同一份 spec 写的」。
+
+    只取指纹不存原文——剪映存盘后 draft_info.json 被加密，事后无法回读。
+    """
+    blob = json.dumps(spec, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
+def _media_path(value: Any) -> str:
+    """片段来源既可能是路径字符串，也可能是 {path, sourceIn, speed, fit} 字典。"""
+    if isinstance(value, dict):
+        for key in ("path", "file", "uri", "url", "src"):
+            if value.get(key):
+                return str(value[key])
+        return ""
+    return str(value or "")
+
+
+def _probe_media(path: Path) -> dict[str, Any]:
+    """ffprobe 读视频真实尺寸/时长；读不到就抛，绝不拿 0 当已知去铺轨。
+
+    为什么要单独一条：旧主路径只认图片，视频参数（sourceIn/sourceOut/speed/fit）
+    全都没落地；而 fit 需要真实像素尺寸，猜错就是整屏变形。
+    """
+    key = str(path)
+    if key in _PROBE_CACHE:
+        return _PROBE_CACHE[key]
+    try:
+        proc = subprocess.run(
+            ["ffprobe", "-v", "error", "-print_format", "json",
+             "-show_format", "-show_streams", key],
+            capture_output=True, text=True, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise JianyingError(f"ffprobe 无法执行: {exc}") from None
+    if proc.returncode != 0:
+        raise JianyingError(
+            f"ffprobe 失败(exit {proc.returncode}): {(proc.stderr or '').strip()[:200]}")
+    try:
+        data = json.loads(proc.stdout or "{}")
+    except json.JSONDecodeError as exc:
+        raise JianyingError(f"ffprobe 输出不是 JSON: {exc}") from None
+    streams = data.get("streams") or []
+    fmt = data.get("format") or {}
+    video = next((s for s in streams if s.get("codec_type") == "video"), None)
+    if not video:
+        raise JianyingError(f"不是视频（没有 video 流）: {path}")
+    try:
+        duration = float(fmt.get("duration") or video.get("duration") or 0)
+    except (TypeError, ValueError):
+        duration = 0.0
+    if duration <= 0:
+        raise JianyingError(f"读不到视频时长: {path}")
+    out = {"path": key, "duration": duration,
+           "width": int(video.get("width") or 0),
+           "height": int(video.get("height") or 0),
+           "has_audio": any(s.get("codec_type") == "audio" for s in streams)}
+    _PROBE_CACHE[key] = out
+    return out
+
+
+def _fit_scale(fit: Any, src_w: int, src_h: int, canvas_w: int, canvas_h: int,
+               scene_idx: int) -> tuple[float, float]:
+    """fit → 片段缩放：cover 填满并裁切 / contain 完整含进 / stretch 拉伸 / original 原尺寸。"""
+    name = str(fit or "cover").strip().lower()
+    if name in ("original", "none", "1:1"):
+        return 1.0, 1.0
+    if not (src_w and src_h and canvas_w and canvas_h):
+        raise JianyingError(f"scene {scene_idx}: 素材或画布尺寸未知，算不出 fit={fit}")
+    sx, sy = canvas_w / src_w, canvas_h / src_h
+    if name in ("stretch", "fill", "拉伸"):
+        return round(sx, 4), round(sy, 4)
+    if name in ("contain", "fit", "完整"):
+        k = min(sx, sy)
+        return round(k, 4), round(k, 4)
+    if name in ("cover", "crop", "裁切"):
+        k = max(sx, sy)
+        return round(k, 4), round(k, 4)
+    raise JianyingError(f"scene {scene_idx}: 不认识的 fit={fit}（cover/contain/stretch/original）")
+
+
+def _empty_report() -> dict[str, Any]:
+    """原生能力账本：每一件"想用但没用上"的东西都必须落进四类之一。
+
+    旧实现把所有失败 append 进 `stats.skipped`，然后照样返回成功——调用方看到
+    `stats` 只会以为"转场/特效/字体都上了"，实际上可能一个都没上。
+    """
+    return {"applied": [], "unsupported": [], "missing": [], "requires_user": []}
+
+
+def _note(report: dict[str, Any], bucket: str, kind: str, value: Any,
+          scene: int | None = None, reason: str = "", **extra: Any) -> dict[str, Any]:
+    row: dict[str, Any] = {"kind": kind, "value": value, "reason": reason}
+    if scene is not None:
+        row["scene"] = scene
+    row.update(extra)
+    report[bucket].append(row)
+    return row
+
+
+def _finalize_report(report: dict[str, Any]) -> dict[str, Any]:
+    counts = {bucket: len(rows) for bucket, rows in report.items()}
+    report["counts"] = counts
+    # ok=False 表示这条草稿**缺东西**，调用方不能把它当"全部生效"往上报
+    report["ok"] = not counts["unsupported"] and not counts["missing"]
+    report["complete"] = not (counts["unsupported"] or counts["missing"]
+                             or counts["requires_user"])
+    return report
+
+
+def _audio_track_specs(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    """把 spec 里各种写法的音轨收成统一结构，一条规格 = 一条独立轨道。"""
+    rows: list[dict[str, Any]] = []
+
+    def add(value: Any, kind: str, **defaults: Any) -> None:
+        for item in _as_list(value):
+            if not item:
+                continue
+            row = dict(defaults)
+            if isinstance(item, dict):
+                row.update({k: v for k, v in item.items() if v is not None})
+            row["path"] = _media_path(item)
+            if not row["path"]:
+                continue
+            row["kind"] = str(row.get("kind") or kind)
+            rows.append(row)
+
+    add(spec.get("audioTracks"), "voiceover")
+    add(spec.get("bgm"), "bgm", loop=True, volume=0.35)
+    add(spec.get("voiceover") if spec.get("voiceover") is not None
+        else spec.get("narrationAudio"), "voiceover")
+    return rows
+
+
+def _add_audio_tracks(spec: dict[str, Any], draft_id: str, total: float,
+                      stats: dict[str, Any], report: dict[str, Any]) -> float:
+    """铺独立音轨（旁白 / BGM）：每条 track_name 不同，谁也不挤占谁的轨。
+
+    旧主路径只有每屏一条配音，BGM 无处可放；且失败一律静默。
+    """
+    end = total
+    for row in _audio_track_specs(spec):
+        path = Path(str(row["path"])).expanduser()
+        kind = str(row.get("kind") or "voiceover")
+        track = str(row.get("track") or row.get("trackName")
+                    or ("audio_bgm" if kind == "bgm" else "audio_vo"))
+        if not path.exists():
+            _note(report, "missing", f"audio:{kind}", str(path), None,
+                  "音轨文件不存在，这一轨没有进草稿")
+            continue
+        length = _dur(path)
+        if length <= 0:
+            _note(report, "unsupported", f"audio:{kind}", str(path), None,
+                  "ffprobe 读不到时长，不按猜测的时长铺轨")
+            continue
+        try:
+            volume = float(row.get("volume", 0.35 if kind == "bgm" else 1.0))
+            speed = float(row.get("speed") or 1.0)
+            if speed <= 0:
+                raise ValueError(f"speed 必须 > 0，拿到 {speed}")
+            start = float(row.get("start") or 0.0)
+            src_in = float(row.get("sourceIn") or 0.0)
+            src_out = min(float(row.get("sourceOut") or length), length)
+            seg_src = (src_out - src_in) / speed
+            if seg_src <= 0.05:
+                raise ValueError(f"可用片段只有 {seg_src:.2f}s")
+            loop = bool(row.get("loop", kind == "bgm"))
+            covered = 0.0
+            pieces = 0
+            while True:
+                left = max(0.0, total - start - covered)
+                seg = min(seg_src, left) if loop else seg_src
+                if seg <= 0.05:
+                    break
+                _post("/add_audio", {
+                    "draft_id": draft_id,
+                    "audio_url": str(path),
+                    "start": round(src_in, 3),
+                    "end": round(src_in + seg * speed, 3),
+                    "target_start": round(start + covered, 3),
+                    "duration": round(seg, 3),
+                    "speed": speed,
+                    "volume": volume,
+                    "track_name": track,
+                })
+                pieces += 1
+                covered += seg
+                stats["audios"] += 1
+                if not loop:
+                    break
+            if pieces == 0:
+                raise ValueError(f"起播点 {start:.2f}s 已经超出片长 {total:.2f}s")
+            stats["audio_tracks"] += 1
+            end = max(end, start + covered)
+            _note(report, "applied", f"audio:{kind}", str(path), None,
+                  f"{pieces} 段 / 共 {covered:.2f}s / 轨 {track}",
+                  track=track, segments=pieces, seconds=round(covered, 3),
+                  volume=volume, loop=loop)
+        except Exception as exc:  # noqa: BLE001 - 单轨失败不能毁掉整条草稿
+            _note(report, "unsupported", f"audio:{kind}", str(path), None,
+                  str(exc)[:200])
+    return end
+
+
+FIT_NAMES = ("cover", "contain", "stretch", "original")
+
+
+def _scene_video_clips(scene: dict[str, Any], native: dict[str, Any],
+                       spec: dict[str, Any], idx: int, job_dir: Path) -> list[dict[str, Any]]:
+    """解析这一屏的视频片段，字段与 export/timeline_render.py 的 `video[]` 对齐：
+    `src` / `in` / `out` / `fit` / `speed`（`out` 可省，省了按本屏目标时长推）。
+
+    顶层 `spec["video"]` 只有在条数与 `scenes` 完全一致时才按序号对应——
+    条数不符就说明对不上字幕/配音，宁可报错也不猜。
+    """
+    raw = scene.get("video") or native.get("video")
+    if not raw and isinstance(spec.get("video"), list):
+        top = spec["video"]
+        if len(top) == len(spec.get("scenes") or []):
+            raw = top[idx]
+    clips: list[dict[str, Any]] = []
+    for cidx, item in enumerate(_as_list(raw)):
+        if isinstance(item, dict):
+            src = str(item.get("src") or _media_path(item))
+            src_in = float(item.get("in") or 0.0)
+            out = item.get("out")
+            out = float(out) if out is not None else None
+            fit = str(item.get("fit") or "cover").strip().lower()
+            speed = float(item.get("speed") or 1.0)
+            track = str(item.get("track") or "video_main")
+        else:
+            src, src_in, out, fit, speed, track = _media_path(item), 0.0, None, "cover", 1.0, "video_main"
+        if not src:
+            raise JianyingError(f"scene {idx} video[{cidx}]: 缺 src")
+        if fit not in FIT_NAMES:
+            raise JianyingError(f"scene {idx} video[{cidx}]: fit 只能是 {FIT_NAMES}，得到 {fit!r}")
+        if speed <= 0:
+            raise JianyingError(f"scene {idx} video[{cidx}]: speed 必须 > 0，得到 {speed}")
+        if out is not None and out <= src_in:
+            raise JianyingError(
+                f"scene {idx} video[{cidx}]: out({out}) 必须大于 in({src_in})")
+        path = Path(src).expanduser()
+        if not path.is_absolute():
+            path = (job_dir / path)
+        if not path.is_file():
+            raise JianyingError(f"scene {idx} video[{cidx}] 素材不存在: {path}")
+        clips.append({"src": path, "in": src_in, "out": out, "fit": fit,
+                      "speed": speed, "track": track})
+    return clips
+
+
 def build_timeline(spec: dict[str, Any], job_dir: Path,
                    say: Callable[[int, str], None]) -> dict[str, Any]:
     """spec → {draft_id, duration, stats}。四层轨道：画面 / 文字 / 特效 / 配音。
@@ -662,22 +983,131 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                 # 有配音时以配音为准：画面比声音长就变成「话讲完了画面还杵着」，
                 # 每屏多停 0.3~1.3 秒，整片就出 PPT 感。只留一点收尾气口。
                 dur = max(1.6, min(9.0, _dur(audio) + 0.18))
-        plan.append({"scene": scene, "native": native, "duration": dur, "audio": audio})
+        # 显式时长 > 配音实测 > 字数估算；素材随 spec 走，不让 TTS 反推镜头长度
+        if native.get("duration") or scene.get("duration"):
+            dur = float(native.get("duration") or scene.get("duration"))
+        clips = _scene_video_clips(scene, native, spec, idx, job_dir)
+        plan.append({"scene": scene, "native": native, "duration": dur,
+                     "audio": audio, "clips": clips})
 
     total = 0.0
     stats = {"images": 0, "texts": 0, "effects": 0, "audios": 0,
              "transitions": 0, "text_anims": 0, "fonts": 0, "keyframes": 0,
-             "characters": 0, "skipped": []}
+             "characters": 0, "videos": 0, "audio_tracks": 0, "subtitles": 0}
+    # 原生资源账本：apply/unsupported/missing/requires_user 四类，不再有 stats.skipped
+    report = _empty_report()
     for idx, item in enumerate(plan):
         scene, native = item["scene"], item["native"]
         dur = item["duration"]
         say(35 + int(55 * idx / max(1, len(plan))),
             f"jianying:scene{idx + 1}/{len(plan)}")
 
-        # ---- 1) 画面轨：图片片段（转场只能挂在片段上，挂不到文字上）
+        # ---- 1) 画面轨：视频优先（有视频就不用静帧），其次图片
+        # 转场只能挂在片段上，挂不到文字上。
+        placed = 0.0
+        clips = item.get("clips") or []
+        for cidx, clip_src in enumerate(clips):
+            if dur - placed <= 0.04:
+                break
+            try:
+                probe = _probe_media(clip_src["src"])
+            except JianyingError as exc:
+                _note(report, "unsupported", "video", str(clip_src["src"]), idx,
+                      f"{exc}（这一片段没进草稿）")
+                continue
+            speed = float(clip_src["speed"] or 1.0)
+            src_in = float(clip_src["in"])
+            limit = min(clip_src["out"] if clip_src["out"] is not None
+                        else probe["duration"], probe["duration"])
+            if src_in >= limit - 0.04:
+                _note(report, "unsupported", "video", str(clip_src["src"]), idx,
+                      f"in={src_in:.3f}s 超出素材可用范围 {limit:.3f}s")
+                continue
+            seg = min(dur - placed, (limit - src_in) / speed)
+            scale_x, scale_y = _fit_scale(clip_src["fit"], probe["width"],
+                                          probe["height"], width, height, idx)
+            body: dict[str, Any] = {
+                "draft_id": draft_id,
+                "video_url": str(clip_src["src"]),
+                "start": round(src_in, 3),
+                # add_video 的语义：end 是**源**时间（秒），不是目标时长
+                "end": round(src_in + seg * speed, 3),
+                "target_start": round(total + placed, 3),
+                "duration": round(seg, 3),
+                "speed": speed,
+                "width": width,
+                "height": height,
+                "scale_x": scale_x,
+                "scale_y": scale_y,
+                "track_name": clip_src["track"],
+                "volume": float(scene.get("volume", 1.0)),
+            }
+            transition = _pick(native.get("transition_in"), "transitions")
+            if transition and cidx == 0 and idx < len(plan) - 1:
+                td = float(native.get("transition_duration") or 0.6)
+                if seg < 2.6:
+                    td = min(td, 0.45)
+                body["transition"] = transition
+                body["transition_duration"] = td
+                stats["transitions"] += 1
+            _post("/add_video", body)
+            stats["videos"] += 1
+            placed += seg
+            _note(report, "applied", "video", str(clip_src["src"]), idx,
+                  f"{probe['width']}x{probe['height']} 源 {src_in:.2f}→{src_in + seg * speed:.2f}s"
+                  f" 目标 {seg:.2f}s speed={speed:g} fit={clip_src['fit']}",
+                  sourceIn=round(src_in, 3),
+                  sourceOut=round(src_in + seg * speed, 3),
+                  targetStart=round(total, 3), targetDuration=round(seg, 3),
+                  speed=speed, fit=clip_src["fit"], track=clip_src["track"],
+                  scale=[scale_x, scale_y])
+
+        # 素材比这一屏短：把最后一段再铺一次填满，避免后面的字幕压在空白上
+        guard = 0
+        while clips and placed > 0.04 and dur - placed > 0.05 and guard < 4:
+            guard += 1
+            last = clips[-1]
+            probe = _PROBE_CACHE.get(str(last["src"])) or {}
+            if not probe:
+                break
+            speed = float(last["speed"] or 1.0)
+            src_in = float(last["in"])
+            limit = min(last["out"] if last["out"] is not None else probe["duration"],
+                        probe["duration"])
+            seg = min(dur - placed, max(0.0, (limit - src_in) / speed))
+            if seg <= 0.04:
+                _note(report, "requires_user", "video:fill", str(last["src"]), idx,
+                      f"片尾还差 {dur - placed:.2f}s，素材已无可复用片段，请人工补镜")
+                break
+            sx, sy = _fit_scale(last["fit"], probe["width"], probe["height"],
+                                width, height, idx)
+            _post("/add_video", {
+                "draft_id": draft_id,
+                "video_url": str(last["src"]),
+                "start": round(src_in, 3),
+                "end": round(src_in + seg * speed, 3),
+                "target_start": round(total + placed, 3),
+                "duration": round(seg, 3),
+                "speed": speed,
+                "width": width, "height": height,
+                "scale_x": sx, "scale_y": sy,
+                "track_name": last["track"],
+            })
+            stats["videos"] += 1
+            placed += seg
+            _note(report, "applied", "video:fill", str(last["src"]), idx,
+                  f"复用最后一段补 {seg:.2f}s", segments=1, seconds=round(seg, 3))
+        if clips:
+            dur = max(dur, placed)
+
         image = scene.get("image") or native.get("image")
-        if image:
-            img = Path(str(image)).expanduser()
+        if image and placed <= 0.04:
+            img = Path(_media_path(image)).expanduser()
+            if not img.is_absolute():
+                img = (job_dir / img)
+            if not img.exists():
+                _note(report, "missing", "image", str(img), idx,
+                      "图片文件不存在，这一屏没有画面")
             if img.exists():
                 clip: dict[str, Any] = {
                     "draft_id": draft_id,
@@ -709,6 +1139,8 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                         native.get("image_anim_out_duration") or 0.5)
                 _post("/add_image", clip)
                 stats["images"] += 1
+                _note(report, "applied", "image", str(img), idx,
+                      f"静帧 {dur:.2f}s", seconds=round(dur, 3))
 
                 # 缓慢推/拉（Ken Burns）：静态卡最容易显得"PPT"，
                 # 关键帧在 VectCutAPI 里按绝对时间命中片段，所以这里用本屏的起止。
@@ -731,7 +1163,8 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                         })
                         stats["keyframes"] += 1
                     except Exception as exc:  # noqa: BLE001 - 关键帧失败不该毁掉整条片
-                        stats["skipped"].append(f"keyframe: {exc}")
+                        _note(report, "unsupported", "keyframe", "uniform_scale", idx,
+                              f"推拉关键帧没写进草稿: {exc}")
 
         # ---- 1.5) 角色轨：鲸鱼娘常驻右下，跟这屏口播一起呼吸
         char_cfg = _character_config(spec)
@@ -760,7 +1193,8 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                     png = _character_frame(char_cfg, idx, len(plan), job_dir, width, height,
                                            speaking, scene, use_pose, mouth)
                 except Exception as exc:  # noqa: BLE001 - 角色贴不上不该毁掉整条片
-                    stats["skipped"].append(f"character: {exc}")
+                    _note(report, "unsupported", "character", "鲸鱼娘", idx,
+                          f"角色帧生成失败: {exc}")
                     continue
                 if not png:
                     continue
@@ -802,7 +1236,8 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                     _post("/add_image", cclip)
                     clips += 1
                 except Exception as exc:  # noqa: BLE001
-                    stats["skipped"].append(f"character_clip: {exc}")
+                    _note(report, "unsupported", "character_clip", "鲸鱼娘", idx,
+                              f"角色片段没进草稿: {exc}")
             stats["characters"] += clips
             stats.setdefault("poses", []).append(
                 f"{idx}:{pose}" + (f"→{alt_pose}" if alt_pose else ""))
@@ -830,7 +1265,8 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
                         })
                         stats["keyframes"] += 1
                     except Exception as exc:  # noqa: BLE001
-                        stats["skipped"].append(f"char_keyframe({prop}): {exc}")
+                        _note(report, "unsupported", "character_keyframe", prop, idx,
+                                f"{prop} 关键帧没写进草稿: {exc}")
 
         # ---- 2) 文字轨：主文案（VIP 字体 + 入场/出场动画）+ 可选逐句字幕
         # no_text：正文已经烧进卡面，再叠一轨就是重影（收尾卡就是这样）
@@ -889,6 +1325,9 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
             }
             for chunk, span in zip(chunks, _caption_spans(chunks, total, dur)):
                 blocks.append({"text": chunk, "_span": span, **base})
+            stats["subtitles"] += len(chunks)
+            _note(report, "applied", "subtitle", base["track_name"], idx,
+                  f"逐句字幕 {len(chunks)} 条", segments=len(chunks))
         for body in blocks:
             span = body.pop("_span", None) or (total, total + dur)
             payload = {"draft_id": draft_id, "start": span[0], "end": span[1], **body}
@@ -899,34 +1338,60 @@ def build_timeline(spec: dict[str, Any], job_dir: Path,
         for eff in _as_list(native.get("effect")):
             effect_type = _pick(eff, "video_scene_effects")
             if not effect_type:
-                # 静默丢弃最坑：目录里没有的名字要能在 stats 里看见
-                stats["skipped"].append(f"effect: {eff}")
+                _note(report, "unsupported", "effect", eff, idx,
+                      "本机特效目录里没有这个名字，没进草稿")
                 continue
-            _post("/add_effect", {
-                "draft_id": draft_id,
-                "effect_type": effect_type,
-                "effect_category": str(native.get("effect_category") or "scene"),
-                "start": total,
-                "end": total + dur,
-                "width": width,
-                "height": height,
-            })
-            stats["effects"] += 1
+            try:
+                _post("/add_effect", {
+                    "draft_id": draft_id,
+                    "effect_type": effect_type,
+                    "effect_category": str(native.get("effect_category") or "scene"),
+                    "start": total,
+                    "end": total + dur,
+                    "width": width,
+                    "height": height,
+                })
+                stats["effects"] += 1
+                _note(report, "applied", "effect", effect_type, idx,
+                      f"氛围特效 {dur:.2f}s", seconds=round(dur, 3))
+            except Exception as exc:  # noqa: BLE001 - 单个特效失败不该毁掉整条片
+                _note(report, "unsupported", "effect", eff, idx,
+                      f"调用 /add_effect 失败: {exc}"[:200])
 
-        # ---- 4) 配音轨（剪映音色）
+        # ---- 3.5) 滤镜：pyJianYingDraft 有 add_filter，但 VectCutAPI 没有 /add_filter
+        for want in _as_list(native.get("filter")):
+            name = _pick(want, "filters")
+            _note(report, "unsupported", "filter", name or want, idx,
+                  "VectCutAPI 未暴露 /add_filter，HTTP 这边落不进草稿；"
+                  "pyJianYingDraft 的 script.add_filter 可用，缺的是服务端路由",
+                  endpoint="/add_filter", fallback="manual")
+
+        # ---- 4) 配音轨（剪映音色）—— 每屏一条，与 BGM 分轨
         audio = item["audio"]
         if audio:
-            _post("/add_audio", {
-                "draft_id": draft_id,
-                "audio_url": str(audio),
-                "target_start": total,
-                "volume": float(native.get("volume") or 1.0),
-            })
-            stats["audios"] += 1
+            try:
+                _post("/add_audio", {
+                    "draft_id": draft_id,
+                    "audio_url": str(audio),
+                    "target_start": total,
+                    "duration": round(dur, 3),
+                    "volume": float(native.get("volume") or 1.0),
+                    "track_name": "audio_main",
+                })
+                stats["audios"] += 1
+                _note(report, "applied", "audio:narration", str(audio), idx,
+                      f"配音 {dur:.2f}s", track="audio_main", seconds=round(dur, 3))
+            except Exception as exc:  # noqa: BLE001
+                _note(report, "unsupported", "audio:narration", str(audio), idx,
+                      f"配音没进草稿: {exc}"[:200])
 
         total += dur
 
-    return {"draft_id": draft_id, "duration": total, "stats": stats}
+    # ---- 5) 独立音轨：BGM / 外围旁白（每轨一个 track_name，互不挤占）
+    total = _add_audio_tracks(spec, draft_id, total, stats, report)
+    _finalize_report(report)
+    return {"draft_id": draft_id, "duration": total, "stats": stats,
+            "report": report, "ok": report["ok"]}
 
 
 _CHARACTERS_ROOT = Path("~/CreatorStudio/state/characters").expanduser()
@@ -1414,7 +1879,12 @@ def render_jianying(payload: dict[str, Any], job_dir: Path,
     say(75, "jianying:save")
     # 别截断 job_id：并发提交的 runId 只有尾部几位不同，砍掉就撞名，
     # 三份草稿会互相覆盖，最后谁后写谁的内容留在盘上。
-    name = payload.get("draftName") or f"studio_{job_dir.name}"
+    run_id = str(payload.get("runId") or "")
+    raw_rev = str(payload.get("revision") or "").strip()
+    revision = int(raw_rev) if raw_rev.isdigit() else None
+    base_name = str(payload.get("draftName") or f"studio_{job_dir.name}")
+    # 修订版必须落在自己的名字下：重交一版不能把上一版草稿替换掉
+    name = f"{base_name}__r{revision}" if revision else base_name
     saved = _post("/save_draft", {
         "draft_id": built["draft_id"],
         "project_name": name,
@@ -1426,7 +1896,10 @@ def render_jianying(payload: dict[str, Any], job_dir: Path,
         raise JianyingError(f"save_draft produced no folder: {saved}")
 
     say(90, "jianying:deploy")
-    dest = _deploy(src, name)
+    # 草稿存盘后 draft_info.json 被剪映加密，spec 真相只能写盘时落进 sidecar；
+    # 修订版身份一并带上，导出端据此绑定任务，不靠文件名猜。
+    sidecar_extra = _sidecar_extra(payload, spec, built)
+    dest = _deploy(src, name, sidecar_extra=sidecar_extra)
     say(96, "jianying:copy-check")
     # 文案体检：只提示不改稿，让写稿的人自己决定要不要动。
     copy_report = None
@@ -1455,12 +1928,23 @@ def render_jianying(payload: dict[str, Any], job_dir: Path,
         copy_report = {"findings": [], "metrics": {}, "ok": True, "error": str(exc)[:160]}
 
     say(100, "jianying:done")
+    report = built.get("report") or {}
     return {
         "draftPath": str(dest),
         "draftName": name,
+        "draftId": built["draft_id"],
+        "runId": run_id or None,
+        "revision": revision,
+        "sourceSpecHash": sidecar_extra["sourceSpecHash"],
+        "adapterVersion": ADAPTER_VERSION,
+        "expectedDuration": sidecar_extra["expectedDuration"],
         "duration": built["duration"],
         "stats": built.get("stats") or {},
+        "report": report,
+        "capabilities": report.get("counts") or {},
         "copyCheck": copy_report,
+        # 草稿就绪只是中间态：成片要等导出，不要把 draftPath 当成 videoPath 回传
+        "stage": "draft_ready",
         "output": {"videoPath": None, "requiresManualExport": True},
         "note": "草稿已就绪。macOS 无法自动导出，请在剪映打开草稿并点导出。",
     }

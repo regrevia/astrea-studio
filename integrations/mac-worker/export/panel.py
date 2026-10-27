@@ -172,7 +172,7 @@ def idle():
 _QUIET = {}
 
 
-def quiet_start(wait_idle=0.0, max_wait=300.0, restore=True):
+def quiet_start(wait_idle=0.0, max_wait=300.0, restore=True, strict=False):
     """GUI 脉冲的"别打扰用户"开关。
 
     做两件事：1) 可选地等用户已经离开（无键鼠输入）wait_idle 秒再动手；
@@ -182,26 +182,40 @@ def quiet_start(wait_idle=0.0, max_wait=300.0, restore=True):
     注意：剪映的 Qt 控件对 AXPress 全部无效、对 CGEvent.postToPid 也不响应，
     所以点击**必须**真的把剪映拿到前台并移动物理光标。这里只能把"打扰时长"
     压到最短（实测整段 12–18s），做不到零打扰。
+
+    返回 False 表示这次不该动 GUI（strict 模式下等不到用户空闲）：调用方应当
+    把任务留在队列里，而不是照样抢前台——G12 就是「等了 300s 没等到，还是把
+    用户正在打字的鼠标挪走了」。同时把「记前台/光标」挪到等待之后，避免把
+    等待前的前台当成用户本来在用的界面。
     """
+    if wait_idle and wait_idle > 0:
+        print("  等待用户空闲 ≥%.0fs 再操作（最多等 %.0fs）…" % (wait_idle, max_wait))
+        deadline = time.time() + max_wait
+        ready = False
+        while time.time() < deadline:
+            try:
+                if idle() >= wait_idle:
+                    ready = True
+                    break
+            except Exception:          # 量不到空闲就别把队列卡死在这里
+                ready = True
+                break
+            time.sleep(0.5)
+        if not ready:
+            if strict:
+                print("  用户一直在用机器，这轮不动鼠标", file=sys.stderr)
+                return False
+            print("  等不到空闲（非 strict，继续）", file=sys.stderr)
+        else:
+            print("  用户已空闲 %.1fs，开始" % idle())
     if restore:
         try:
             _QUIET["front"] = front_pid()
             _QUIET["cursor"] = cursor()
         except Exception:
             pass
-    if wait_idle and wait_idle > 0:
-        print("  等待用户空闲 ≥%.0fs 再操作（最多等 %.0fs）…" % (wait_idle, max_wait))
-        deadline = time.time() + max_wait
-        while time.time() < deadline:
-            try:
-                if idle() >= wait_idle:
-                    break
-            except Exception:
-                break
-            time.sleep(0.5)
-        print("  用户已空闲 %.1fs，开始" % idle())
-    if restore:
         atexit.register(quiet_restore)
+    return True
 
 
 def quiet_restore():

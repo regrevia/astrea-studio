@@ -159,6 +159,24 @@ def open_panel(wait=10.0):
 
 
 # ------------------------------------------------------------------ 画布/档位
+def load_sidecar(draft_dir: str) -> dict:
+    """读建草稿那边写下的 studio_export_meta.json。
+
+    剪映 11.6 存盘后 draft_info.json 是密文，画布/时长/修订版身份只剩 sidecar 这一份；
+    读不到就是没有真相，返回空字典让调用方明确失败，不要退回去猜。
+    """
+    if not draft_dir:
+        return {}
+    path = Path(draft_dir).expanduser() / "studio_export_meta.json"
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def draft_canvas(name: str, explicit: str = ""):
     """草稿画布 (w,h) 及来源。优先 sidecar（剪映保存后草稿 JSON 是密文，读不了）。"""
     if explicit:
@@ -289,11 +307,15 @@ def click_export(rect, prefer_ax=False) -> bool:
     return True
 
 
-def poll_output(since: float, dirs, timeout=600, exts=(".mp4", ".mov")):
-    """轮询导出目录，等一个 mtime>=since 的文件大小稳定下来。"""
+def poll_outputs(since: float, dirs, timeout=600, exts=(".mp4", ".mov")):
+    """轮询导出目录，返回 mtime>=since 且大小已稳定的文件列表。
+
+    只负责「有哪些新文件」，不做「挑最新的那个」——归属由调用方按任务判定：
+    剪映的导出目录是全局共享的，凭 mtime 认领在并发导出时必然拿错片子。
+    """
     deadline = time.time() + timeout
+    seen: dict = {}
     while time.time() < deadline:
-        best = None
         for d in dirs:
             d = Path(d)
             if not d.is_dir():
@@ -301,20 +323,32 @@ def poll_output(since: float, dirs, timeout=600, exts=(".mp4", ".mov")):
             for f in d.iterdir():
                 if f.suffix.lower() not in exts or not f.is_file():
                     continue
-                st = f.stat()
-                if st.st_mtime < since - 1:
+                try:
+                    st = f.stat()
+                except OSError:
                     continue
-                if st.st_size < 1024:
+                if st.st_mtime < since - 1 or st.st_size < 1024:
                     continue
-                if best is None or st.st_mtime > best[0]:
-                    best = (st.st_mtime, f, st.st_size)
-        if best:
-            mtime, f, size = best
+                seen[f] = st.st_size
+        if seen:
             time.sleep(1.2)
-            if f.exists() and f.stat().st_size == size and size > 1024:
-                return f
+            stable = []
+            for f, size in seen.items():
+                try:
+                    if f.exists() and f.stat().st_size == size:
+                        stable.append(f)
+                except OSError:
+                    continue
+            if stable:
+                return sorted(stable)
         time.sleep(1.5)
-    return None
+    return []
+
+
+def poll_output(since: float, dirs, timeout=600, exts=(".mp4", ".mov")):
+    """兼容旧调用：只在恰好一个候选时返回它，多个候选一律当失败（不猜）。"""
+    found = poll_outputs(since, dirs, timeout=timeout, exts=exts)
+    return found[0] if len(found) == 1 else None
 
 
 def ffprobe(path) -> dict:
@@ -342,8 +376,27 @@ def ffprobe(path) -> dict:
     return out
 
 
+PROBE_REQUIRED = ("duration", "width", "height", "fps")
+
+
 def validate(info: dict, expect: dict) -> dict:
-    checks = {}
+    """产出体检：ffprobe 失败、必需字段缺失、检查项为空，三条都算失败。
+
+    旧写法只在 expect 和 info 两边都有值时才建检查，于是
+    `all({}.values())` 恒为 True——ffprobe 崩了、文件是坏包、时长读不出来，
+    全都会被当成「校验通过」放行（G11）。这里先把缺失本身变成检查项。
+    """
+    checks: dict = {}
+    if not info:
+        return {"probe": {"ok": False, "detail": "ffprobe 没有任何输出"}}
+    if info.get("error"):
+        return {"probe": {"ok": False, "detail": "ffprobe 失败: %s" % info["error"]}}
+    for key in PROBE_REQUIRED:
+        val = info.get(key)
+        ok = val is not None and val != "" and float(val) > 0
+        # 全部检查项统一成 (ok, detail) 二元组：混着 dict 写，下面汇总时
+        # 会拿 v[0] 去索引 dict，直接 KeyError: 0 把体检路径炸掉。
+        checks["has_" + key] = (bool(ok), "实测 %r" % (val,))
     if expect.get("duration") and info.get("duration"):
         tol = max(0.4, 2.0 / max(expect.get("fps") or 30, 1))
         checks["duration"] = (abs(info["duration"] - expect["duration"]) <= tol,
@@ -355,7 +408,32 @@ def validate(info: dict, expect: dict) -> dict:
     if expect.get("fps") and info.get("fps"):
         checks["fps"] = (abs(info["fps"] - expect["fps"]) < 0.06,
                          "%.3f vs 期望 %.3f" % (info["fps"], expect["fps"]))
-    return {k: {"ok": v[0], "detail": v[1]} for k, v in checks.items()}
+    out = {}
+    for k, v in checks.items():
+        out[k] = {"ok": bool(v[0]), "detail": v[1]}
+    if not out:
+        return {"probe": {"ok": False, "detail": "没有可用的体检项（元数据和期望都空）"}}
+    return out
+
+
+# ------------------------------------------------------------------ 产物绑定
+def plan_output(job_id: str, revision: int, platform: str, outdir,
+                container: str = "mp4") -> tuple[Path, Path]:
+    """产物落点只由 (jobId, revision, platform) 决定，跟导出目录里有什么文件无关。
+
+    旧实现是「导出完去 ~/Movies 挑最新文件」——并发导出时必然拿错别人的片子，
+    而且重跑一次就把上一版覆盖掉。这里先算死落点，跑完只往这里归位。
+    """
+    out_dir = Path(outdir).expanduser() / str(job_id) / ("r%d" % int(revision))
+    final = out_dir / ("%s__r%d__%s.%s" % (
+        job_id, int(revision), platform or "unknown",
+        str(container or "mp4").lstrip(".")))
+    return out_dir, final
+
+
+def ensure_free(final: Path) -> bool:
+    """目标已存在就不许覆盖：同一修订版重跑会打架，历史归档按修订版留着。"""
+    return not Path(final).exists()
 
 
 # ------------------------------------------------------------------ main
@@ -365,6 +443,14 @@ def main(argv=None):
     ap.add_argument("--list-options", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="选参数但不点导出")
     ap.add_argument("--outdir", default=str(DEFAULT_OUTDIR))
+    ap.add_argument("--job-id", default="",
+                    help="任务 id（必填）：产物落到 outdir/<jobId>/r<rev>/；不接受按目录里最新文件认领")
+    ap.add_argument("--revision", type=int, default=0,
+                    help="修订版号；同一任务的上一版产物不允许被覆盖")
+    ap.add_argument("--draft-path", default="",
+                    help="草稿目录；给了就优先读它的 studio_export_meta.json（画布/时长/runId）")
+    ap.add_argument("--expect-duration", type=float, default=0.0,
+                    help="期望片长（秒）；缺省读草稿 sidecar 的 expectedDuration")
     ap.add_argument("--timeout", type=int, default=900)
     ap.add_argument("--canvas", default="", help="草稿画布 WxH；缺省读草稿目录的 studio_export_meta.json")
     ap.add_argument("--allow-aspect-mismatch", action="store_true",
@@ -380,7 +466,16 @@ def main(argv=None):
 
     # 时长必须在开面板之前读：面板是模态的，开着的时候编辑器的时间线节点可能不在 AX 树里
     dur = playhead_duration()
-    P.quiet_start(args.wait_idle, restore=not args.no_restore_focus)
+    # 任务绑定先落实，再谈动 GUI：没有 jobId 的产物只能靠「导出目录里最新的文件」认领，
+    # 并发导出时必拿错别人的片子，所以这里直接拒绝，不去 ~/Movies 里猜。
+    if not args.job_id:
+        print("要 --job-id：产物必须绑到任务，不接受在导出目录里挑最新文件", file=sys.stderr)
+        return 2
+    # G12：等不到用户空闲时，旧实现照样抢前台、抢光标。现在超时就直接放弃这一轮，
+    # 把活留在队列里等下一次，而不是把人正在打字的鼠标挪走。
+    if not P.quiet_start(args.wait_idle, restore=not args.no_restore_focus, strict=True):
+        print("排队：用户未空闲，这次不动鼠标、不导出", file=sys.stderr)
+        return 9
     rect, title = open_panel()
     if not rect:
         print("打不开导出面板（需要剪映在前台且草稿已打开）", file=sys.stderr)
@@ -411,6 +506,22 @@ def main(argv=None):
     prof = prof_raw.as_dict() if hasattr(prof_raw, "as_dict") else dict(prof_raw)
 
     canvas, canvas_src = draft_canvas(draft, args.canvas)
+    sidecar = load_sidecar(args.draft_path or str(DRAFT_ROOT / draft))
+    if not canvas and sidecar:
+        cc = sidecar.get("canvas") or {}
+        if cc.get("width") and cc.get("height"):
+            canvas = (int(cc["width"]), int(cc["height"]))
+            canvas_src = "sidecar:%s" % (args.draft_path or (DRAFT_ROOT / draft))
+    if sidecar and args.revision:
+        # 修订版号两边必须一致：拿 r1 的命令去导 r2 的草稿，产物会贴错标签
+        want = str(sidecar.get("revision") or "").strip()
+        if want.isdigit() and int(want) != args.revision:
+            print("修订版对不上：草稿是 r%s，命令行给的是 r%d" % (want, args.revision),
+                  file=sys.stderr)
+            return 11
+    if not args.expect_duration and sidecar.get("expectedDuration"):
+        # 期望片长以建草稿时的 spec 为准，播放头读数只当兜底
+        args.expect_duration = float(sidecar["expectedDuration"])
     if not canvas:
         side = DRAFT_ROOT / draft / "studio_export_meta.json"
         print("不知道草稿画布：%s 不存在，也没给 --canvas WxH" % side, file=sys.stderr)
@@ -459,21 +570,37 @@ def main(argv=None):
                 print(json.dumps(e, ensure_ascii=False, indent=2), file=sys.stderr)
         return 3
 
+    # 产物路径在动手前就定死：跑完往这个位置归位，而不是跑完再想叫什么名字
+    out_dir, final = plan_output(args.job_id, args.revision, args.platform,
+                                 args.outdir, str(prof.get("container") or "mp4"))
+    if not ensure_free(final):
+        print("产物已存在，拒绝覆盖：%s\n  （新一版要换 --revision，历史归档按修订版留着）"
+              % final, file=sys.stderr)
+        return 8
+
     since = time.time()
     if not click_export(rect, prefer_ax=args.try_axpress):
         print("找不到导出按钮", file=sys.stderr)
         return 4
     print("\n已投递导出（先 AXPress），轮询产物 …")
-    # 先给 AXPress 一次机会：45s 内没产物就回退成真点击再等满 timeout
-    out = poll_output(since, [MOVIES], timeout=args.timeout)
-    if not out and not args.try_axpress:
-        print("  超时没等到产物", file=sys.stderr)
-    if not out:
+    # 剪映只会往自己的导出目录写，所以这里只能看目录；但归属由 jobId 判定，
+    # 一旦出现多个新文件就说明有并发导出在抢目录，直接失败而不是挑一个。
+    cands = poll_outputs(since, [MOVIES], timeout=args.timeout)
+    if not cands:
         print("超时没等到产物", file=sys.stderr)
         return 5
+    if len(cands) > 1:
+        print("导出目录里同时冒出 %d 个新文件，无法确定哪个属于本任务：" % len(cands),
+              file=sys.stderr)
+        for c in cands:
+            print("  %s" % c, file=sys.stderr)
+        print("  并发导出必须各用各的导出目录（剪映偏好设置里改默认导出位置）", file=sys.stderr)
+        return 10
+    out = cands[0]
     info = ffprobe(out)
-    expect = {"duration": dur.get("seconds"), "width": prof["expect_dims"][0],
-              "height": prof["expect_dims"][1], "fps": float(prof.get("fps") or 30)}
+    expect = {"duration": args.expect_duration or dur.get("seconds"),
+              "width": prof["expect_dims"][0], "height": prof["expect_dims"][1],
+              "fps": float(prof.get("fps") or 30)}
     checks = validate(info, expect)
     mb = (info.get("size") or 0) / 1048576.0
     print("\n产物: %s (%.2f MB)" % (out, mb))
@@ -481,21 +608,27 @@ def main(argv=None):
         info.get("width"), info.get("height"), info.get("fps"), info.get("codec"),
         info.get("duration") or 0, info.get("audio_codec")))
     for k, v in checks.items():
-        print("  校验 %-11s %s  %s" % (k, "OK" if v["ok"] else "FAIL", v["detail"]))
+        print("  校验 %-13s %s  %s" % (k, "OK" if v["ok"] else "FAIL", v["detail"]))
+    failed = [k for k, v in checks.items() if not v["ok"]]
+    if failed:
+        print("\n产出体检没过（%s），不归档、不标记成片：%s"
+              % (", ".join(failed), out), file=sys.stderr)
+        return 6
 
-    EVIDENCE.mkdir(parents=True, exist_ok=True)
-    final = Path(args.outdir) / ("%s__%s__%sx%s.%s" % (
-        draft, args.platform, info.get("width"), info.get("height"), out.suffix.lstrip(".")))
-    Path(args.outdir).mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
     shutil.move(str(out), str(final))
-    rec = {"draft": draft, "platform": args.platform, "profile": prof,
+    ev_dir = EVIDENCE / args.job_id
+    ev_dir.mkdir(parents=True, exist_ok=True)
+    rec = {"jobId": args.job_id, "revision": args.revision,
+           "draft": draft, "draftPath": args.draft_path or None,
+           "platform": args.platform, "profile": prof,
            "panel": title, "params": evidence, "probe": info,
            "expect": expect, "checks": checks, "final": str(final),
            "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
-    ev = EVIDENCE / ("%s__%s.json" % (draft, args.platform))
+    ev = ev_dir / ("r%d__%s.json" % (args.revision, args.platform))
     ev.write_text(json.dumps(rec, ensure_ascii=False, indent=2), encoding="utf-8")
     print("已归位 → %s\n证据 → %s" % (final, ev))
-    return 0 if all(v["ok"] for v in checks.values()) else 6
+    return 0
 
 
 if __name__ == "__main__":
