@@ -88,4 +88,16 @@ STUDIO_SKIP_PREFLIGHT=1 bash deploy/submit_spec.sh deploy/specs/kv_cache.json 1
 ```
 
 提交后 run 从 `running` 变 `succeeded`，worker 把成片路径写回 run 的
-`output.video` / `output.videoQa.video`，同一份 spec 两次出片母版一致。
+`output.videoPath` / `output.videoUrl` / `output.videoQa.video`，并登记素材
+`output.materialId`。
+
+实测（2026-10-27，runtime 副本 + launchd worker）：
+
+- `kv_cache.json`（engine=timeline，表单「出 mp4」）= run `6adff53798849e9680310566`，
+  17.152s，qa=True，母版 `/Users/apple/CreatorStudio/timeline/6adff53798849e9680310568/master.mp4`（5.1 MB）
+- `envoy_jianying.json`（engine=jianying，表单「出草稿」）= run `6adff60498849e96803107cf`，
+  30.821s，草稿目录 `/Users/apple/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6adff60498849e96803107d1/`
+
+已知缺口：草稿通道的 `draftPath` 只进了 worker 日志，服务端 complete 的白名单
+没有这个字段，所以 run 的 `output` 里查不到草稿路径（只有 `duration` / `copyCheck`）。
+要回写需要在后端结果 DTO 里加字段，不属于本机解释器硬化范围。

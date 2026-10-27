@@ -1,6 +1,6 @@
 """真立绘接图回归：绿幕抠像、差分挑选、缺图降级。
 
-    /usr/bin/python3 integrations/mac-worker/test_character_assets.py
+    $HOME/CreatorStudio/runtime/integrations/mac-worker/.python3 integrations/mac-worker/test_character_assets.py
 """
 from __future__ import annotations
 

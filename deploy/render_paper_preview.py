@@ -2,8 +2,8 @@
 """把 envoy_intro 这类简报直接渲染成一条纸面版预览片（不经过卡片渲染）。
 
 用法：
-  /usr/bin/python3 deploy/render_paper_preview.py                  # 用最近一次成片的时间轴
-  /usr/bin/python3 deploy/render_paper_preview.py --out ~/Desktop/x.mp4
+  $HOME/CreatorStudio/runtime/integrations/mac-worker/.python3 deploy/render_paper_preview.py                  # 用最近一次成片的时间轴
+  $HOME/CreatorStudio/runtime/integrations/mac-worker/.python3 deploy/render_paper_preview.py --out ~/Desktop/x.mp4
 配音直接复用同一条片子的音轨，所以能一眼比出「画面层」换了引擎之后差多少。
 """
 

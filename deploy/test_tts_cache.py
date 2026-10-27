@@ -4,7 +4,7 @@
 尾音都有细微差别，重合成一次，口型和时长就跟着变。这里直接验缓存本身——
 第二次调用必须是内存里的拷贝，不是又一次合成。
 
-跑法：/usr/bin/python3 deploy/test_tts_cache.py
+跑法：$HOME/CreatorStudio/runtime/integrations/mac-worker/.python3 deploy/test_tts_cache.py
 """
 from __future__ import annotations
 

@@ -2,7 +2,7 @@
 """逐字口型成片自检：真配音 → 口型轨 → 1080x1920 嘴部特写 mp4 + 客观指标。
 
 跑法（在 mac-worker 下）：
-    STUDIO_SKIP_PREFLIGHT=1 /usr/bin/python3 export/test_lipsync_mouth.py
+    STUDIO_SKIP_PREFLIGHT=1 $HOME/CreatorStudio/runtime/integrations/mac-worker/.python3 export/test_lipsync_mouth.py
 
 产出（~/CreatorStudio/materials/lipsync/）：
     mouth_closeup_1080x1920.mp4   三句真配音，嘴部放大特写，逐帧标状态
