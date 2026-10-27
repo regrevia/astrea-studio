@@ -7,6 +7,11 @@
         --out ~/CreatorStudio/deliver/envoy-schematic-a.mp4
 
 不给 --shots 就是纯 SVG 背景版；截图按屏序贴，第 i 张配 --caps 的第 i 条角标。
+
+截图既可以给绝对路径，也可以写素材包引用 ``pack:<slug>/<name>``（见
+integrations/mac-worker/tools/material_packs.py），版位后缀照旧跟在后面：
+    --shots pack:envoy-demo/repo-top#396#contain#396
+spec 顶层写了 ``"shots": [...]`` 时，--shots 为空就用 spec 里的。
 """
 
 from __future__ import annotations
@@ -20,8 +25,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "integrations/mac-worker"))
 sys.path.insert(0, str(ROOT / "integrations/mac-worker/export"))
+sys.path.insert(0, str(ROOT / "integrations/mac-worker/tools"))
 
 import paper_short  # noqa: E402
+from material_packs import PackError, resolve_ref  # noqa: E402
 
 
 def main() -> int:
@@ -31,13 +38,20 @@ def main() -> int:
     ap.add_argument("--caps", nargs="*", default=[])
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--workdir", type=Path)
+    ap.add_argument("--style", default="schematic", choices=["schematic", "paper"],
+                    help="schematic=深色仪表盘（默认）；paper=暖色印刷纸面 + 纤维纸纹")
     a = ap.parse_args()
 
     body = json.loads(a.spec.read_text(encoding="utf-8"))
     spec = body.get("spec") or body
-    caps = list(a.caps) or [Path(p).stem for p in a.shots]
-    shots = [(p if p.startswith("sketch:") else str(Path(p.split("#")[0]).expanduser())+"".join("#"+b for b in p.split("#")[1:]), caps[i] if i < len(caps) else "")
-             for i, p in enumerate(a.shots)]
+    # spec 里也能写 shots；命令行给了就优先命令行（临时替换几张图不用改 spec）
+    refs = list(a.shots) or list(spec.get("shots") or [])
+    caps = list(a.caps) or [Path(p).stem for p in refs]
+    try:
+        shots = [(p if p.startswith("sketch:") else resolve_ref(p), caps[i] if i < len(caps) else "")
+                 for i, p in enumerate(refs)]
+    except PackError as e:
+        raise SystemExit(f"素材引用有问题：{e}")
     for p, _ in shots:
         if p.startswith("sketch:"):
             continue
@@ -47,7 +61,7 @@ def main() -> int:
     work = a.workdir or Path(tempfile.mkdtemp(prefix="schematic-"))
     a.out.parent.mkdir(parents=True, exist_ok=True)
     log = lambda m: print(m, flush=True)  # noqa: E731
-    info = paper_short.render(spec, work, a.out, style="schematic",
+    info = paper_short.render(spec, work, a.out, style=a.style,
                               shots=shots, log=log)
     print(json.dumps(info, ensure_ascii=False, indent=2))
     return 0

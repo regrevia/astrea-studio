@@ -255,8 +255,16 @@ class Worker:
             elif kind == "jianying_draft":
                 result = self.do_jianying(job_id, payload, progress)
                 self.client.complete(job_id, lease, result)
-                log.info("job %s jianying: draft -> %s",
-                         job_id, result.get("draftPath"))
+                draft_path = result.get("draftPath")
+                log.info("job %s jianying: draft -> %s", job_id, draft_path)
+                if draft_path:
+                    # 后端 completeJob 的白名单没有 draftPath，草稿路径只能留在日志里；
+                    # 统一一行 DRAFT_PATH= 方便 grep，和首行的解释器指纹同一个位置。
+                    try:
+                        with open(job_log_path(job_id), "a", encoding="utf-8") as fh:
+                            fh.write(f"DRAFT_PATH={draft_path}\n")
+                    except OSError as exc:
+                        log.warning("job %s could not record draft path: %s", job_id, exc)
             elif kind == "publish_sau":
                 result = self.do_publish(job_id, payload, progress)
                 # Publication status is decided by the ledger, not by this process.
@@ -474,6 +482,11 @@ class Worker:
             spec_obj = inner
             src_spec = inner
 
+        # 竖屏脚本分支会把 spec_obj 整个换成 build 出来的 timeline spec，
+        # 平台名与 fit 只在「引擎外壳」上有，换掉之前先留一份，否则交付阶段永远取不到。
+        platforms_hint = spec_obj.get("platforms") if isinstance(spec_obj, dict) else None
+        fit_hint = spec_obj.get("fit") if isinstance(spec_obj, dict) else None
+
         # 竖屏 factcard 走同一条 timeline 通道：worker 自己把脚本展开成静帧卡 +
         # 立绘 + 配音的 spec，平台侧只发脚本文本，不用先算好时间轴
         copy_report = None
@@ -562,9 +575,9 @@ class Worker:
 
         # load_spec 只保留它认识的键，platforms/fit 得从原始 spec 里取
         src_spec = spec_obj if isinstance(spec_obj, dict) else {}
-        platforms = (payload.get("platforms") or src_spec.get("platforms")
-                     or spec.get("platforms") or [])
-        fit = payload.get("fit") or src_spec.get("fit") or "blur"
+        platforms = (payload.get("platforms") or platforms_hint
+                     or src_spec.get("platforms") or spec.get("platforms") or [])
+        fit = payload.get("fit") or fit_hint or src_spec.get("fit") or "blur"
         if platforms:
             progress(60, "timeline:delivering")
             try:
@@ -585,6 +598,17 @@ class Worker:
                     item["ok"] = row.get("status") == "ok"
                     result["deliveries"].append(item)
                 result["deliveryFailed"] = dev.get("failed", 0)
+                if not any(item.get("ok") for item in result["deliveries"]):
+                    # 请求了平台却一个都没出：不能静默 null，把原因带回 run 详情
+                    notes = []
+                    for row in dev.get("platforms") or []:
+                        for msg in (row.get("errors") or []) + (row.get("notes") or []):
+                            if msg:
+                                notes.append(f"{row.get('platform')}: {msg}")
+                    result["deliveryError"] = (
+                        "所有平台交付失败：" + "；".join(notes)[:700]
+                        if notes else "所有平台交付失败，未产出任何平台规格"
+                    )
 
         if not run_id:
             # 没有 runId 就是本地试跑：不传 S3，路径直接交回调用方

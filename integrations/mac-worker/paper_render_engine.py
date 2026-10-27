@@ -91,16 +91,15 @@ _CSS = """
 html,body{width:%(W)dpx;height:%(H)dpx;overflow:hidden;background:#12100E}
 body{font-kerning:normal;text-rendering:geometricPrecision;
   -webkit-font-smoothing:antialiased}
-#stage{position:relative;width:%(W)dpx;height:%(H)dpx;background:#F2ECE1}
-.sheet{position:absolute;inset:0;background:#F2ECE1;opacity:0;will-change:opacity,transform}
+#stage{position:relative;width:%(W)dpx;height:%(H)dpx;background:radial-gradient(126%% 84%% at 18%% 6%%,#F8F2E7 0%%,#F3ECE0 40%%,#EDE4D5 74%%,#E6DBC8 100%%)}
+.sheet{position:absolute;inset:0;opacity:0;will-change:opacity,transform;background:radial-gradient(142%% 98%% at 24%% 3%%,#F9F4EA 0%%,#F4EDE1 38%%,#EDE3D3 72%%,#E4D9C4 100%%)}
+.sheet::before{content:"";position:absolute;inset:0;pointer-events:none;background-image:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2Ij48ZmlsdGVyIGlkPSJuIj48ZmVUdXJidWxlbmNlIHR5cGU9ImZyYWN0YWxOb2lzZSIgYmFzZUZyZXF1ZW5jeT0iMC44MiIgbnVtT2N0YXZlcz0iMyIgc3RpdGNoVGlsZXM9InN0aXRjaCIvPjxmZUNvbG9yTWF0cml4IHR5cGU9InNhdHVyYXRlIiB2YWx1ZXM9IjAiLz48L2ZpbHRlcj48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsdGVyPSJ1cmwoI24pIiBvcGFjaXR5PSIwLjU1Ii8+PC9zdmc+");background-size:256px 256px;opacity:.085;mix-blend-mode:multiply}
 .sheet::after{content:"";position:absolute;inset:0;pointer-events:none;
   background-image:radial-gradient(120%% 85%% at 50%% 8%%,rgba(255,255,255,.55),rgba(255,255,255,0) 62%%),
     radial-gradient(80%% 62%% at 86%% 97%%,rgba(150,134,112,.16),rgba(150,134,112,0) 58%%);
   mix-blend-mode:multiply;opacity:.9}
-/* 纸纹：极细的斜纹 + 颗粒，静止不动，出现颗粒感而不是塑料感 */
-.grain{position:absolute;inset:0;pointer-events:none;opacity:.5;mix-blend-mode:multiply;
-  background-image:repeating-linear-gradient(102deg,rgba(120,104,84,.045) 0 1px,transparent 1px 3px),
-    repeating-linear-gradient(8deg,rgba(120,104,84,.035) 0 1px,transparent 1px 4px)}
+/* 纸纹：各向同性纤维噪点（不是条纹），乘算叠在纸面上，静止不动 */
+.grain{position:absolute;inset:0;pointer-events:none;opacity:.062;mix-blend-mode:multiply;background-image:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNTYiIGhlaWdodD0iMjU2Ij48ZmlsdGVyIGlkPSJuIj48ZmVUdXJidWxlbmNlIHR5cGU9ImZyYWN0YWxOb2lzZSIgYmFzZUZyZXF1ZW5jeT0iMC44MiIgbnVtT2N0YXZlcz0iMyIgc3RpdGNoVGlsZXM9InN0aXRjaCIvPjxmZUNvbG9yTWF0cml4IHR5cGU9InNhdHVyYXRlIiB2YWx1ZXM9IjAiLz48L2ZpbHRlcj48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsdGVyPSJ1cmwoI24pIiBvcGFjaXR5PSIwLjU1Ii8+PC9zdmc+");background-size:384px 384px}
 .frame{position:absolute;inset:44px;border:1px solid rgba(88,74,58,.22)}
 .pad{position:absolute;inset:44px}
 .kicker{position:absolute;left:84px;top:96px;font:600 25px/1.2 "PingFang SC","Hiragino Sans GB",sans-serif;
