@@ -1598,8 +1598,15 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                 seed=variant_seed, log=lambda _m: None)
             if char_mov is not None:
                 char_mov, char_x, char_y = char_mov
-        except Exception as exc:  # noqa: BLE001 - 动画层崩了也得有成片，退回静帧
-            print(f"char_layer 构建失败，回落逐段静帧: {exc}", file=sys.stderr)
+        except Exception as exc:  # noqa: BLE001
+            # 以前这里一声不吭退回静帧：片子照样出，但口型轨整个没了，
+            # 质检只看成片也说不清哪一步丢的。要静帧必须显式放行。
+            msg = f"char_layer 构建失败（{type(exc).__name__}: {exc}）"
+            print(msg + "，回落逐段静帧", file=sys.stderr)
+            if os.environ.get("STUDIO_ALLOW_STATIC_CHARACTER", "").strip() not in ("1", "true", "yes"):
+                raise RuntimeError(
+                    msg + "：角色层是硬要求，不接受静默降级。"
+                    " 真要出静帧片，设 STUDIO_ALLOW_STATIC_CHARACTER=1。") from exc
             char_mov = None
     lip_info = {}
     if char_mov is not None:

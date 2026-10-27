@@ -100,3 +100,29 @@ deliver/                     成片（DELIVER_DIR 可覆盖）
 
 两边共用同一批 `render_*` 引擎函数，行为一致；不要在本机再写一套 `ffmpeg` 拼装脚本
 绕过它们 —— 那样口型/版式/响度三处校准会各自漂。
+
+## 自检：别让降级静默发生
+
+两条硬约束现在都会吵：
+
+1. **口型轨必须真的建出来。** `char_layer` 崩了以前只打一行 stderr 就退回逐段静帧——
+   片子照出，口型没了，成片级质检指不出是哪一步丢的。现在默认 **抛错并让任务失败**，
+   真要静帧片得显式 `STUDIO_ALLOW_STATIC_CHARACTER=1`。
+   改完口型相关代码先跑符号自检（2 秒）：
+
+   ```bash
+   python integrations/mac-worker/tools/check_char_layer.py
+   python integrations/mac-worker/tools/check_char_layer.py a00.mp3 "你好世界" 2.4   # 真跑一条轨
+   ```
+
+   第二种用法会顺带核对「轨长 == dur*fps」，长度不对直接非零退出——轨比音频长
+   一点，画到时间轴上就是整片漂移。
+
+2. **仓库改了要同步到线上那份。** launchd 跑的是 `$STUDIO_HOME/runtime/` 的拷贝，
+   不是仓库。忘了同步 = 线上还是老逻辑（口型漂移那类修复会白做）：
+
+   ```bash
+   bash scripts/sync_runtime.sh
+   launchctl kickstart -k gui/$(id -u)/local.creatorstudio.capabilities
+   ```
+
