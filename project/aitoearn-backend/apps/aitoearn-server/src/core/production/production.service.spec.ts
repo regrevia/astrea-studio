@@ -86,6 +86,11 @@ function createService() {
     getById: vi.fn(),
     getByIdForUser: vi.fn(),
     updateById: vi.fn().mockImplementation(async (id: string, update: Record<string, unknown>) => ({ id, ...update })),
+    updateByRevision: vi.fn().mockImplementation(async (id: string, revision: number, update: Record<string, unknown>) => ({
+      id,
+      revision: (update['revision'] as number | undefined) ?? revision,
+      ...update,
+    })),
   }
   const jobRepo = {
     create: vi.fn().mockImplementation(async (data: Record<string, unknown>) => ({ id: 'job-1', ...data })),
@@ -97,6 +102,9 @@ function createService() {
     renewLease: vi.fn().mockResolvedValue(null),
     findExpired: vi.fn().mockResolvedValue([]),
     listByRun: vi.fn().mockResolvedValue([]),
+    listByRunBeforeRevision: vi.fn().mockResolvedValue([]),
+    updateByStatusIn: vi.fn().mockResolvedValue(true),
+    updateByLeaseExpiry: vi.fn().mockResolvedValue(true),
     nextAttempt: vi.fn().mockResolvedValue(2),
   }
   const attemptRepo = {
@@ -162,7 +170,7 @@ describe('reviseRun', () => {
 
     await service.reviseRun('user-1', 'run-1', { spec: { script: ['改过的文案'] } })
 
-    const spec = runRepo.updateById.mock.calls[0][1].spec as Record<string, unknown>
+    const spec = runRepo.updateByRevision.mock.calls[0][2].spec as Record<string, unknown>
     expect(spec.input).toEqual({ ...FRIENDLY_INPUT, script: ['改过的文案'] })
     const timeline = spec.timeline as Record<string, unknown>
     expect((timeline.text as Array<Record<string, unknown>>).map(row => row.text)).toEqual(['改过的文案'])
@@ -202,7 +210,7 @@ describe('completeJob', () => {
     })
 
     expect(result).toEqual({ ok: true })
-    const update = runRepo.updateById.mock.calls[0][1] as Record<string, unknown>
+    const update = runRepo.updateByRevision.mock.calls[0][2] as Record<string, unknown>
     expect(update.status).toBe('succeeded')
     expect(update.currentStage).toBe('done')
     expect(update.output).toEqual({
@@ -233,7 +241,7 @@ describe('completeJob', () => {
 
     await service.completeJob('worker-1', 'job-2', 1, { publicationHint: 'published' }, { publicationHint: 'published' })
 
-    const update = runRepo.updateById.mock.calls[0][1] as Record<string, unknown>
+    const update = runRepo.updateByRevision.mock.calls[0][2] as Record<string, unknown>
     expect(update).not.toHaveProperty('output')
     expect(update.publicationHint).toBe('published')
   })
@@ -353,6 +361,7 @@ describe('refreshWorkerCapabilities', () => {
 })
 
 describe('reapExpiredLeases', () => {
+  const LEASE_EXPIRED_AT = new Date('2020-01-01T00:00:00.000Z')
   const expiredJob = {
     id: 'job-1',
     runId: 'run-1',
@@ -361,6 +370,7 @@ describe('reapExpiredLeases', () => {
     status: 'running',
     leaseOwner: 'worker-1',
     leaseVersion: 2,
+    leaseExpiresAt: LEASE_EXPIRED_AT,
   }
 
   it('把过期 job 判失败，run 回 queued 并补一条新的队列任务', async () => {
@@ -372,13 +382,13 @@ describe('reapExpiredLeases', () => {
 
     await expect(service.reapExpiredLeases()).resolves.toBe(1)
 
-    // 用租约版本做守卫，worker 在扫描间隙续约时不会被误杀
-    expect(jobRepo.finish).toHaveBeenCalledWith('job-1', 'worker-1', 2, {
+    // 用扫描时看到的 leaseExpiresAt 做条件更新：worker 在扫描间隙续约时不会被误杀
+    expect(jobRepo.updateByLeaseExpiry).toHaveBeenCalledWith('job-1', 'worker-1', 2, LEASE_EXPIRED_AT, {
       status: 'failed',
       message: 'lease expired',
       lastError: 'worker stopped heart-beating',
     })
-    const runUpdate = runRepo.updateById.mock.calls[0][1] as Record<string, unknown>
+    const runUpdate = runRepo.updateByRevision.mock.calls[0][2] as Record<string, unknown>
     expect(runUpdate.status).toBe('queued')
     expect(runUpdate.currentStage).toBe('queued')
     const created = jobRepo.create.mock.calls[0][0] as Record<string, unknown>
@@ -390,11 +400,11 @@ describe('reapExpiredLeases', () => {
   it('扫描之间 worker 续约了就不动 run', async () => {
     const { service, jobRepo, runRepo } = createService()
     jobRepo.findExpired.mockResolvedValue([expiredJob])
-    jobRepo.finish.mockResolvedValue(null)
+    jobRepo.updateByLeaseExpiry.mockResolvedValue(null)
 
     await expect(service.reapExpiredLeases()).resolves.toBe(0)
 
-    expect(runRepo.updateById).not.toHaveBeenCalled()
+    expect(runRepo.updateByRevision).not.toHaveBeenCalled()
     expect(jobRepo.create).not.toHaveBeenCalled()
   })
 
@@ -405,7 +415,7 @@ describe('reapExpiredLeases', () => {
 
     await expect(service.reapExpiredLeases()).resolves.toBe(0)
 
-    expect(runRepo.updateById).not.toHaveBeenCalled()
+    expect(runRepo.updateByRevision).not.toHaveBeenCalled()
     expect(jobRepo.create).not.toHaveBeenCalled()
   })
 
@@ -420,7 +430,7 @@ describe('reapExpiredLeases', () => {
 
     await expect(service.reapExpiredLeases()).resolves.toBe(0)
 
-    expect(runRepo.updateById).not.toHaveBeenCalled()
+    expect(runRepo.updateByRevision).not.toHaveBeenCalled()
     expect(jobRepo.create).not.toHaveBeenCalled()
   })
 
@@ -432,7 +442,7 @@ describe('reapExpiredLeases', () => {
 
     await expect(service.reapExpiredLeases()).resolves.toBe(0)
 
-    const runUpdate = runRepo.updateById.mock.calls[0][1] as Record<string, unknown>
+    const runUpdate = runRepo.updateByRevision.mock.calls[0][2] as Record<string, unknown>
     expect(runUpdate.status).toBe('failed')
     expect(runUpdate.lastError).toContain('停止自动重试')
     expect(jobRepo.create).not.toHaveBeenCalled()
@@ -450,17 +460,21 @@ describe('任务领取与心跳', () => {
       payload: {},
     })
     runRepo.getById.mockResolvedValue({ id: 'run-1', status: 'queued' })
-    const job = await service.claimJob('worker-1', 'render')
+    const job = await service.claimJob(
+      { id: 'worker-1', userId: 'user-1', capabilities: ['render_timeline'] },
+      'render',
+    )
     expect(job).not.toBeNull()
-    const runUpdate = runRepo.updateById.mock.calls.find(call => call[0] === 'run-1')
-    expect(runUpdate?.[1]).toMatchObject({ status: 'running', currentStage: 'starting' })
+    expect(jobRepo.claimNext).toHaveBeenCalledWith('render', 'worker-1', 60_000, ['render_timeline'], 'user-1')
+    const runUpdate = runRepo.updateByRevision.mock.calls.find(call => call[0] === 'run-1')
+    expect(runUpdate?.[2]).toMatchObject({ status: 'running', currentStage: 'starting' })
   })
 
   it('心跳把阶段和进度同步回 run', async () => {
     const { service, runRepo, jobRepo } = createService()
     jobRepo.renewLease.mockResolvedValue({ id: 'job-1', runId: 'run-1', stage: 'timeline:script', progress: 4, leaseExpiresAt: new Date() })
     await service.heartbeatJob('worker-1', 'job-1', 1, 12, 'timeline:rendering')
-    const runUpdate = runRepo.updateById.mock.calls.find(call => call[0] === 'run-1')
-    expect(runUpdate?.[1]).toMatchObject({ status: 'running', currentStage: 'timeline:rendering', progress: 12 })
+    const runUpdate = runRepo.updateByRevision.mock.calls.find(call => call[0] === 'run-1')
+    expect(runUpdate?.[2]).toMatchObject({ status: 'running', currentStage: 'timeline:rendering', progress: 12 })
   })
 })

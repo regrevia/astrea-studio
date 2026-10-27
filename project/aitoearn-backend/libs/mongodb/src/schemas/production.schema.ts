@@ -162,6 +162,14 @@ export class ProductionJob extends WithTimestampSchema {
   @Prop({ required: true, default: 1 })
   attempt: number
 
+  /**
+   * run.revision this job was enqueued for. A job may only write back to a run
+   * that is still on the same revision; legacy jobs (created before this field)
+   * have no value and are treated as revision 1.
+   */
+  @Prop({ required: true, default: 1 })
+  revision: number
+
   @Prop({ type: String, enum: ProductionJobStatus, default: ProductionJobStatus.QUEUED, index: true })
   status: ProductionJobStatus
 
@@ -329,8 +337,12 @@ export const PublicationAttemptSchema = SchemaFactory.createForClass(Publication
 export const ProductionWorkerSchema = SchemaFactory.createForClass(ProductionWorker)
 export const ProductionEventSchema = SchemaFactory.createForClass(ProductionEvent)
 
-// A render retry for the same run+attempt must not be enqueued twice.
-ProductionJobSchema.index({ runId: 1, kind: 1, attempt: 1 }, { unique: true })
+// A (run, kind, revision, attempt) job must not be enqueued twice: a retry of a
+// revised run reuses the same runId+kind, so attempt alone is not enough once a
+// new revision exists. Attempt numbers stay globally unique per run+kind (see
+// nextAttempt) so deployments that still carry the old
+// `runId_1_kind_1_attempt_1` unique index keep working until it is dropped.
+ProductionJobSchema.index({ runId: 1, kind: 1, revision: 1, attempt: 1 }, { unique: true })
 // Same publication intent cannot exist twice.
 PublicationAttemptSchema.index({ idempotencyKey: 1 }, { unique: true })
 // Claim query: oldest queued job in a lane.

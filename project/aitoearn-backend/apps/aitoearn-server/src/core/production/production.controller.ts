@@ -341,7 +341,10 @@ export class ProductionWorkerController {
   @Post('claim')
   async claim(@Headers('x-worker-token') token: string | undefined, @Body() body: ClaimDto) {
     const worker = await this.auth(token)
-    const job = await this.production.claimJob(worker.id, body.lane, worker.capabilities)
+    const job = await this.production.claimJob(
+      { id: worker.id, userId: worker.userId, capabilities: worker.capabilities },
+      body.lane,
+    )
     return { job, workerId: worker.id }
   }
 
@@ -372,20 +375,14 @@ export class ProductionWorkerController {
     @Param('id') id: string,
     @Body() body: WorkerEventDto,
   ) {
-    await this.auth(token)
-    const job = await this.production.getJobRaw(id)
-    if (!job) {
-      throw new AppException(ResponseCode.ProductionJobNotFound)
-    }
-    await this.production.appendEvent(job.runId, {
-      jobId: id,
+    const worker = await this.auth(token)
+    return await this.production.appendJobEvent(worker.id, id, {
       kind: body.kind,
       stage: body.stage,
       progress: body.progress,
       message: body.message,
       data: body.data,
     })
-    return { ok: true }
   }
 
   @Public()

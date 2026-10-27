@@ -45,6 +45,20 @@ export class ProductionRunRepository extends BaseRepository<ProductionRun> {
       options: { sort: { createdAt: -1 } },
     })
   }
+
+  /**
+   * Compare-and-set on the run revision: a writer that read revision N only
+   * updates the run while it is still at N (and matches `filter`, e.g. a status
+   * guard). Returns null when someone else already moved the run on.
+   */
+  async updateByRevision(
+    id: string,
+    revision: number,
+    update: Record<string, unknown>,
+    filter: Record<string, unknown> = {},
+  ) {
+    return await this.updateOne({ _id: id, revision, ...filter }, update)
+  }
 }
 
 @Injectable()
@@ -53,18 +67,29 @@ export class ProductionJobRepository extends BaseRepository<ProductionJob> {
     super(model)
   }
 
-  /** Atomically take the oldest queued job in a lane for this worker. */
-  async claimNext(lane: string, workerId: string, leaseMs: number, capabilities: string[]): Promise<ProductionJob | null> {
+  /**
+   * Atomically take the oldest queued job in a lane for this authenticated
+   * worker. A worker may only claim jobs of its own user and of the kinds it
+   * advertises; an empty capability list claims nothing.
+   */
+  async claimNext(
+    lane: string,
+    workerId: string,
+    leaseMs: number,
+    capabilities: string[],
+    userId: string,
+  ): Promise<ProductionJob | null> {
+    if (!capabilities.length) {
+      return null
+    }
     const now = new Date()
-    const filter: Record<string, unknown> = {
-      status: ProductionJobStatus.QUEUED,
-      lane,
-    }
-    if (capabilities.length) {
-      filter['kind'] = { $in: capabilities }
-    }
     const claimed = await this.model.findOneAndUpdate(
-      filter,
+      {
+        status: ProductionJobStatus.QUEUED,
+        lane,
+        userId,
+        kind: { $in: capabilities },
+      },
       {
         $set: {
           status: ProductionJobStatus.RUNNING,
@@ -81,10 +106,17 @@ export class ProductionJobRepository extends BaseRepository<ProductionJob> {
   }
 
   /**
-   * Renew a lease. Returns null when the caller is stale (lease version or owner
-   * mismatch) so a zombie worker cannot keep writing events.
+   * Renew a lease and write the progress patch in the same update. Returns null
+   * when the caller is stale (owner, version, state or an already expired lease)
+   * so a zombie worker cannot keep writing events or beat the reaper.
    */
-  async renewLease(id: string, workerId: string, leaseVersion: number, leaseMs: number) {
+  async renewLease(
+    id: string,
+    workerId: string,
+    leaseVersion: number,
+    leaseMs: number,
+    update: Record<string, unknown> = {},
+  ) {
     const now = new Date()
     return await this.model.findOneAndUpdate(
       {
@@ -92,20 +124,73 @@ export class ProductionJobRepository extends BaseRepository<ProductionJob> {
         leaseOwner: workerId,
         leaseVersion,
         status: ProductionJobStatus.RUNNING,
+        leaseExpiresAt: { $gt: now },
       },
-      { $set: { leaseExpiresAt: new Date(now.getTime() + leaseMs), heartbeatAt: now } },
+      { $set: { ...update, leaseExpiresAt: new Date(now.getTime() + leaseMs), heartbeatAt: now } },
       { new: true, lean: true },
     ).exec() as unknown as ProductionJob | null
   }
 
-  /** Guarded completion: only the current lease holder may finish the job. */
-  async finish(id: string, workerId: string, leaseVersion: number, update: Record<string, unknown>) {
+  /**
+   * Guarded completion: only the current lease holder, on a running job with an
+   * unexpired lease, for the run revision the job was enqueued for. A late job
+   * from an old revision can never finish.
+   */
+  async finish(
+    id: string,
+    workerId: string,
+    leaseVersion: number,
+    revision: number,
+    update: Record<string, unknown>,
+  ) {
     const res = await this.model.findOneAndUpdate(
-      { _id: id, leaseOwner: workerId, leaseVersion },
+      {
+        _id: id,
+        leaseOwner: workerId,
+        leaseVersion,
+        status: ProductionJobStatus.RUNNING,
+        leaseExpiresAt: { $gt: new Date() },
+        revision: { $in: [revision, null] },
+      },
       { $set: { ...update, finishedAt: new Date(), leaseExpiresAt: null } },
       { new: true, lean: true },
     ).exec()
     return res as unknown as ProductionJob | null
+  }
+
+  /**
+   * Expire a lease the reaper observed as expired. Matching the observed
+   * `leaseExpiresAt` means a concurrent renewal wins: the document moved, so
+   * this update matches nothing and the job is not killed.
+   */
+  async updateByLeaseExpiry(
+    id: string,
+    leaseOwner: string,
+    leaseVersion: number,
+    leaseExpiresAt: Date,
+    update: Record<string, unknown>,
+  ) {
+    const res = await this.model.findOneAndUpdate(
+      {
+        _id: id,
+        leaseOwner,
+        leaseVersion,
+        status: ProductionJobStatus.RUNNING,
+        leaseExpiresAt,
+      },
+      { $set: { ...update, finishedAt: new Date(), leaseExpiresAt: null }, $inc: { leaseVersion: 1 } },
+      { new: true, lean: true },
+    ).exec()
+    return res as unknown as ProductionJob | null
+  }
+
+  /**
+   * Cancel a job only when it is still in one of the expected states. The caller
+   * passes `$inc: { leaseVersion: 1 }` so a worker that already holds the lease
+   * fails every later guarded write.
+   */
+  async updateByStatusIn(id: string, statuses: ProductionJobStatus[], update: Record<string, unknown>) {
+    return await this.updateOne({ _id: id, status: { $in: statuses } }, update)
   }
 
   async findExpired(now: Date) {
@@ -115,17 +200,40 @@ export class ProductionJobRepository extends BaseRepository<ProductionJob> {
     })
   }
 
-  async listByRun(runId: string) {
-    return await this.find({ runId }, { sort: { createdAt: 1 } })
+  async listByRun(runId: string, revision?: number) {
+    const filter: Record<string, unknown> = { runId }
+    if (revision !== undefined) {
+      // 旧 job 没有 revision 字段，按 revision 1 处理。
+      filter['revision'] = { $in: [revision, null] }
+    }
+    return await this.find(filter, { sort: { createdAt: 1 } })
   }
 
+  /** Queued/running jobs of earlier revisions, which a revision bump invalidates. */
+  async listByRunBeforeRevision(runId: string, revision: number) {
+    return await this.find({
+      runId,
+      status: { $in: [ProductionJobStatus.QUEUED, ProductionJobStatus.RUNNING] },
+      $or: [{ revision: { $lt: revision } }, { revision: null }],
+    })
+  }
+
+  /**
+   * Next attempt number for a run+kind. Deliberately ignores revision so attempt
+   * numbers stay unique per run+kind: retrying revision N+1 must not collide with
+   * the old revision's attempt under either the old or the new unique index.
+   */
   async nextAttempt(runId: string, kind: string): Promise<number> {
     const jobs = await this.find({ runId, kind }, { sort: { attempt: -1 }, limit: 1 })
     return (jobs[0]?.attempt ?? 0) + 1
   }
 
-  async listByStatus(lane: string, status: ProductionJobStatus) {
-    return await this.find({ lane, status })
+  async listByStatus(lane: string, status: ProductionJobStatus, userId?: string) {
+    const filter: Record<string, unknown> = { lane, status }
+    if (userId !== undefined) {
+      filter['userId'] = userId
+    }
+    return await this.find(filter)
   }
 
   async listQueuedCount(lane: string) {
