@@ -54,6 +54,13 @@ RUN_ENV = {
 }
 KINDS = ("paper", "slides", "jianying", "motion", "timeline")
 
+# 成片元数据：agent 报「多长、多大」时不该靠猜，成功后就地量一次。
+FFPROBE = next((c for c in [
+    os.environ.get("FFPROBE"),
+    shutil.which("ffprobe"),
+    "/opt/homebrew/bin/ffprobe",
+] if c and Path(c).is_file()), None)
+
 
 # ---------------------------------------------------------------- 状态机读写
 
@@ -264,6 +271,31 @@ def _timeline(job: dict, payload: dict) -> dict:
     return {"files": [str(out)], "duration": spec.get("duration"), **_run_cli(job, cmd)}
 
 
+def _media_info(path: str | None) -> dict:
+    """ffprobe 量首个视频流的宽高与时长；量不到就什么都不加，不编造。"""
+    if not path or not FFPROBE or not Path(path).is_file():
+        return {}
+    try:
+        out = subprocess.run(
+            [FFPROBE, "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height", "-show_entries", "format=duration",
+             "-of", "json", str(path)],
+            capture_output=True, text=True, timeout=30, check=True,
+        ).stdout
+        data = json.loads(out or "{}")
+        stream = (data.get("streams") or [{}])[0]
+        info: dict = {}
+        if stream.get("width") and stream.get("height"):
+            info["width"] = int(stream["width"])
+            info["height"] = int(stream["height"])
+        raw = ((data.get("format") or {}).get("duration") or "").strip()
+        if raw:
+            info["duration"] = round(float(raw), 3)
+        return info
+    except (subprocess.SubprocessError, ValueError, KeyError, IndexError):
+        return {}
+
+
 def run_job(job_id: str) -> int:
     job = get(job_id)
     job.update(status="running", startedAt=job.get("startedAt") or time.strftime("%Y-%m-%dT%H:%M:%S"))
@@ -280,6 +312,9 @@ def run_job(job_id: str) -> int:
             delivered = _deliver(job, list(res.get("files") or []))
             if delivered:
                 res = {**res, "files": delivered}
+            info = _media_info((res.get("files") or [None])[0])
+            if info:
+                res = {**res, **info}
         job.update(status="succeeded", progress=100, stage=f"{job['kind']}:done",
                    result=res, endedAt=time.strftime("%Y-%m-%dT%H:%M:%S"))
         _write(job)

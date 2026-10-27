@@ -128,6 +128,8 @@ export interface RenderJob {
   result?: {
     files?: string[]
     duration?: number
+    width?: number
+    height?: number
   }
 }
 

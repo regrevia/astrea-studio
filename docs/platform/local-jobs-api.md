@@ -22,6 +22,7 @@
 
 任务对象字段：`id kind status progress stage createdAt updatedAt startedAt endedAt`
 + 运行中 `pid`、成功时 `result`、失败时 `error`（一行原因）与 `traceback`（尾 2000 字）。
+成片类任务的 `result` 除 `files`/`duration`/`command` 外，还会带 ffprobe 量到的 `width`/`height`（量不到就不出现，不编造）。
 `status` 取 `queued | running | succeeded | failed | cancelled`。
 不存在的 id 返回 404（`{"error":"没有这个任务：'xxx'"}`），未知引擎返回 500 且原因里带可选值。
 

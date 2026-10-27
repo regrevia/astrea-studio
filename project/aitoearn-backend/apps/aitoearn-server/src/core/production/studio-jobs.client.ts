@@ -20,6 +20,8 @@ export interface StudioJob {
   result?: {
     files?: string[]
     duration?: number
+    width?: number
+    height?: number
     returncode?: number
   }
 }

@@ -183,14 +183,14 @@ def txt(text: str, start: float, end: float, y: float, size: float,
 def screen_plan(total: float) -> dict:
     """三段真实界面录屏铺在「窗口卡」里，最后留一段纯排版收尾。"""
     studio = SHOTS / "studio.webm"
-    draftbox = SHOTS / "draftbox.webm"
-    for p in (studio, draftbox, SHOTS / "bg.png", SHOTS / "frame.png"):
+    for p in (studio, SHOTS / "bg.png", SHOTS / "frame.png"):
         if not p.is_file():
             raise RuntimeError(f"缺素材: {p}（先跑 tools/capture/capture_ui2.cjs 与 make_promo_assets.cjs）")
 
-    raw = [("seg-a.mp4", studio, 2.9, 11.5, 1.25),
-           ("seg-b.mp4", studio, 11.5, 21.7, 1.25),
-           ("seg-c.mp4", draftbox, 0.4, 12.6, 1.30)]
+    # 三段同一次录屏：指挥台 → 本机队列列表 → 手动出片面板
+    raw = [("seg-a.mp4", studio, 2.0, 10.0, 1.12),
+           ("seg-b.mp4", studio, 10.2, 22.4, 1.12),
+           ("seg-c.mp4", studio, 25.6, 33.4, 1.18)]
     segs = []
     for name, src, a, b, tempo in raw:
         p = ensure_segment(src, name, a, b, tempo)

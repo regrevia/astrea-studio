@@ -32,6 +32,7 @@ export function QueueJobRow({ job }: { job: RenderJob }) {
   const done = job.status === 'succeeded' || job.status === 'failed' || job.status === 'cancelled'
   const fileName = file?.split('/').pop()
   const seconds = job.result?.duration ? `${job.result.duration.toFixed(1)}s` : undefined
+  const frame = job.result?.width && job.result?.height ? `${job.result.width}×${job.result.height}` : undefined
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-dashed border-border bg-card/60 p-3">
@@ -68,6 +69,7 @@ export function QueueJobRow({ job }: { job: RenderJob }) {
               {fileName && (
                 <span className="min-w-0 truncate" title={file}>{fileName}</span>
               )}
+              {frame && <span className="tabular-nums">{frame}</span>}
               {seconds && <span className="tabular-nums">{seconds}</span>}
               {job.error && <span className="min-w-0 truncate text-destructive" title={job.error}>{job.error}</span>}
             </div>
