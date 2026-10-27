@@ -18,6 +18,7 @@ import {
   ASSISTANT_TOOLS,
   AssistantToolName,
   cancelRenderJobArgsSchema,
+  createJianyingDraftArgsSchema,
   createProjectArgsSchema,
   createRunArgsSchema,
   getRenderJobArgsSchema,
@@ -399,6 +400,12 @@ export class ProductionAssistantService {
             return this.invalidArgs(name, args.error)
           return await this.cancelRenderJob(args.data.jobId)
         }
+        case AssistantToolName.CREATE_JIANYING_DRAFT: {
+          const args = createJianyingDraftArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.createJianyingDraft(userId, args.data.runId, args.data.title)
+        }
         default:
           return this.fail(`没有名为 ${name} 的工具，请只用给定的工具。`, '未知工具')
       }
@@ -741,8 +748,9 @@ export class ProductionAssistantService {
     if (job.status === 'succeeded') {
       const files = job.result?.files ?? []
       const duration = job.result?.duration ? `，时长 ${job.result.duration.toFixed(1)} 秒` : ''
+      const frame = job.result?.width && job.result?.height ? `，画面 ${job.result.width}×${job.result.height}` : ''
       return {
-        text: `任务 ${job.id} 已出片${duration}：${files.join('、') || '队列没返回产物路径'}。`,
+        text: `任务 ${job.id} 已出片${duration}${frame}：${files.join('、') || '队列没返回产物路径'}。`,
         actions: [action({
           type: ProductionAssistantActionType.RENDER,
           status: ProductionAssistantActionStatus.OK,
@@ -789,6 +797,31 @@ export class ProductionAssistantService {
         status: job.cancelled ? ProductionAssistantActionStatus.OK : ProductionAssistantActionStatus.FAILED,
         label: job.cancelled ? '已取消出片' : '没取消成',
         detail: job.id,
+        link: '/studio',
+      })],
+    }
+  }
+
+  /**
+   * 剪映工程落地：把任务成片登记进素材库默认分组，用户就能在本机剪映里打开接着改。
+   * 成片没出来就直接说清楚，不能凭 runId 臆造一个工程。
+   */
+  private async createJianyingDraft(userId: string, runId: string, title?: string): Promise<ToolResult> {
+    const run = await this.production.getRun(userId, runId)
+    const videoKey = run.output['videoPath'] as string | undefined
+    if (!videoKey)
+      return this.fail(`任务 ${runId} 还没有成片，没法落剪映工程。先用 submit_render 出片，成功后再落工程。`, '任务未出片')
+    const material = await this.production.attachMaterialForWorker(userId, runId, {
+      videoKey,
+      title: title || run.title,
+    })
+    return {
+      text: `任务 ${runId} 的剪映工程已落地：素材 ${material.materialId}${material.deduped ? '（之前已落过，直接复用）' : ''}。工程在用户素材库的默认分组里，打开本机剪映就能继续精修；精修完再导出用 submit_render 的 jianying 引擎。`,
+      actions: [action({
+        type: ProductionAssistantActionType.RENDER,
+        status: ProductionAssistantActionStatus.OK,
+        label: '剪映工程已落地',
+        detail: material.materialId,
         link: '/studio',
       })],
     }

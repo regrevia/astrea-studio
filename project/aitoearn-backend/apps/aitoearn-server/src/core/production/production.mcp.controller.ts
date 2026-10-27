@@ -1,5 +1,5 @@
 import { Controller, Injectable } from '@nestjs/common'
-import { getUser, toTextResult, toYamlTextResult } from '@yikart/common'
+import { AppException, getUser, ResponseCode, toTextResult, toYamlTextResult } from '@yikart/common'
 import { PublicationDispatcher } from '@yikart/mongodb'
 import { Tool } from '@yikart/nest-mcp'
 import { z } from 'zod'
@@ -25,6 +25,11 @@ const CreateProjectSchema = z.object({
   name: z.string().min(1).describe('项目名称'),
   sourceRepo: z.string().optional().describe('项目源码仓库或素材来源（仅记录）'),
   materialGroupId: z.string().optional().describe('绑定的草稿箱 ID'),
+})
+
+const CreateJianyingDraftSchema = z.object({
+  runId: z.string().describe('任务 ID'),
+  title: z.string().optional().describe('工程名，省略用任务标题'),
 })
 
 const CreateRunSchema = z.object({
@@ -190,6 +195,24 @@ export class ProductionMcpController {
     const user = getUser()
     const events = await this.production.listEvents(user.id, params.runId)
     return toYamlTextResult(this.normalize(events))
+  }
+
+  @Tool({
+    name: 'createJianyingDraft',
+    description: 'Turn a finished run into a 剪映 draft in the user\'s default material group, so the user can keep editing it in the desktop app. Fails when the run has no rendered output yet; repeat calls reuse the same draft.',
+    parameters: CreateJianyingDraftSchema,
+  })
+  async createJianyingDraft(params: z.infer<typeof CreateJianyingDraftSchema>) {
+    const user = getUser()
+    const run = await this.production.getRun(user.id, params.runId)
+    const videoKey = run.output['videoPath'] as string | undefined
+    if (!videoKey)
+      throw new AppException(ResponseCode.ProductionInvalidState, 'Run has no rendered output yet; render it first')
+    const material = await this.production.attachMaterialForWorker(user.id, params.runId, {
+      videoKey,
+      title: params.title || run.title,
+    })
+    return toYamlTextResult({ materialId: material.materialId, deduped: material.deduped })
   }
 
   @Tool({

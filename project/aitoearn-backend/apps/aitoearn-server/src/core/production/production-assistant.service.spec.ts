@@ -74,6 +74,8 @@ describe('productionAssistantService', () => {
     runDetail: ReturnType<typeof vi.fn>
     listRuns: ReturnType<typeof vi.fn>
     listEvents: ReturnType<typeof vi.fn>
+    getRun: ReturnType<typeof vi.fn>
+    attachMaterialForWorker: ReturnType<typeof vi.fn>
     planPublication: ReturnType<typeof vi.fn>
     submitPublication: ReturnType<typeof vi.fn>
     workerHealth: ReturnType<typeof vi.fn>
@@ -101,6 +103,8 @@ describe('productionAssistantService', () => {
       runDetail: vi.fn(),
       listRuns: vi.fn(async () => ({ list: [], total: 0, pageNo: 1, pageSize: 5 })),
       listEvents: vi.fn(async () => []),
+      getRun: vi.fn(),
+      attachMaterialForWorker: vi.fn(),
       planPublication: vi.fn(async () => ({ attempt: { id: 'attempt-1' }, deduped: false })),
       submitPublication: vi.fn(),
       workerHealth: vi.fn(async () => []),
@@ -364,7 +368,7 @@ describe('productionAssistantService', () => {
         status: 'succeeded',
         progress: 100,
         stage: 'timeline:done',
-        result: { files: ['/tmp/studio-deliver/demo.mp4'], duration: 32.7 },
+        result: { files: ['/tmp/studio-deliver/demo.mp4'], duration: 32.7, width: 1080, height: 1920 },
       }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ message: 'not found' }), { status: 404 }))
     vi.stubGlobal('fetch', fetchMock)
@@ -380,5 +384,31 @@ describe('productionAssistantService', () => {
     expect(toolMessages[0]).toContain('/tmp/studio-deliver/demo.mp4')
     expect(toolMessages[1]).toContain('队列里没有任务 missing')
     expect(result.reply.actions?.[0]).toMatchObject({ type: 'render', status: 'ok', label: '已出片' })
+    expect(toolMessages[0]).toContain('画面 1080×1920')
+  })
+
+  it('create_jianying_draft 用任务成片落工程，没成片时直接说清原因', async () => {
+    production.getRun = vi.fn(async (_userId: string, runId: string) => ({
+      id: runId,
+      title: '30 秒竖屏',
+      output: runId === RUN_ID ? { videoPath: 'studio/runs/r1/master.mp4' } : {},
+    }))
+    production.attachMaterialForWorker = vi.fn(async () => ({ materialId: 'material-1', deduped: false }))
+    client.chat
+      .mockResolvedValueOnce({ content: '', toolCalls: [toolCall('create_jianying_draft', { runId: RUN_ID })] })
+      .mockResolvedValueOnce({ content: '', toolCalls: [toolCall('create_jianying_draft', { runId: '507f1f77bcf86cd799439099' })] })
+      .mockResolvedValueOnce({ content: '工程已落地。', toolCalls: [] })
+
+    const result = await service.sendMessage('user-1', SESSION_ID, '落成剪映工程')
+
+    expect(production.attachMaterialForWorker).toHaveBeenCalledWith('user-1', RUN_ID, {
+      videoKey: 'studio/runs/r1/master.mp4',
+      title: '30 秒竖屏',
+    })
+    const secondRound = client.chat.mock.calls[1][0] as Array<{ role: string, content: string }>
+    const toolMessages = secondRound.filter(message => message.role === 'tool').map(message => message.content)
+    expect(toolMessages[0]).toContain('material-1')
+    expect(toolMessages[1]).toContain('还没有成片')
+    expect(result.reply.actions?.[0]).toMatchObject({ type: 'render', status: 'ok', label: '剪映工程已落地' })
   })
 })

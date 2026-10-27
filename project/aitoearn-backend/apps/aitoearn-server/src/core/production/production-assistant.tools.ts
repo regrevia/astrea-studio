@@ -17,6 +17,7 @@ export enum AssistantToolName {
   SUBMIT_RENDER = 'submit_render',
   GET_RENDER_JOB = 'get_render_job',
   CANCEL_RENDER_JOB = 'cancel_render_job',
+  CREATE_JIANYING_DRAFT = 'create_jianying_draft',
 }
 
 const runIdSchema = z.string().regex(/^[a-f0-9]{24}$/i, '任务 ID 是 24 位十六进制字符串')
@@ -98,6 +99,11 @@ export const getRenderJobArgsSchema = z.object({
 
 export const cancelRenderJobArgsSchema = z.object({
   jobId: z.string().min(1).describe('要取消的出片任务号'),
+})
+
+export const createJianyingDraftArgsSchema = z.object({
+  runId: runIdSchema,
+  title: z.string().min(1).max(40).optional().describe('工程名，省略就用任务标题'),
 })
 
 /** 给模型的工具清单。描述里写清「什么时候用」和「需要用户先提供什么」。 */
@@ -290,6 +296,22 @@ export const ASSISTANT_TOOLS: AssistantToolDefinition[] = [
           jobId: { type: 'string', description: '要取消的出片任务号' },
         },
         required: ['jobId'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: AssistantToolName.CREATE_JIANYING_DRAFT,
+      description: '把任务已出的成片落成剪映工程，落在用户素材库的默认分组里（同一任务重复调用只会得到同一个工程）。必须等任务渲染成功、有成片之后再调用；之后让用户在本机剪映里打开继续精修。',
+      parameters: {
+        type: 'object',
+        properties: {
+          runId: { type: 'string', description: '任务 ID' },
+          title: { type: 'string', description: '工程名，省略就用任务标题' },
+        },
+        required: ['runId'],
         additionalProperties: false,
       },
     },
