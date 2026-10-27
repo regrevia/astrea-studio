@@ -17,6 +17,8 @@ export enum ProductionJobKind {
   /** 自有 timeline spec 直接渲染母版（纯 ffmpeg，无 GUI） */
   TIMELINE_RENDER = 'render_timeline',
   JIANYING_DRAFT = 'jianying_draft',
+  /** 从剪映工程收导出产物：出草稿成功不等于成片存在，两步分开记账 */
+  JIANYING_EXPORT = 'jianying_export',
   PUBLISH_SAU = 'publish_sau',
   PROBE = 'probe',
 }

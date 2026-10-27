@@ -59,6 +59,12 @@ const ReviseRunSchema = z.object({
 })
 class ReviseRunDto extends createZodDto(ReviseRunSchema, 'ReviseProductionRunDto') {}
 
+const JianyingExportSchema = z.object({
+  allowGui: z.boolean().optional().describe('是否允许驱动剪映导出面板（用户正在用机器时会退避）'),
+  draftPath: z.string().optional().describe('草稿目录；省略就用任务里记下的剪映工程'),
+})
+class JianyingExportDto extends createZodDto(JianyingExportSchema, 'ExportProductionDraftDto') {}
+
 const AttachMaterialSchema = z.object({
   groupId: z.string().describe('草稿箱 ID'),
   title: z.string().describe('草稿标题'),
@@ -258,6 +264,16 @@ export class ProductionController {
   @Post('runs/:id/cancel')
   async cancelRun(@GetToken() token: TokenInfo, @Param('id') id: string) {
     return await this.production.cancelRun(token.id, id)
+  }
+
+  @ApiDoc({ summary: '从剪映工程收导出产物（独立任务，默认只排队等人点导出）', body: JianyingExportDto.schema })
+  @Post('runs/:id/export')
+  async startJianyingExport(
+    @GetToken() token: TokenInfo,
+    @Param('id') id: string,
+    @Body() body: JianyingExportDto,
+  ) {
+    return await this.production.startJianyingExport(token.id, id, body)
   }
 
   @ApiDoc({ summary: '把成片写入草稿箱', body: AttachMaterialDto.schema })

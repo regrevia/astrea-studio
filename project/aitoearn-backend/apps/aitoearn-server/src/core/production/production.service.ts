@@ -108,10 +108,26 @@ function normalizeRunOutput(
     : null
 
   const videoKey = typeof result['videoKey'] === 'string' ? result['videoKey'] : ''
-  if (!videoKey && !Object.keys(platforms).length && !copyCheck && !videoQa) {
+  const draftPath = typeof result['draftPath'] === 'string' ? result['draftPath'] : ''
+  // worker 把「要人点导出」放在 result.output 里，老结果也可能只在 stage 上体现
+  const outputMeta = result['output'] !== null && typeof result['output'] === 'object'
+    ? result['output'] as Record<string, unknown>
+    : {}
+  const requiresManualExport = result['requiresManualExport'] === true
+    || outputMeta['requiresManualExport'] === true
+    || result['stage'] === 'awaiting_manual_export'
+  if (!videoKey && !draftPath && !Object.keys(platforms).length && !copyCheck && !videoQa) {
     return null
   }
   const output: Record<string, unknown> = { ...existing }
+  // 草稿目录是收导出产物的唯一入口：出草稿的 job 不产视频，这条路径不写进
+  // output 的话，后面的 jianying_export 只能靠猜最新草稿。
+  if (draftPath) {
+    output['draftPath'] = draftPath
+  }
+  if (requiresManualExport || typeof result['requiresManualExport'] === 'boolean') {
+    output['requiresManualExport'] = requiresManualExport
+  }
   if (videoKey) {
     output['videoPath'] = videoKey
   }
@@ -381,6 +397,61 @@ export class ProductionService {
     return { cancelled }
   }
 
+  /**
+   * 起一个独立的剪映导出任务：草稿 → 成片。
+   *
+   * 默认不动 GUI（allowGui=false），只把「该导出了」记进台账，worker 回报
+   * awaiting_manual_export 后 run 停在 waiting_user；带 allowGui=true 才让
+   * worker 驱动导出面板，导出端自己会等用户空闲，等不到就退 9 继续排队。
+   */
+  async startJianyingExport(
+    userId: string,
+    runId: string,
+    input: { allowGui?: boolean, draftPath?: string },
+  ) {
+    const run = await this.getRun(userId, runId)
+    if (run.status === ProductionRunStatus.CANCELLED) {
+      throw new AppException(ResponseCode.ProductionInvalidState, 'Run is cancelled; cannot export')
+    }
+    const draftPath = input.draftPath || (run.output['draftPath'] as string | undefined) || ''
+    if (input.allowGui && !draftPath) {
+      throw new AppException(
+        ResponseCode.ProductionInvalidState,
+        'Run has no jianying draft path to export; build the draft first',
+      )
+    }
+    const attempt = await this.jobRepo.nextAttempt(run.id, ProductionJobKind.JIANYING_EXPORT)
+    const job = await this.jobRepo.create({
+      userId,
+      runId: run.id,
+      revision: run.revision,
+      kind: ProductionJobKind.JIANYING_EXPORT,
+      attempt,
+      status: ProductionJobStatus.QUEUED,
+      lane: RENDER_LANE,
+      payload: {
+        runId: run.id,
+        revision: run.revision,
+        draftPath,
+        allowGui: input.allowGui === true,
+        platform: 'douyin',
+      },
+    } as unknown as Partial<ProductionJob>)
+    // 正在跑的渲染不抢，等它释放 lane 之后 worker 自然领这条导出任务
+    await this.runRepo.updateByRevision(run.id, run.revision, {
+      status: ProductionRunStatus.QUEUED,
+      currentStage: 'export_queued',
+      lastError: '',
+    } as never, { status: { $nin: [ProductionRunStatus.CANCELLED, ProductionRunStatus.RUNNING] } })
+    await this.appendEvent(run.id, {
+      kind: 'job.queued',
+      jobId: job.id,
+      stage: 'export_queued',
+      message: `jianying export attempt ${job.attempt}`,
+    })
+    return { jobId: job.id, attempt: job.attempt, draftPath }
+  }
+
   private async enqueueRender(
     userId: string,
     run: ProductionRun,
@@ -569,10 +640,14 @@ export class ProductionService {
     if (!done) {
       return { ok: false, reason: 'stale-lease' }
     }
+    // 剪映导出在 macOS 上要人点导出面板：worker 干完了这轮也只能回报
+    // 「等人导出」，这时把 run 记成 succeeded 会凭空造出一条做不到的成片。
+    const awaitingManualExport = result['requiresManualExport'] === true
+      || result['stage'] === 'awaiting_manual_export'
     const update: Record<string, unknown> = {
-      status: ProductionRunStatus.SUCCEEDED,
-      currentStage: 'done',
-      progress: 100,
+      status: awaitingManualExport ? ProductionRunStatus.WAITING_USER : ProductionRunStatus.SUCCEEDED,
+      currentStage: awaitingManualExport ? 'awaiting_manual_export' : 'done',
+      progress: awaitingManualExport ? job.progress : 100,
       ...runPatch,
     }
     const output = run ? normalizeRunOutput(run.output ?? {}, result) : null
@@ -589,8 +664,8 @@ export class ProductionService {
     await this.appendEvent(job.runId, {
       kind: 'job.succeeded',
       jobId,
-      stage: 'done',
-      progress: 100,
+      stage: awaitingManualExport ? 'awaiting_manual_export' : 'done',
+      progress: awaitingManualExport ? job.progress : 100,
       data: result,
     })
     // 同一 run 可能因为租约过期补出第二个 job；这条已经出片，剩下的必须作废，

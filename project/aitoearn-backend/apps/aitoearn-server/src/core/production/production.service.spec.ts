@@ -20,6 +20,7 @@ vi.mock('@yikart/mongodb', () => ({
     MOTION_RENDER: 'motion_render',
     TIMELINE_RENDER: 'render_timeline',
     JIANYING_DRAFT: 'jianying_draft',
+    JIANYING_EXPORT: 'jianying_export',
     PUBLISH_SAU: 'publish_sau',
     PROBE: 'probe',
   },
@@ -476,5 +477,38 @@ describe('任务领取与心跳', () => {
     await service.heartbeatJob('worker-1', 'job-1', 1, 12, 'timeline:rendering')
     const runUpdate = runRepo.updateByRevision.mock.calls.find(call => call[0] === 'run-1')
     expect(runUpdate?.[2]).toMatchObject({ status: 'running', currentStage: 'timeline:rendering', progress: 12 })
+  })
+})
+
+describe('startJianyingExport', () => {
+  it('记住草稿目录后单独排一条导出任务，不再让渲染队列猜草稿', async () => {
+    const { service, runRepo, jobRepo } = createService()
+    runRepo.getByIdForUser.mockResolvedValue({
+      id: 'run-1',
+      revision: 3,
+      status: 'draft_ready',
+      output: { draftPath: '/Users/apple/Movies/JianyingPro/demo' },
+    })
+
+    const result = await service.startJianyingExport('user-1', 'run-1', { allowGui: false })
+
+    expect(result.draftPath).toBe('/Users/apple/Movies/JianyingPro/demo')
+    const created = jobRepo.create.mock.calls[0][0] as Record<string, unknown>
+    expect(created['kind']).toBe('jianying_export')
+    expect(created['revision']).toBe(3)
+    expect(created['payload']).toMatchObject({
+      runId: 'run-1',
+      revision: 3,
+      draftPath: '/Users/apple/Movies/JianyingPro/demo',
+      allowGui: false,
+    })
+  })
+
+  it('没有草稿路径却要驱动导出面板时直接拒绝，不排一个必然失败的任务', async () => {
+    const { service, runRepo, jobRepo } = createService()
+    runRepo.getByIdForUser.mockResolvedValue({ id: 'run-2', revision: 1, status: 'done', output: {} })
+
+    await expect(service.startJianyingExport('user-1', 'run-2', { allowGui: true })).rejects.toThrow()
+    expect(jobRepo.create).not.toHaveBeenCalled()
   })
 })

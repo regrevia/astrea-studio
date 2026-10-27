@@ -30,6 +30,7 @@ import {
   planPublicationArgsSchema,
   researchWebArgsSchema,
   reviseRunArgsSchema,
+  startJianyingExportArgsSchema,
   submitRenderArgsSchema,
 } from './production-assistant.tools'
 import { ProductionService } from './production.service'
@@ -405,6 +406,12 @@ export class ProductionAssistantService {
           if (!args.success)
             return this.invalidArgs(name, args.error)
           return await this.createJianyingDraft(userId, args.data.runId, args.data.title)
+        }
+        case AssistantToolName.START_JIANYING_EXPORT: {
+          const args = startJianyingExportArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.startJianyingExport(userId, args.data.runId, args.data.allowGui)
         }
         default:
           return this.fail(`没有名为 ${name} 的工具，请只用给定的工具。`, '未知工具')
@@ -822,6 +829,27 @@ export class ProductionAssistantService {
         status: ProductionAssistantActionStatus.OK,
         label: '剪映工程已落地',
         detail: material.materialId,
+        link: '/studio',
+      })],
+    }
+  }
+
+  /**
+   * 收导出产物：草稿落好了不等于成片存在。这一步单独记账，并如实说明这一轮
+   * 在等人的动作，不假装已经出了视频。
+   */
+  private async startJianyingExport(userId: string, runId: string, allowGui?: boolean): Promise<ToolResult> {
+    const job = await this.production.startJianyingExport(userId, runId, { allowGui: allowGui === true })
+    const text = allowGui === true
+      ? `任务 ${runId} 的导出已排队（${job.jobId}），本机会尝试驱动剪映导出面板；机器正被占用时会自动退避。`
+      : `任务 ${runId} 的导出已排队（${job.jobId}）。macOS 上剪映要人点导出，这一轮到「等人导出」就停，等你在剪映里点完再收一次。`
+    return {
+      text,
+      actions: [action({
+        type: ProductionAssistantActionType.RENDER,
+        status: ProductionAssistantActionStatus.OK,
+        label: allowGui === true ? '导出已排队' : '等待人工导出',
+        detail: job.jobId,
         link: '/studio',
       })],
     }

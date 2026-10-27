@@ -18,6 +18,7 @@ export enum AssistantToolName {
   GET_RENDER_JOB = 'get_render_job',
   CANCEL_RENDER_JOB = 'cancel_render_job',
   CREATE_JIANYING_DRAFT = 'create_jianying_draft',
+  START_JIANYING_EXPORT = 'start_jianying_export',
 }
 
 const runIdSchema = z.string().regex(/^[a-f0-9]{24}$/i, '任务 ID 是 24 位十六进制字符串')
@@ -104,6 +105,11 @@ export const cancelRenderJobArgsSchema = z.object({
 export const createJianyingDraftArgsSchema = z.object({
   runId: runIdSchema,
   title: z.string().min(1).max(40).optional().describe('工程名，省略就用任务标题'),
+})
+
+export const startJianyingExportArgsSchema = z.object({
+  runId: runIdSchema,
+  allowGui: z.boolean().optional().describe('只有用户明确让你在这台 Mac 上驱动剪映导出时才传 true'),
 })
 
 /** 给模型的工具清单。描述里写清「什么时候用」和「需要用户先提供什么」。 */
@@ -310,6 +316,22 @@ export const ASSISTANT_TOOLS: AssistantToolDefinition[] = [
         properties: {
           runId: { type: 'string', description: '任务 ID' },
           title: { type: 'string', description: '工程名，省略就用任务标题' },
+        },
+        required: ['runId'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: AssistantToolName.START_JIANYING_EXPORT,
+      description: '给已有剪映工程的任务排一条独立导出任务，把草稿收成成片文件。默认只排队：macOS 上剪映必须由人点导出，任务会停在「等人导出」；只有用户明确让你驱动这台 Mac 的剪映时才传 allowGui=true。',
+      parameters: {
+        type: 'object',
+        properties: {
+          runId: { type: 'string', description: '任务 ID，必须已经落过剪映工程' },
+          allowGui: { type: 'boolean', description: '是否允许驱动本机剪映导出面板' },
         },
         required: ['runId'],
         additionalProperties: false,

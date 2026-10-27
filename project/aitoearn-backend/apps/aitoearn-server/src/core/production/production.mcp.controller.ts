@@ -32,6 +32,11 @@ const CreateJianyingDraftSchema = z.object({
   title: z.string().optional().describe('工程名，省略用任务标题'),
 })
 
+const StartJianyingExportSchema = z.object({
+  runId: z.string().describe('任务 ID，必须已经落过剪映工程'),
+  allowGui: z.boolean().default(false).describe('true 才让本机驱动剪映导出面板；用户正在用机器时会被推迟'),
+})
+
 const CreateRunSchema = z.object({
   projectId: z.string().describe('项目 ID'),
   title: z.string().min(1).describe('任务标题'),
@@ -213,6 +218,19 @@ export class ProductionMcpController {
       title: params.title || run.title,
     })
     return toYamlTextResult({ materialId: material.materialId, deduped: material.deduped })
+  }
+
+  @Tool({
+    name: 'startJianyingExport',
+    description: 'Queue a separate export job that turns the run\'s 剪映 draft into a video file. On macOS 剪映 needs a human to press export: without allowGui the job only records that the draft is ready and the run waits for the user; with allowGui the local worker drives the export panel and backs off when the machine is busy. Never claims a video before the file exists.',
+    parameters: StartJianyingExportSchema,
+  })
+  async startJianyingExport(params: z.infer<typeof StartJianyingExportSchema>) {
+    const user = getUser()
+    const job = await this.production.startJianyingExport(user.id, params.runId, {
+      allowGui: params.allowGui,
+    })
+    return toYamlTextResult(job)
   }
 
   @Tool({
