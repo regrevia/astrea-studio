@@ -203,6 +203,36 @@ export interface TimelineSpecInput {
   bgm?: { src: string, volume?: number }
 }
 
+/* ------------------------------------------------------------------ 口播出片输入
+ * 同一条 timeline 通道的竖屏脚本分支：worker 按脚本文本现场出卡面、立绘和逐屏配音，
+ * 前端只发稿子，不用先把时间轴算好。
+ */
+
+/** 口播出片 spec。points 每项「标题::镜头注解::口播句」，第三段就是这一屏念的句子。 */
+export interface VerticalShortSpecInput {
+  engine: 'timeline'
+  mode: 'vertical_short'
+  template: 'factcard'
+  /** 顶栏主题；任务标题通常也用它。 */
+  topic: string
+  /** 开场钩子，写一句反差；缺省时 worker 用通用面试题文案。 */
+  hook?: string
+  /** 每屏一条「标题::镜头注解::口播句」。 */
+  points: string[]
+  /** 收尾一句。 */
+  cta?: string
+  /** 音色：`edge:zh-CN-XiaoxiaoNeural@rate=0.98` 或 `sami:BV411_streaming`。 */
+  voice: string
+  /** 系列名，显示在卡面左上角。 */
+  kicker?: string
+  /** 逐屏口播；points 第三段与之对应，缺省时 worker 按第三段念。 */
+  narration?: { intro?: string, points?: string[], outro?: string }
+  /** 素材：绝对路径或 `pack:包名/文件名`，原样交给渲染进程。 */
+  materials?: string[]
+  /** 目标平台标识，渲染后按平台各交付一份。 */
+  platforms?: string[]
+}
+
 /* ------------------------------------------------------------------ 干货卡输入
  * 「干货卡一键出片」用 factcard 模板：选题 + 开场钩子 + 「标题::说明」要点 + 音色。
  * 卡面出图、逐屏字幕、转场和配音全部由 worker 的 factcard 模块展开，
