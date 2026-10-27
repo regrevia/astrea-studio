@@ -61,6 +61,29 @@ describe('studioJobsClient', () => {
     expect(job?.result?.duration).toBe(32.5)
   })
 
+  it('列表只取队列 jobs 数组，新的在前', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      jobs: [
+        { id: 'new', kind: 'timeline', status: 'running', progress: 30, stage: 'timeline:encode' },
+        { id: 'old', kind: 'motion', status: 'succeeded', progress: 100, stage: 'done' },
+      ],
+    }))
+    const client = new StudioJobsClient(BASE)
+
+    const jobs = await client.list(10)
+
+    expect(jobs.map(job => job.id)).toEqual(['new', 'old'])
+    expect(jobs[0].progress).toBe(30)
+    expect(String(fetchMock.mock.calls[0][0])).toBe('http://127.0.0.1:8899/jobs?limit=10')
+  })
+
+  it('列表返回空体时给空数组，不抛异常', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({}))
+    const client = new StudioJobsClient(BASE)
+
+    await expect(client.list(5)).resolves.toEqual([])
+  })
+
   it('取消只认队列回写的 status=cancelled', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ id: 'abc-3', kind: 'motion', status: 'cancelled', progress: 40, stage: 'cancelled' }))
     const client = new StudioJobsClient(BASE)

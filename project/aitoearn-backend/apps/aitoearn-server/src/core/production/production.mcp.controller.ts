@@ -3,8 +3,10 @@ import { getUser, toTextResult, toYamlTextResult } from '@yikart/common'
 import { PublicationDispatcher } from '@yikart/mongodb'
 import { Tool } from '@yikart/nest-mcp'
 import { z } from 'zod'
-import { ProductionService } from './production.service'
+import { ProductionAssistantService } from './production-assistant.service'
 import { normalizeRunSpec } from './production.run-spec'
+import { ProductionService } from './production.service'
+import { StudioJobKind } from './studio-jobs.client'
 
 /**
  * Studio tools for Codex.
@@ -51,6 +53,15 @@ const ReviseRunSchema = z.object({
   spec: z.record(z.string(), z.unknown()).optional().describe('规格补丁，会与现有规格合并'),
 })
 
+const SubmitRenderSchema = z.object({
+  kind: z.enum(StudioJobKind).describe('本机渲染通道：timeline 时间线成片 / motion 动效 / slides 图文 / jianying 剪映草稿 / paper 长图'),
+  payload: z.record(z.string(), z.unknown()).describe('通道入参；timeline 要 canvas+video+text+audio，轴内 src 用绝对路径'),
+})
+
+const RenderJobIdSchema = z.object({
+  jobId: z.string().describe('渲染队列任务 ID'),
+})
+
 const PlanPublicationSchema = z.object({
   runId: z.string().describe('任务 ID（必须有已验证的成片）'),
   platform: z.string().default('douyin').describe('目标平台'),
@@ -64,7 +75,10 @@ const PlanPublicationSchema = z.object({
 @Controller()
 @Injectable()
 export class ProductionMcpController {
-  constructor(private readonly production: ProductionService) {}
+  constructor(
+    private readonly production: ProductionService,
+    private readonly assistant: ProductionAssistantService,
+  ) {}
 
   /**
    * Mongoose documents carry a raw `_id`, which YAML-serialises into a byte
@@ -200,6 +214,43 @@ export class ProductionMcpController {
       },
     })
     return toYamlTextResult({ attemptId: attempt.id, status: attempt.status, deduped })
+  }
+
+  @Tool({
+    name: 'submitRender',
+    description: 'Queue a render on the local machine and return a jobId immediately — it does not wait for the video. Poll getRenderJob until status is succeeded/failed. Use this only when the user asked for a video now; a production run (createProductionRun) is the higher-level path with ledger and publishing.',
+    parameters: SubmitRenderSchema,
+  })
+  async submitRender(params: z.infer<typeof SubmitRenderSchema>) {
+    getUser()
+    const job = await this.assistant.submitQueueJob(params.kind, params.payload)
+    return toYamlTextResult(this.normalize(job))
+  }
+
+  @Tool({
+    name: 'getRenderJob',
+    description: 'Read one render job: status, progress, stage, output files and error. A missing jobId returns null, which means the queue has no such job — say that instead of inventing an output path.',
+    parameters: RenderJobIdSchema,
+  })
+  async getRenderJob(params: z.infer<typeof RenderJobIdSchema>) {
+    getUser()
+    const job = await this.assistant.readQueueJob(params.jobId)
+    if (!job)
+      return toTextResult(`队列里没有任务 ${params.jobId}`)
+    return toYamlTextResult(this.normalize(job))
+  }
+
+  @Tool({
+    name: 'cancelRenderJob',
+    description: 'Cancel a queued or running render job. `cancelled: false` means the job had already finished or the id is unknown; re-read it with getRenderJob before reporting.',
+    parameters: RenderJobIdSchema,
+  })
+  async cancelRenderJob(params: z.infer<typeof RenderJobIdSchema>) {
+    getUser()
+    const job = await this.assistant.stopQueueJob(params.jobId)
+    if (!job)
+      return toTextResult(`队列里没有任务 ${params.jobId}`)
+    return toYamlTextResult(this.normalize(job))
   }
 
   @Tool({

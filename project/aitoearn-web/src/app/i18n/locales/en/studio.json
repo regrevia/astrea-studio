@@ -190,6 +190,18 @@
       "platforms": "Per-platform videos",
       "qa": "Render checks",
       "log": "Step log"
+    },
+    "queue": {
+      "source": "Local queue",
+      "artifact": "Output",
+      "waiting": "Waiting to start",
+      "kind": {
+        "timeline": "Timeline video",
+        "motion": "Motion",
+        "slides": "Slides",
+        "jianying": "CapCut draft",
+        "paper": "Long image"
+      }
     }
   },
   "pub": {

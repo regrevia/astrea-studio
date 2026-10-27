@@ -57,6 +57,12 @@ export class StudioJobsClient {
     return { ...job, cancelled: job.status === 'cancelled' }
   }
 
+  /** 最近的任务列表，新的在前；面板的「进行中」用这条对齐队列真实状态。 */
+  async list(limit: number): Promise<StudioJob[]> {
+    const body = await this.request('GET', `/jobs?limit=${limit}`)
+    return asJobList(body)
+  }
+
   private async request(method: 'GET' | 'POST', path: string, body?: unknown): Promise<unknown> {
     const url = `${this.baseUrl.replace(/\/+$/, '')}${path}`
     let response: Response
@@ -85,6 +91,12 @@ export class StudioJobsClient {
     }
     return await response.json().catch(() => ({}))
   }
+}
+
+function asJobList(body: unknown): StudioJob[] {
+  const raw = body as { jobs?: unknown[] } | unknown[] | null
+  const list = Array.isArray(raw) ? raw : Array.isArray(raw?.jobs) ? raw.jobs : []
+  return list.map(job => asJob(job))
 }
 
 function asJob(body: unknown): StudioJob {

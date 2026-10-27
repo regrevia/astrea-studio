@@ -15,6 +15,7 @@ import type {
   ProductionRun,
   ProductionWorker,
   PublicationAttempt,
+  RenderJob,
   RunDetail,
 } from './production.types'
 import http from '@/utils/request'
@@ -41,6 +42,11 @@ export function createProject(data: { name: string, sourceRepo?: string, materia
 /** 任务列表。 */
 export function getRuns(params: { pageNo?: number, pageSize?: number, status?: string } = {}) {
   return http.get<PageResult<ProductionRun>>('production/runs', params)
+}
+
+/** 本机渲染队列最近任务：面板「进行中」用它对齐队列真实状态。 */
+export function getRenderJobs(limit = 10) {
+  return http.get<RenderJob[]>('production/assistant/render-jobs', { limit })
 }
 
 /** 任务详情。注意任务本体在 `.run`，jobs/attempts/events 是附带的时间线。 */

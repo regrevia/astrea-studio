@@ -112,6 +112,18 @@
       "platforms": "Videos je Plattform",
       "qa": "Rendern-Prüfungen",
       "log": "Schrittprotokoll"
+    },
+    "queue": {
+      "source": "Lokale Warteschlange",
+      "artifact": "Ergebnis",
+      "waiting": "Wartet auf Start",
+      "kind": {
+        "timeline": "Timeline-Video",
+        "motion": "Motion",
+        "slides": "Slides",
+        "jianying": "CapCut-Entwurf",
+        "paper": "Langbild"
+      }
     }
   },
   "pub": {

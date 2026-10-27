@@ -12,6 +12,6 @@ import { StudioAssistantClient } from './studio-assistant.client'
   imports: [ContentModule],
   controllers: [ProductionController, ProductionWorkerController, ProductionAssistantController],
   providers: [ProductionService, ProductionScheduler, ProductionAssistantService, StudioAssistantClient, ResearchFetcher],
-  exports: [ProductionService],
+  exports: [ProductionService, ProductionAssistantService],
 })
 export class ProductionModule {}

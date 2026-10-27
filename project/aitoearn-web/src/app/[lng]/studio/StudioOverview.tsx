@@ -14,10 +14,10 @@
 
 'use client'
 
-import type { CharacterInfo, Inventory, ProductionRun, ProductionWorker, PublicationAttempt } from '@/api/production/production.types'
+import type { CharacterInfo, Inventory, ProductionRun, ProductionWorker, PublicationAttempt, RenderJob } from '@/api/production/production.types'
 import { AlertCircle, CheckCircle2, ChevronDown, Loader2, Mic, Plus, QrCode, UserRound } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { getCharacters, getHealth, getInventory, getProjects, getPublications, getRuns } from '@/api/production/production.api'
+import { getCharacters, getHealth, getInventory, getProjects, getPublications, getRenderJobs, getRuns } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -27,6 +27,7 @@ import { cn } from '@/utils/className'
 import AssistantPanel from './components/AssistantPanel'
 import FactCardForm from './components/FactCardForm'
 import NewRunForm from './components/NewRunForm'
+import { QueueJobRow } from './components/QueueJobRow'
 import RunDetailPanel from './components/RunDetailPanel'
 import RunRow from './components/RunRow'
 import { groupRuns, publicationStatusMeta } from './utils/status'
@@ -262,6 +263,7 @@ export default function StudioOverview() {
   const [runs, setRuns] = useState<ProductionRun[]>([])
   const [publications, setPublications] = useState<PublicationAttempt[]>([])
   const [workers, setWorkers] = useState<ProductionWorker[]>([])
+  const [renderJobs, setRenderJobs] = useState<RenderJob[]>([])
   // 手动出片是给不想对话的人留的备用路径，默认收起，别让它挡住列表。
   const [showManual, setShowManual] = useState(false)
   const [projects, setProjects] = useState<Record<string, string>>({})
@@ -309,18 +311,20 @@ export default function StudioOverview() {
       // http.get<T> resolves the whole envelope ({code, data, message}), not the
       // payload — the project convention is `res?.data?.list`. Reading `.list`
       // straight off the envelope is undefined and silently renders empty cards.
-      const [runsRes, pubsRes, healthRes, inv, chars] = await Promise.all([
+      const [runsRes, pubsRes, healthRes, inv, chars, queue] = await Promise.all([
         getRuns({ pageNo: 1, pageSize: 30 }),
         getPublications(),
         getHealth(),
         getInventory(),
         getCharacters(),
+        getRenderJobs(),
       ])
       setRuns(runsRes?.data?.list ?? [])
       setPublications(pubsRes?.data ?? [])
       setWorkers(healthRes?.data?.workers ?? [])
       setInventory(inv)
       setCharacters(chars)
+      setRenderJobs(queue?.data ?? [])
       setError('')
     }
     catch (e) {
@@ -389,6 +393,20 @@ export default function StudioOverview() {
   const projectOptions = useMemo(() => Object.entries(projects), [projects])
   const onlineMachines = workers.filter(w => w.online)
 
+  /** 队列里还在排队/渲染的任务：只有这两种状态算「进行中」，历史任务堆多了没人看。 */
+  const queueActive = useMemo(
+    () => renderJobs.filter(job => job.status === 'queued' || job.status === 'running'),
+    [renderJobs],
+  )
+  /** 队列里刚结束的任务：指挥台出的片不进 run 台账，这里给最近两条，否则成片在面板上没有落点。 */
+  const queueRecent = useMemo(
+    () => renderJobs.filter(job => job.status === 'succeeded' || job.status === 'failed').slice(0, 2),
+    [renderJobs],
+  )
+  const extraCount = useCallback(
+    (key: string) => (key === 'run.group.active' ? queueActive.length : key === 'run.group.settled' ? queueRecent.length : 0),
+    [queueActive, queueRecent],
+  )
   const sections = [
     { key: 'run.group.active', items: groups.active },
     { key: 'run.group.waiting', items: groups.waiting },
@@ -449,22 +467,30 @@ export default function StudioOverview() {
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
                   {t(section.key)}
-                  {section.items.length > 0 && <Badge variant="secondary">{section.items.length}</Badge>}
+                  {section.items.length + extraCount(section.key) > 0 && (
+                    <Badge variant="secondary">{section.items.length + extraCount(section.key)}</Badge>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-2">
-                {section.items.length === 0
+                {section.items.length === 0 && extraCount(section.key) === 0
                   ? <p className="py-3 text-center text-sm text-muted-foreground">{t('run.empty')}</p>
-                  : section.items.map(run => (
-                      <RunRow
-                        key={run.id}
-                        run={run}
-                        projectName={projects[run.projectId]}
-                        selected={run.id === selectedRunId}
-                        onSelect={selectRun}
-                        onChanged={refresh}
-                      />
-                    ))}
+                  : (
+                      <>
+                        {section.key === 'run.group.active' && queueActive.map(job => <QueueJobRow key={job.id} job={job} />)}
+                        {section.key === 'run.group.settled' && queueRecent.map(job => <QueueJobRow key={job.id} job={job} />)}
+                        {section.items.map(run => (
+                          <RunRow
+                            key={run.id}
+                            run={run}
+                            projectName={projects[run.projectId]}
+                            selected={run.id === selectedRunId}
+                            onSelect={selectRun}
+                            onChanged={refresh}
+                          />
+                        ))}
+                      </>
+                    )}
               </CardContent>
             </Card>
           ))}

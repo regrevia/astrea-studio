@@ -112,6 +112,18 @@
       "platforms": "プラットフォーム別動画",
       "qa": "仕上がりチェック",
       "log": "ステップログ"
+    },
+    "queue": {
+      "source": "ローカルキュー",
+      "artifact": "成果物",
+      "waiting": "開始待ち",
+      "kind": {
+        "timeline": "タイムライン動画",
+        "motion": "モーション",
+        "slides": "スライド",
+        "jianying": "CapCut 下書き",
+        "paper": "長尺画像"
+      }
     }
   },
   "pub": {

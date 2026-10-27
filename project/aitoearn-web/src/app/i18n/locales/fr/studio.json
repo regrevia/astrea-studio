@@ -112,6 +112,18 @@
       "platforms": "Vidéos par plateforme",
       "qa": "Contrôles du rendu",
       "log": "Journal des étapes"
+    },
+    "queue": {
+      "source": "File locale",
+      "artifact": "Résultat",
+      "waiting": "En attente de démarrage",
+      "kind": {
+        "timeline": "Vidéo timeline",
+        "motion": "Animation",
+        "slides": "Diapositives",
+        "jianying": "Brouillon CapCut",
+        "paper": "Image longue"
+      }
     }
   },
   "pub": {

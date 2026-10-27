@@ -190,6 +190,18 @@
       "platforms": "分平台成片",
       "qa": "出片检查",
       "log": "步骤日志"
+    },
+    "queue": {
+      "source": "本机队列",
+      "artifact": "产物",
+      "waiting": "等待开始",
+      "kind": {
+        "timeline": "时间线成片",
+        "motion": "动效",
+        "slides": "图文",
+        "jianying": "剪映草稿",
+        "paper": "长图"
+      }
     }
   },
   "pub": {

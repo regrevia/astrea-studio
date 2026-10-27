@@ -112,6 +112,18 @@
       "platforms": "플랫폼별 영상",
       "qa": "결과 점검",
       "log": "단계 로그"
+    },
+    "queue": {
+      "source": "로컬 큐",
+      "artifact": "결과물",
+      "waiting": "시작 대기",
+      "kind": {
+        "timeline": "타임라인 영상",
+        "motion": "모션",
+        "slides": "슬라이드",
+        "jianying": "CapCut 초안",
+        "paper": "긴 이미지"
+      }
     }
   },
   "pub": {

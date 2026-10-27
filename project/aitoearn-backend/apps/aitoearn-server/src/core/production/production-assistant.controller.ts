@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common'
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger'
 import { GetToken, TokenInfo } from '@yikart/aitoearn-auth'
 import { ApiDoc, createZodDto } from '@yikart/common'
@@ -36,6 +36,12 @@ export class ProductionAssistantController {
   @Post('sessions')
   async createSession(@GetToken() token: TokenInfo, @Body() body: CreateAssistantSessionDto) {
     return await this.assistant.createSession(token.id, body.title)
+  }
+
+  @ApiDoc({ summary: '本机渲染队列最近任务（面板「进行中」用）' })
+  @Get('render-jobs')
+  async listRenderJobs(@GetToken() _token: TokenInfo, @Query('limit') limit = '20') {
+    return await this.assistant.listRenderJobs(Number(limit) || 20)
   }
 
   @ApiDoc({ summary: '会话详情（含全部消息）' })

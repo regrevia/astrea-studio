@@ -34,7 +34,7 @@ import {
 import { ProductionService } from './production.service'
 import { ResearchFetcher } from './research-fetch'
 import { AssistantChatMessage, AssistantToolCall, StudioAssistantClient } from './studio-assistant.client'
-import { StudioJobKind, StudioJobsClient } from './studio-jobs.client'
+import { StudioJob, StudioJobCancelResult, StudioJobKind, StudioJobsClient } from './studio-jobs.client'
 
 /** 工具循环上限：模型最多连续调 6 轮工具，防止一条消息把服务端拖死。 */
 export const MAX_TOOL_ROUNDS = 6
@@ -164,6 +164,26 @@ export class ProductionAssistantService {
     private readonly client: StudioAssistantClient,
     private readonly researchFetcher: ResearchFetcher,
   ) {}
+
+  /** MCP 工具用：投一个本机渲染任务，立刻拿 jobId，不等出片。 */
+  async submitQueueJob(kind: StudioJobKind, payload: Record<string, unknown>): Promise<StudioJob> {
+    return await this.jobsClient.submit(kind, payload)
+  }
+
+  /** MCP 工具用：查队列任务；队列返回 404 时给 null，由调用方说明任务不存在。 */
+  async readQueueJob(jobId: string): Promise<StudioJob | null> {
+    return await this.jobsClient.get(jobId)
+  }
+
+  /** MCP 工具用：取消队列任务；已经结束的任务返回 cancelled=false。 */
+  async stopQueueJob(jobId: string): Promise<StudioJobCancelResult | null> {
+    return await this.jobsClient.cancel(jobId)
+  }
+
+  /** 面板「进行中」直接读队列真实状态，避免页面上写着「没有正在渲染的任务」而队列在跑。 */
+  async listRenderJobs(limit: number): Promise<StudioJob[]> {
+    return await this.jobsClient.list(Math.min(Math.max(limit, 1), 50))
+  }
 
   async createSession(userId: string, title?: string): Promise<AssistantSessionVo> {
     const session = await this.sessionRepo.create({

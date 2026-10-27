@@ -117,6 +117,20 @@ export interface ProductionRun {
   updatedAt?: string
 }
 
+/** 本机渲染队列（8899）的一条任务，字段和队列返回一致，别在这里改名。 */
+export interface RenderJob {
+  id: string
+  kind: string
+  status: string
+  progress: number
+  stage: string
+  error?: string
+  result?: {
+    files?: string[]
+    duration?: number
+  }
+}
+
 /** 渲染通道参数（后端 spec 只透传，形状由各表单决定）。 */
 export interface ProductionRunSpec {
   engine?: string
