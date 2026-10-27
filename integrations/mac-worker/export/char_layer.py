@@ -433,6 +433,34 @@ def _relax_stop_gaps(states: list[str], db_frame: list[float] | None = None) -> 
     return out
 
 
+def _word_window(mp3: str, text: str) -> tuple[float, float] | None:
+    """(第一个字起点, 最后一个字结束)，用 lipsync 的逐字表 + 同一套校准。
+
+    拿不到就返回 None：这时只做包络静音约束，绝不猜边界——猜错就是把有字的
+    地方划成静音，嘴会比「早开」更难看。
+    """
+    if not text:
+        return None
+    try:
+        try:
+            from . import lipsync as _ls  # noqa: PLC0415
+        except Exception:  # noqa: BLE001
+            import lipsync as _ls  # noqa: PLC0415
+        from pathlib import Path as _P  # noqa: PLC0415
+
+        words = _ls.load_words(_P(mp3))
+        if not words:
+            return None
+        chars = _ls._calibrate(_ls._expand_words(words), _P(mp3))
+        if not chars:
+            return None
+        first = min(float(c["t"]) for c in chars)
+        last = max(float(c["t"]) + float(c["d"]) for c in chars)
+        return max(0.0, first), max(0.0, last)
+    except Exception:  # noqa: BLE001 - 那是别人的私有函数，不保证一直在
+        return None
+
+
 def _enforce_quiet(states: list[str], mp3: str,
                    window: tuple[float, float] | None = None) -> list[str]:
     """静音必闭口，放在最后一步，长度不变。
