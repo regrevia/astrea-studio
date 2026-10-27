@@ -1,0 +1,41 @@
+{
+  "projectId": "envoy-slides",
+  "title": "envoy · 分镜卡片（slides 引擎）",
+  "brief": "同一主题走 slides 引擎：验证平台队列能驱动卡片式分镜成片。",
+  "engine": "slides",
+  "template": "slides",
+  "spec": {
+    "topic": "regrevia/envoy",
+    "hook": "给 AI 一个链接，它只读到标题",
+    "kicker": "github.com/regrevia/envoy",
+    "cta": "装上 envoy-cli，链接就是材料",
+    "voice": "edge:zh-CN-XiaoxiaoNeural",
+    "rate": 0.98,
+    "chapters": [
+      "01",
+      "02",
+      "03",
+      "04"
+    ],
+    "logo_a": "ENVOY",
+    "logo_b": "SLIDES",
+    "scenes": [
+      {
+        "title": "每条结论挂时间戳",
+        "caption": "material id + video_time"
+      },
+      {
+        "title": "关键帧，按时间点抽",
+        "caption": "说到哪就抽哪一帧"
+      },
+      {
+        "title": "60 轮对照，读完率 13 → 55",
+        "caption": "20 个素材包 × 3 轮；自评 verified 0"
+      },
+      {
+        "title": "读不到就说读不到",
+        "caption": "未覆盖，不写成结论"
+      }
+    ]
+  }
+}

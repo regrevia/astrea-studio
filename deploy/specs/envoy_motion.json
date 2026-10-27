@@ -1,0 +1,58 @@
+{
+  "engine": "motion",
+  "voice": "sami:BV411_streaming",
+  "meta": {
+    "title": "envoy · 动效（motion 引擎）",
+    "accent": "#3B82F6"
+  },
+  "scenes": [
+    {
+      "id": "S1",
+      "kick": "问题",
+      "shots": [
+        {
+          "kind": "line",
+          "say": "给 Agent 丢一个链接，然后呢？",
+          "text": [
+            "丢一个链接，",
+            "然后呢？"
+          ],
+          "hi": 1
+        },
+        {
+          "kind": "noise",
+          "say": "它要么读不到正文，要么把整页导航广告全塞给你",
+          "label": "它交回来的",
+          "note": "导航 · 广告 · 评论区"
+        },
+        {
+          "kind": "only",
+          "say": "真正有用的那一段，埋在第几百行里",
+          "label": "你要的",
+          "line": "第 3 段真正有用的内容"
+        }
+      ]
+    },
+    {
+      "id": "S2",
+      "kick": "做法",
+      "shots": [
+        {
+          "kind": "line",
+          "say": "先按时间点抽关键帧，再逐帧对照",
+          "text": [
+            "先按时间点",
+            "抽关键帧"
+          ],
+          "hi": 1
+        },
+        {
+          "kind": "only",
+          "say": "说到哪就抽哪一帧，两边逐帧比",
+          "label": "对照",
+          "line": "关键帧 ↔ 口播时间点"
+        }
+      ]
+    }
+  ]
+}

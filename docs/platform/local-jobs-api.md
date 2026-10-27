@@ -34,7 +34,8 @@
 | `paper` | `specPath` / `spec` | `shots` `caps` `style`(`paper`/`schematic`) `slug` `out` | 手绘纸片成片 mp4 |
 | `slides` | `specPath` / `spec` | 引擎自己的字段原样透传 | 幻灯片成片 |
 | `jianying` | `specPath` / `spec` | `draftName` | 剪映草稿目录（可直接开） |
-| `motion` | `specPath` / `spec` | 引擎自己的字段原样透传 | 动效成片 |
+| `motion` | `specPath` / `spec` | `{engine, voice, meta, scenes[{id,kick,shots}]}`，见 `deploy/specs/envoy_motion.json`（**voice 只能给 SAMI 音色**，引擎内部写死 sami_tts） | 动效成片 |
+| `slides` | `specPath` / `spec` | `scenes[{title,caption}]` + 可选 `chapters/logo_a/logo_b`，见 `deploy/specs/envoy_slides.json` | 卡片分镜（**1920×1080 横版**，引擎写死） |
 
 规格文件允许两层：外层 `{"projectId","title","spec":{...}}` 或裸 spec —— 引擎拿到的
 永远是内层（`points`/`narration`/`scenes` 在那一层）。这条不做的话，`factcard` 会报
@@ -100,6 +101,14 @@ deliver/                     成片（DELIVER_DIR 可覆盖）
 
 两边共用同一批 `render_*` 引擎函数，行为一致；不要在本机再写一套 `ffmpeg` 拼装脚本
 绕过它们 —— 那样口型/版式/响度三处校准会各自漂。
+
+## 成片落在哪
+
+`paper` 直接由引擎写到 `$STUDIO_HOME/deliver/`；`slides`/`motion`/`jianying` 的引擎
+把产物写在自己的工作目录里，任务成功后由队列**复制**一份到
+`$STUDIO_HOME/deliver/<slug>-<jobId><扩展名>`（`slug` 不写就用 `kind`），
+`GET /deliverables` 和 `bin/studio films` 列的就是这里。工作目录保留原始产物供复查，
+但只有 deliver 里那份算交付物——清工作目录不会丢成片。
 
 ## 自检：别让降级静默发生
 

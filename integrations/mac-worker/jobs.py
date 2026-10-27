@@ -228,6 +228,24 @@ def _engine(job: dict, payload: dict) -> dict:
     return {"result": res, "files": files}
 
 
+def _deliver(job: dict, files: list[str]) -> list[str]:
+    """把引擎产出的成片收进 DELIVER_DIR：工作目录是临时的，成片要能被 films 列到。"""
+    out: list[str] = []
+    slug = str((job.get("payload") or {}).get("slug") or job.get("kind") or "film")
+    DELIVER_DIR.mkdir(parents=True, exist_ok=True)
+    for f in files:
+        src = Path(str(f))
+        if not src.is_file():
+            continue
+        if DELIVER_DIR in src.parents:
+            out.append(str(src))
+            continue
+        dst = DELIVER_DIR / f"{slug}-{job['id']}{src.suffix}"
+        shutil.copy2(src, dst)
+        out.append(str(dst))
+    return out
+
+
 def run_job(job_id: str) -> int:
     job = get(job_id)
     job.update(status="running", startedAt=job.get("startedAt") or time.strftime("%Y-%m-%dT%H:%M:%S"))
@@ -238,6 +256,10 @@ def run_job(job_id: str) -> int:
             res = _paper(job, payload)
         else:
             res = _engine(job, payload)
+        if isinstance(res, dict) and job["kind"] != "paper":
+            delivered = _deliver(job, list(res.get("files") or []))
+            if delivered:
+                res = {**res, "files": delivered}
         job.update(status="succeeded", progress=100, stage=f"{job['kind']}:done",
                    result=res, endedAt=time.strftime("%Y-%m-%dT%H:%M:%S"))
         _write(job)
