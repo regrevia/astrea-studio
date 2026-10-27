@@ -4,7 +4,7 @@
 本机要的是「在平台里点一下就把高级视频做出来」——不依赖外部服务的本机队列。
 
 契约：
-  POST /jobs   {"kind":"paper|slides|jianying|motion", "payload":{...}}  → 202 + job
+  POST /jobs   {"kind":"paper|slides|jianying|motion|timeline", "payload":{...}}  → 202 + job
   GET  /jobs?limit=30                                                   → 最近任务
   GET  /jobs/<id>                                                       → 状态机
   GET  /jobs/<id>/log?tail=200                                          → 日志尾巴
@@ -52,7 +52,7 @@ RUN_ENV = {
     "PYTHONPATH": os.environ.get("PYTHONPATH") or str(STUDIO_HOME / "runtime/lib"),
     "STUDIO_SKIP_PREFLIGHT": os.environ.get("STUDIO_SKIP_PREFLIGHT", "1"),
 }
-KINDS = ("paper", "slides", "jianying", "motion")
+KINDS = ("paper", "slides", "jianying", "motion", "timeline")
 
 
 # ---------------------------------------------------------------- 状态机读写
@@ -246,6 +246,24 @@ def _deliver(job: dict, files: list[str]) -> list[str]:
     return out
 
 
+def _timeline(job: dict, payload: dict) -> dict:
+    """timeline 规格 → ffmpeg 母版（headless，不启动剪映、不抢前台）。"""
+    work = _job_dir(job["id"]) / "work"
+    work.mkdir(parents=True, exist_ok=True)
+    raw = json.loads(Path(payload["specPath"]).expanduser().read_text(encoding="utf-8"))
+    # 外层 {projectId,title,spec:{...}} 的壳剥掉：timeline_render 只认内层
+    spec = raw["spec"] if isinstance(raw.get("spec"), dict) else raw
+    spec_path = work / "timeline.json"
+    spec_path.write_text(json.dumps(spec, ensure_ascii=False, indent=2) + "\n",
+                         encoding="utf-8")
+    slug = payload.get("slug") or job["kind"]
+    out = Path(payload.get("out") or DELIVER_DIR / f"{slug}-{job['id']}.mp4").expanduser()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [PYBIN, str(REPO_ROOT / "integrations" / "mac-worker" / "export" / "timeline_render.py"),
+           "--spec", str(spec_path), "--out", str(out), "--json"]
+    return {"files": [str(out)], "duration": spec.get("duration"), **_run_cli(job, cmd)}
+
+
 def run_job(job_id: str) -> int:
     job = get(job_id)
     job.update(status="running", startedAt=job.get("startedAt") or time.strftime("%Y-%m-%dT%H:%M:%S"))
@@ -254,6 +272,8 @@ def run_job(job_id: str) -> int:
         payload = dict(job.get("payload") or {})
         if job["kind"] == "paper":
             res = _paper(job, payload)
+        elif job["kind"] == "timeline":
+            res = _timeline(job, payload)
         else:
             res = _engine(job, payload)
         if isinstance(res, dict) and job["kind"] != "paper":
@@ -340,8 +360,9 @@ def assets() -> dict:
             continue
         inner = d.get("spec") if isinstance(d.get("spec"), dict) else d
         engine = d.get("engine") or inner.get("engine") or "?"
-        # 引擎名和可提交的 kind 不是一一对应：timeline/paper 两类规格都走 paper 任务。
-        kind = engine if engine in ("slides", "motion", "jianying") else "paper"
+        # 规格里的 engine 不全是可提交的 kind：paper 规格走 paper 任务，
+        # timeline 规格有自己的 job（_timeline），其余同名。
+        kind = engine if engine in ("slides", "motion", "jianying", "timeline") else "paper"
         specs.append({"path": str(p), "title": d.get("title") or p.stem,
                       "engine": engine, "kind": kind, "ok": True})
     shots = _scan(MATERIALS_DIR / "shots", _SHOT_EXT)
