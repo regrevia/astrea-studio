@@ -38,6 +38,21 @@ STUDIO_SKIP_PREFLIGHT=1 bash deploy/submit_spec.sh deploy/specs/envoy_real.json 
 `STUDIO_SKIP_PREFLIGHT=1` 只跳过出片前回归，不跳过接口校验（`deploy/submit_spec.sh:18-22`）。
 脚本自己轮询 `/api/production/runs`，每 15s 打一行 `dur=/qa=/findings=/copy=`，最多 60 次。
 
+服务端队列本身的往返用 `deploy/p2_timeline_e2e.py` 验（它像 UI 一样打公开 API，断言
+**run 的 materialId 和每个平台的对象**，不看 job 自报的 done）：
+
+```bash
+# 三段素材，两条路都验：advanced=自己写完整时间轴；friendly=只给文案/素材/画幅，服务端展开
+python3 deploy/p2_timeline_e2e.py --assets /tmp/demo_c/asset --platforms douyin --timeout 600
+python3 deploy/p2_timeline_e2e.py --assets /tmp/demo_c/asset --platforms douyin --mode friendly
+```
+
+`--assets` 下要 `a.mp4/b.mp4/c.mp4`（`p2_timeline_e2e.py:clips_under`），可选 `bgm.m4a`。
+2026-10-27 两条路都 PASS：`advanced` run `6ae097e0cca7f12f29fa7e66`、
+`friendly` run `6ae098a5cca7f12f29fa8130`，均 9s 母版 + douyin 变体 `ok=True 1080x1920`
++ draft 附着 + materialId 回写；草稿路径看 job log 的 `DRAFT_PATH=` 行
+（后端 `completeJob` 白名单不收 `draftPath`，只能落日志）。
+
 **口播文本取自哪里**：`points` 每条是 `标题::卡面正文::口播`，TTS 念的是**第 3 段**
 （`export/vertical_short.py:1584` 取 `split("::")[2]`；`factcard._parse_point` 落成 `say`）。
 `narration.points[i]` 只是兜底：当某条 `point` 连两个 `::` 都没有时，`build_spec` 才把它拼成第 3 段
