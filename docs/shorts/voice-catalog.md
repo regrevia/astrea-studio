@@ -42,6 +42,27 @@ SAMI 用默认语速；样音目录 `~/CreatorStudio/materials/voice-probe/<tag>
 - 逐字时间的来源只有 edge 的 `WordBoundary`；要逐字口型就必须选 edge，SAMI 用在
   「音色合适、口型可以粗一点」的地方（SAMI 侧口型轨道 `source=syllable`）。
 
+## 什么内容配什么音色（5 条判断）
+
+判断依据来自 `tools/lipsync_probe.py` 实测的三轨（同句 19 字：`edge:zh-CN-XiaoxiaoNeural`
+245 帧 / `zh-CN-YunyangNeural` 248 帧 / `sami:BV411_streaming` 220 帧，均 50Hz）：
+
+1. **知识/工具类口播（默认）** → `sami:BV411_streaming`。实测居留 120/258.8/520ms、
+   换档 16 次、`closed` 占 34.1%，播得稳、不需要逐字精度，是历史基线别动。
+2. **要「字口型对得准」的强同步镜头**（口型特写、跟读、字幕逐字高亮）→
+   `edge:zh-CN-XiaoxiaoNeural`。只有它给 `WordBoundary`（19/19 覆盖、15 个边界），
+   轨是 `source=words`；实测居留 100/245/740ms、`closed` 仅 28.2%——闭口少，特写要补闭口帧。
+3. **慢节奏叙事/情绪段** → `sami:BV145_streaming` 或 `sami:ICL_zh_male_qinggandiantai`。
+   这两条是情感频道的音色，韵律拖得开；口型用 `source=syllable` 就够，别硬求字边界。
+4. **男声解说/干货** → `edge:zh-CN-YunyangNeural`（实测 248 帧、`closed` 34.3%、
+   居留 100/261.1/660ms，闭口比例最高，画面最「干净」）；需要更沉的纪录片腔再上
+   `sami:zh_male_rendongteng`。
+5. **悬疑/钩子开场** → `sami:zh_male_changtianyi_xuanyi`，但开场句必须短：
+   这类音色气压足、起音慢，超过 12 字时首帧容易落在静音尾巴上，逐场 `lead_ms_max` 会顶到 60ms 线。
+
+反向结论：**不要为了参数去选 SAMI**（它忽略 `rate/pitch`），也不要为了音色去选 edge
+却不开逐字（`WordBoundary` 是 edge 唯一的溢价，不用就退回默认音色）。
+
 ## 选法
 
 - 默认仍走 `DEFAULT_VOICE = sami:BV411_streaming`（历史成片基线，不动）。
