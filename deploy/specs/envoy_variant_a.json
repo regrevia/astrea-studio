@@ -1,0 +1,37 @@
+{
+  "projectId": "{{PROJECT_ID}}",
+  "title": "Envoy 材料页：换稿复验",
+  "brief": "同一口型范式，换两条口播文案，检查口型是否仍与语音对齐",
+  "engine": "timeline",
+  "template": "factcard",
+  "spec": {
+    "topic": "regrevia/envoy",
+    "hook": "给 AI 一个链接，它只读得到标题",
+    "kicker": "github.com/regrevia/envoy",
+    "points": [
+      "每条结论挂时间戳::material id + video_time::每段带时间戳和来源链接，引用点得回去核对。",
+      "关键帧，按时间点抽::说到哪就抽哪一帧::图表说第几分钟，就抽那一帧。",
+      "60 轮对照，读完率 13 → 55::20 个素材包 × 3 轮；自评 verified 0::二十个素材包各跑三轮对照，只认线上线索。",
+      "读不到就说读不到::未覆盖，不写成结论::缺字幕、要登录、预算不够，标成未覆盖。"
+    ],
+    "cta": "装上 envoy-cli，链接就是材料",
+    "voice": "edge:zh-CN-XiaoxiaoNeural",
+    "narration": {
+      "intro": "它翻两屏就敢下结论，剩下的全靠脑补。",
+      "points": [
+        "每段带时间戳和来源链接，引用能点回去核对。",
+        "图表说第几分钟，就抽那一帧。",
+        "二十个素材包三轮对照，只算线上线索。",
+        "缺字幕、要登录、预算不够，标成未覆盖。"
+      ],
+      "outro": "装好命令行直接用，本期由大肥鱼制作。"
+    },
+    "engine": "timeline",
+    "template": "factcard",
+    "mode": "vertical_short",
+    "character": {
+      "outfit": "06_researcher"
+    },
+    "rate": 0.98
+  }
+}

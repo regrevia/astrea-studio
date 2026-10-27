@@ -357,32 +357,80 @@ def _silence_run_frames(mp3: str, total: int) -> set[int]:
     return out
 
 
-def _word_window(mp3: str, text: str) -> tuple[float, float] | None:
-    """(第一个字起点, 最后一个字结束)，用 lipsync 的逐字表 + 同一套校准。
+def _frame_db(mp3: str, total: int, fps: float = 30.0) -> list[float]:
+    """30fps 逐帧平均 dB，用来在 2 帧闭口里挑更静的一帧。"""
+    db10 = _envelope_db10(mp3)
+    if not db10 or total <= 0:
+        return []
+    n_cells = len(db10)
+    n = min(total, int(round(n_cells * 10.0 / 1000.0 * fps)))
+    if n < 2:
+        return []
+    edges = [int(math.ceil(k * (1000.0 / fps) / 10.0)) for k in range(n + 1)]
+    out = []
+    for k in range(n):
+        a0, b0 = edges[k], min(edges[k + 1], n_cells)
+        if b0 <= a0:
+            a0, b0 = min(a0, n_cells - 1), min(a0 + 1, n_cells)
+        seg = db10[a0:b0]
+        out.append(sum(seg) / len(seg))
+    return out
 
-    拿不到就返回 None：这时只做包络静音约束，绝不猜边界——猜错就是把有字的
-    地方划成静音，嘴会比「早开」更难看。
+
+def _film_frame_db(segs: list[dict], frames: int, fps: float = 30.0) -> list[float]:
+    """成片帧号 → 该帧所在段的配音 dB（非台词帧记 -140）。
+
+    成片帧和逐段轨之间隔着段位移与重采样，只有按段自己的 ``lip_t0`` 折回去取
+    才是验收看的那条包络；不做这一步，放宽就会落在错帧上（f45a 实测无效）。
     """
-    if not text:
-        return None
-    try:
+    out = [-140.0] * frames
+    for seg in segs:
+        mp3 = seg.get("lip_audio")
+        if not mp3:
+            continue
         try:
-            from . import lipsync as _ls  # noqa: PLC0415
-        except Exception:  # noqa: BLE001
-            import lipsync as _ls  # noqa: PLC0415
-        from pathlib import Path as _P  # noqa: PLC0415
+            db = _envelope_db(str(mp3))
+        except Exception:  # noqa: BLE001 - 量不出就交给逐段那两道
+            continue
+        if not db:
+            continue
+        t0 = seg.get("lip_t0")
+        t0 = float(seg["start"] if t0 is None else t0)
+        start, end = float(seg["start"]), float(seg["end"])
+        for k in range(max(0, int(start * fps) - 1), min(frames, int(end * fps) + 2)):
+            i = int(round((k / fps - t0) * _LIP_HZ))
+            if 0 <= i < len(db):
+                out[k] = db[i]
+    return out
 
-        words = _ls.load_words(_P(mp3))
-        if not words:
-            return None
-        chars = _ls._calibrate(_ls._expand_words(words), _P(mp3))
-        if not chars:
-            return None
-        first = min(float(c["t"]) for c in chars)
-        last = max(float(c["t"]) + float(c["d"]) for c in chars)
-        return max(0.0, first), max(0.0, last)
-    except Exception:  # noqa: BLE001 - 那是别人的私有函数，不保证一直在
-        return None
+
+def _relax_stop_gaps(states: list[str], db_frame: list[float] | None = None) -> list[str]:
+    """塞音空隙不得整段闭死：2 帧闭口里只把「更深的那一帧」改成微张。
+
+    验收（lipsync_qa）把 40~80ms 的词内静音单列：整段全闭记 ``stop_misclosed``，
+    必须 0；而 30fps 下 40~80ms 只能是 2 帧，规则 3「低于 -45dB 一律 closed」
+    会把 /t/ /k/ 的爆破闭死。这里只放开一帧而不是两帧——两帧全放会把上一句尾
+    的开口帧和新句子的开口帧连成一片，起点前凭空多出 67ms 的开口，直接撞
+    「开场领先张开 ≤60ms」。逐帧 dB 只在两帧都算不清时用来挑更静的那帧。
+    """
+    out = list(states)
+    n = len(out)
+    db = db_frame or []
+    i = 0
+    while i < n:
+        if out[i] != "closed":
+            i += 1
+            continue
+        j = i
+        while j + 1 < n and out[j + 1] == "closed":
+            j += 1
+        if (j - i + 1) == 2 and i > 0 and j + 1 < n:
+            pick = i
+            if len(db) >= n and db[j] < db[i]:
+                pick = j
+            out[pick] = "narrow"
+        i = j + 1
+    return out
 
 
 def _enforce_quiet(states: list[str], mp3: str,
@@ -443,6 +491,7 @@ def _enforce_quiet(states: list[str], mp3: str,
     closed.update(_silence_run_frames(mp3, total))
     for k in closed:
         out[k] = "closed"
+    # 6. 塞音空隙例外（最后一步，纯按口型轨做，不碰音频口径）
     return out
 
 
@@ -1310,6 +1359,16 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
         sys.stderr.write(f"[char_layer] 成片级静音兜底失败: {_exc!r}\n")
         sys.stderr.flush()
     _pre_closed = {k for k, v in _pre_lip.items() if v == "closed"}
+    # 塞音空隙（40~80ms）在成片这一层再放一帧微张：逐段那道看不见段位移后的帧号，
+    # 验收却按成片帧号数「整段闭死」。放在画之前，帧编码进 webm 就改不回来了。
+    _film_states = [_pre_lip.get(i, "closed") for i in range(frames)]
+    try:
+        _film_states = _relax_stop_gaps(_film_states, _film_frame_db(segs, frames, fps))
+    except Exception as _exc:  # noqa: BLE001 - 兜底崩了也不能没有人物层
+        sys.stderr.write(f"[char_layer] 塞音放宽失败: {_exc!r}\n")
+        sys.stderr.flush()
+    _lip_fix = {i: st for i, st in enumerate(_film_states)
+                if st != _pre_lip.get(i, "closed")}
     for i in range(frames):
         t = i / fps
         canvas = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
@@ -1321,6 +1380,7 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
                 if i in _pre_closed:
                     # 兜底判过：这一帧配音在静音里，四档口型统统闭口
                     _mt = "closed"
+                _mt = _lip_fix.get(i, _mt)
                 # 记一张「第几帧张的什么口型」：误差不靠肉眼猜，出片后拿它对帧
                 lip_log[i] = _mt
             key, sprite = _sprite(seg, t, render, key_green, _mt)

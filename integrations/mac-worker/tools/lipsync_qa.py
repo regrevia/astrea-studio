@@ -305,6 +305,49 @@ def _early_open(states: np.ndarray, db: np.ndarray, fps: float) -> dict:
             "lead_ms_max": round(max(leads), 0) if leads else 0.0}
 
 
+def _onset_lags(mouth_open: np.ndarray, db: np.ndarray, fps: float,
+                tol_ms: float = 300.0, refractory_ms: float = 150.0) -> dict:
+    """第二把尺：按「起音配对」量延迟，不用互相关。
+
+    互相关在能量起伏平缓的句子会把峰值拉到邻句上（实测换声后片尾窗报 +60ms、
+    相关系数 0.79 照样是假峰）。这里只认真正的起点：音量从静音跨上来的一帧、
+    嘴从闭合跨到张开的一帧，各自取最近的一对，``d = (t_audio - t_mouth) * 1000``，
+    **正值 = 嘴早于声音**，与 onset 口径一致。配不上的起点单独计数，不摊进中位数。
+    """
+    ref = max(1, int(round(refractory_ms / 1000.0 * fps)))
+    tol = max(1, int(round(tol_ms / 1000.0 * fps)))
+    voiced = db >= DB_SILENT
+    a_on: list[int] = []
+    for i in np.flatnonzero(voiced & ~np.concatenate(([False], voiced[:-1]))):
+        if not a_on or int(i) - a_on[-1] >= ref:
+            a_on.append(int(i))
+    opened = mouth_open >= VIDEO_R_REF
+    m_on: list[int] = []
+    for i in np.flatnonzero(opened & ~np.concatenate(([False], opened[:-1]))):
+        if not m_on or int(i) - m_on[-1] >= ref:
+            m_on.append(int(i))
+    lags: list[float] = []
+    unpaired = 0
+    for i in a_on:
+        cand = [j for j in m_on if abs(j - i) <= tol]
+        if not cand:
+            unpaired += 1
+            continue
+        j = min(cand, key=lambda k: abs(k - i))
+        lags.append((i - j) / fps * 1000.0)
+    if lags:
+        arr = np.array(lags, dtype=np.float64)
+        med = round(float(np.median(arr)), 0)
+        p05 = round(float(np.percentile(arr, 5)), 0)
+        p95 = round(float(np.percentile(arr, 95)), 0)
+        span = round(float(arr.max() - arr.min()), 0)
+    else:
+        med = p05 = p95 = span = 0.0
+    return {"audio_onsets": len(a_on), "mouth_onsets": len(m_on), "paired": len(lags),
+            "unpaired": unpaired, "tol_ms": tol_ms,
+            "median_ms": med, "p05_ms": p05, "p95_ms": p95, "span_ms": span}
+
+
 def _rms_db(pcm: np.ndarray, rate: int, win_ms: float) -> np.ndarray:
     """不重叠 10ms 窗的 RMS→dBFS（规范口径用，区别于 _envelope 的 25ms 滑窗）。"""
     win = max(1, int(rate * win_ms / 1000.0))
@@ -441,6 +484,7 @@ def _state_report(audio_db: np.ndarray, states: np.ndarray, fps: float, t0: floa
         "silent_false_open": round(false_open, 4),
         "silence_spec": (_silence_spec(pcm, states, fps) if pcm is not None else {}),
         "early_open": _early_open(states_al, db, fps),
+        "onset_lags": _onset_lags(open_m, db, fps),
         "switch": _switch_stats(states_al, fps),
         "dwell": _dwell(_runs(states_al), fps),
         "window_lags": wl,
@@ -713,6 +757,10 @@ def _print_report(rep: dict) -> None:
         e = rep["early_open"]
         print(f"  开场领先张开 {e['early']}/{e['onsets']} 处（起点前 {e['window_ms']:.0f}ms 内）"
               f"· 最大提前 {e['lead_ms_max']:.0f}ms · 逐场必须各算")
+    on = rep.get("onset_lags") or {}
+    if on:
+        print(f"  起音配对 中位 {on['median_ms']:+.0f}ms p05 {on['p05_ms']:+.0f} p95 {on['p95_ms']:+.0f}"
+              f" · 配 {on['paired']}/{on['audio_onsets']} 处（未配 {on['unpaired']}）· 距差 {on['span_ms']:.0f}ms")
     s = rep["switch"]["per_100ms"]
     print(f"  每100ms换档 均值 {s['mean']:.2f} p50 {s['p50']:.1f} p95 {s['p95']:.1f} 最大 {s['max']}")
     bad = [c for c in checks if not c["ok"]]
