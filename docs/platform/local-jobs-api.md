@@ -170,3 +170,25 @@ python3 integrations/mac-worker/export/timeline_render.py --spec <内层spec.jso
 
 `scripts/promo/build_promo.py` 是这条路的成品例子：旁白合成 → 录屏切片 → 窗口遮罩 → 排到
 `timeline` spec → 提交队列，一条命令出产品演示片。
+
+## 指挥台怎么用这条通道
+
+助手不是自己渲染，而是把这组接口包成三个工具，模型只负责选引擎、写规格、读结果：
+
+| 工具 | 作用 | 关键参数 |
+| --- | --- | --- |
+| `submit_render` | 下单出片，异步，立刻拿到任务号 | `kind`（`paper`/`slides`/`jianying`/`motion`/`timeline`）、`payload`（`specPath` 或 `spec` 必给一个，`slug`/`out` 可选）、`label` |
+| `get_render_job` | 查进度、失败原因、成片路径 | `jobId` |
+| `cancel_render_job` | 取消排队或运行中的任务 | `jobId` |
+
+三条约定：
+
+- 一次只下一单。下单后模型最多再查两次，不许反复轮询，也不许编造成片地址。
+- 成片路径只认队列 `result.files`；任务没成功就说没出片，不要把「已下单」讲成「已交付」。
+- 队列连不上（用户没开 macOS 端、端口不通）必须如实说是本机队列不可用，让用户开面板，
+  不要转去调云端渲染掩盖问题。
+
+`StudioJobsClient`（`apps/aitoearn-server/src/core/production/studio-jobs.client.ts`）是这层的
+唯一出口：`submit` / `get` / `cancel`，`get` 遇 404 返回 `null` 而不是抛错，队列不可达统一翻成
+`ProductionRenderQueueUnavailable`。模型可见的工具清单在 `production-assistant.tools.ts`，
+`SYSTEM_PROMPT` 第 11 条管住「什么时候下单、查几次、怎么说结果」。

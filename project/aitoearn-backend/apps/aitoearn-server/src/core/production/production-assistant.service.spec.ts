@@ -327,4 +327,58 @@ describe('productionAssistantService', () => {
       createdAt: '2026-01-02T03:04:05.000Z',
     })
   })
+
+  it('submit_render 把出片任务下到本机渲染队列，并把任务号回给模型和面板', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      id: 'job-9',
+      kind: 'timeline',
+      status: 'queued',
+      progress: 0,
+      stage: 'queued',
+    }), { status: 202 }))
+    vi.stubGlobal('fetch', fetchMock)
+    client.chat
+      .mockResolvedValueOnce({
+        content: '',
+        toolCalls: [toolCall('submit_render', { kind: 'timeline', payload: { specPath: '/tmp/spec.json' } })],
+      })
+      .mockResolvedValueOnce({ content: '已下单，任务 job-9。', toolCalls: [] })
+
+    const result = await service.sendMessage('user-1', SESSION_ID, '按这个规格出片')
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('http://127.0.0.1:8899/jobs')
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      kind: 'timeline',
+      payload: { specPath: '/tmp/spec.json' },
+    })
+    expect(result.reply.content).toBe('已下单，任务 job-9。')
+    expect(result.reply.actions?.[0]).toMatchObject({ type: 'render', status: 'running', detail: 'job-9' })
+  })
+
+  it('get_render_job 把成片路径如实交给模型，任务不存在时说明原因', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        id: 'job-9',
+        kind: 'timeline',
+        status: 'succeeded',
+        progress: 100,
+        stage: 'timeline:done',
+        result: { files: ['/tmp/studio-deliver/demo.mp4'], duration: 32.7 },
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: 'not found' }), { status: 404 }))
+    vi.stubGlobal('fetch', fetchMock)
+    client.chat
+      .mockResolvedValueOnce({ content: '', toolCalls: [toolCall('get_render_job', { jobId: 'job-9' })] })
+      .mockResolvedValueOnce({ content: '', toolCalls: [toolCall('get_render_job', { jobId: 'missing' })] })
+      .mockResolvedValueOnce({ content: '成功的是 job-9，missing 不存在。', toolCalls: [] })
+
+    const result = await service.sendMessage('user-1', SESSION_ID, '出好了吗')
+
+    const secondRound = client.chat.mock.calls[1][0] as Array<{ role: string, content: string }>
+    const toolMessages = secondRound.filter(message => message.role === 'tool').map(message => message.content)
+    expect(toolMessages[0]).toContain('/tmp/studio-deliver/demo.mp4')
+    expect(toolMessages[1]).toContain('队列里没有任务 missing')
+    expect(result.reply.actions?.[0]).toMatchObject({ type: 'render', status: 'ok', label: '已出片' })
+  })
 })

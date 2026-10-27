@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { AssistantToolDefinition } from './studio-assistant.client'
+import { StudioJobKind } from './studio-jobs.client'
 
 /** 指挥台允许模型调用的全部工具。模型只会拿到这几个名字，白名单即权限。 */
 export enum AssistantToolName {
@@ -13,6 +14,9 @@ export enum AssistantToolName {
   REVISE_RUN = 'revise_run',
   LIST_EVENTS = 'list_events',
   PLAN_PUBLICATION = 'plan_publication',
+  SUBMIT_RENDER = 'submit_render',
+  GET_RENDER_JOB = 'get_render_job',
+  CANCEL_RENDER_JOB = 'cancel_render_job',
 }
 
 const runIdSchema = z.string().regex(/^[a-f0-9]{24}$/i, '任务 ID 是 24 位十六进制字符串')
@@ -80,6 +84,20 @@ export const listEventsArgsSchema = z.object({
 export const planPublicationArgsSchema = z.object({
   runId: runIdSchema,
   platforms: z.array(z.string().min(1)).min(1).describe('要发布到的平台标识'),
+})
+
+export const submitRenderArgsSchema = z.object({
+  kind: z.enum(StudioJobKind).describe('出片引擎'),
+  payload: z.record(z.string(), z.unknown()).describe('引擎参数；specPath 或 spec 必须给一个，slug/out 可选'),
+  label: z.string().min(1).max(40).optional().describe('给用户看的一句话动作名，省略就用引擎名'),
+})
+
+export const getRenderJobArgsSchema = z.object({
+  jobId: z.string().min(1).describe('出片任务号，submit_render 返回的那个'),
+})
+
+export const cancelRenderJobArgsSchema = z.object({
+  jobId: z.string().min(1).describe('要取消的出片任务号'),
 })
 
 /** 给模型的工具清单。描述里写清「什么时候用」和「需要用户先提供什么」。 */
@@ -221,6 +239,57 @@ export const ASSISTANT_TOOLS: AssistantToolDefinition[] = [
           runId: { type: 'string', description: '任务 ID' },
         },
         required: ['runId'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: AssistantToolName.SUBMIT_RENDER,
+      description: '在用户本机的渲染队列下单出片。异步：下单当场返回任务号，之后用 get_render_job 查进度。spec 或 specPath 必须给一个——timeline 要完整分镜（canvas/video/text/overlay/audio），motion/slides/jianying 按各自规格写。',
+      parameters: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: Object.values(StudioJobKind), description: '出片引擎' },
+          payload: {
+            type: 'object',
+            description: '引擎参数。specPath：已有规格文件的绝对路径；spec：直接把规格对象写进来（队列会落盘）；slug：产物文件名前缀；out：成片绝对路径，省略就落到队列交付目录',
+            additionalProperties: true,
+          },
+          label: { type: 'string', description: '给用户看的一句话动作名' },
+        },
+        required: ['kind', 'payload'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: AssistantToolName.GET_RENDER_JOB,
+      description: '查一条出片任务的进度、失败原因和成片路径。成功时 result.files 是成片绝对路径，可直接给用户。',
+      parameters: {
+        type: 'object',
+        properties: {
+          jobId: { type: 'string', description: '出片任务号' },
+        },
+        required: ['jobId'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: AssistantToolName.CANCEL_RENDER_JOB,
+      description: '取消排队中或正在跑的出片任务。已经结束的任务不会被回滚，队列会如实返回当前状态。',
+      parameters: {
+        type: 'object',
+        properties: {
+          jobId: { type: 'string', description: '要取消的出片任务号' },
+        },
+        required: ['jobId'],
         additionalProperties: false,
       },
     },

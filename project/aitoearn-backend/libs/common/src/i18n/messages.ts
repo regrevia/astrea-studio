@@ -228,6 +228,10 @@ export const messages: Record<ResponseCode, Record<Locale, MessageValue>> = {
     'en-US': 'Assistant model service is unavailable',
     'zh-CN': '指挥台推理服务不可用',
   },
+  [ResponseCode.ProductionRenderQueueUnavailable]: {
+    'en-US': 'Local render queue is unreachable',
+    'zh-CN': '本机渲染队列连不上',
+  },
   [ResponseCode.ProductionAssistantResearchFailed]: {
     'en-US': 'Assistant research fetch failed',
     'zh-CN': '指挥台联网调研失败',

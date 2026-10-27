@@ -1,3 +1,4 @@
+import type { StudioAssistantOverride } from './studio-assistant.client'
 import { randomUUID } from 'node:crypto'
 import { Injectable } from '@nestjs/common'
 import { AppException, ResponseCode } from '@yikart/common'
@@ -16,8 +17,10 @@ import { config } from '../../config'
 import {
   ASSISTANT_TOOLS,
   AssistantToolName,
+  cancelRenderJobArgsSchema,
   createProjectArgsSchema,
   createRunArgsSchema,
+  getRenderJobArgsSchema,
   getRunArgsSchema,
   listEventsArgsSchema,
   listPlatformsArgsSchema,
@@ -26,11 +29,12 @@ import {
   planPublicationArgsSchema,
   researchWebArgsSchema,
   reviseRunArgsSchema,
+  submitRenderArgsSchema,
 } from './production-assistant.tools'
 import { ProductionService } from './production.service'
 import { ResearchFetcher } from './research-fetch'
-import type { StudioAssistantOverride } from './studio-assistant.client'
 import { AssistantChatMessage, AssistantToolCall, StudioAssistantClient } from './studio-assistant.client'
+import { StudioJobKind, StudioJobsClient } from './studio-jobs.client'
 
 /** 工具循环上限：模型最多连续调 6 轮工具，防止一条消息把服务端拖死。 */
 export const MAX_TOOL_ROUNDS = 6
@@ -56,6 +60,7 @@ const SYSTEM_PROMPT = [
   '8. 「Envoy」指用户本机 ~/Desktop/2026/Envoy 这个项目：给 AI 一个链接，它把整篇读完、抽帧、记时间戳，再交给模型写作。envoyproxy.io 是同名的云原生代理，题材完全不同，research_web 返回它一律丢掉，别写 L7、服务网格、xDS、Wasm、mTLS 那套。能用的数字就这些：7.0 MB 原片 216 秒 109 段中文 ASR；690 秒长片 354 段；抓 25 个素材包只认 14 个，小红书 4 条全挂也照实标；每条结论都带时间戳能点回去核对。数字之外不编。',
   '9. 文案要像人说话：短句、有观点、有反差，不写说明书。结尾固定加一句「本期视频全程由大肥鱼制作完成，没有任何一个 token 受到伤害」，只放进最后一句口播，不占卡面。回应用户时说清这一步做了什么、下一步等他给什么。',
   '10. 任务排队和渲染是正常的：渲染要几分钟，最多查两次 get_run 就如实汇报阶段和进度，别说队列卡死，也不要让用户去重启服务。',
+  '11. 用户要真出片就用 submit_render 下单：一次只下一单，kind 按需求选，specPath 用用户已有规格，没有规格就自己写 spec 再给。下单后如实报任务号，最多再查两次 get_render_job；成片路径来自 result.files，队列没返回就说出片没完成，禁止编造成片地址或说已经交付到某个平台。',
 ].join('\n')
 
 const RUN_STATUS_TEXT: Record<ProductionRunStatus, string> = {
@@ -151,6 +156,8 @@ interface ToolResult { text: string, actions: AssistantActionVo[] }
  */
 @Injectable()
 export class ProductionAssistantService {
+  private readonly jobsClient = new StudioJobsClient(config.studioAssistant.inventoryUrl)
+
   constructor(
     private readonly sessionRepo: ProductionAssistantSessionRepository,
     private readonly production: ProductionService,
@@ -354,6 +361,24 @@ export class ProductionAssistantService {
             return this.invalidArgs(name, args.error)
           return await this.planPublication(userId, args.data.runId, args.data.platforms)
         }
+        case AssistantToolName.SUBMIT_RENDER: {
+          const args = submitRenderArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.submitRender(args.data.kind, args.data.payload, args.data.label)
+        }
+        case AssistantToolName.GET_RENDER_JOB: {
+          const args = getRenderJobArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.getRenderJob(args.data.jobId)
+        }
+        case AssistantToolName.CANCEL_RENDER_JOB: {
+          const args = cancelRenderJobArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.cancelRenderJob(args.data.jobId)
+        }
         default:
           return this.fail(`没有名为 ${name} 的工具，请只用给定的工具。`, '未知工具')
       }
@@ -463,7 +488,7 @@ export class ProductionAssistantService {
           return `${title || line.slice(0, 14)}::`
         })
     const says = given.length
-      ? points.map((item, index) => {
+      ? points.map((item, _index) => {
           const parts = item.split('::')
           return parts.length >= 3 ? parts.slice(2).join('::') : item
         })
@@ -670,6 +695,82 @@ export class ProductionAssistantService {
     return {
       text: `已登记发布意向：${planned.join('、') || '无'}；失败：${failed.join('；') || '无'}。请注意：这只记录了意向，需用户在面板人工确认，指挥台不会真正提交发布。`,
       actions,
+    }
+  }
+
+  // ------------------------------------------------------------------ 渲染队列
+
+  private async submitRender(kind: StudioJobKind, payload: Record<string, unknown>, label?: string): Promise<ToolResult> {
+    const job = await this.jobsClient.submit(kind, payload)
+    return {
+      text: `已下单 ${kind} 任务 ${job.id}，当前 ${job.status}（${job.progress}%）。任务在用户机器上异步执行，用 get_render_job 查进度；成片路径要等任务成功后才在 result.files 里出现。`,
+      actions: [action({
+        type: ProductionAssistantActionType.RENDER,
+        status: ProductionAssistantActionStatus.RUNNING,
+        label: label ?? `${kind} 出片`,
+        detail: job.id,
+        link: '/studio',
+      })],
+    }
+  }
+
+  private async getRenderJob(jobId: string): Promise<ToolResult> {
+    const job = await this.jobsClient.get(jobId)
+    if (!job)
+      return this.fail(`队列里没有任务 ${jobId}，先确认任务号有没有抄错。`, '出片任务不存在')
+    if (job.status === 'succeeded') {
+      const files = job.result?.files ?? []
+      const duration = job.result?.duration ? `，时长 ${job.result.duration.toFixed(1)} 秒` : ''
+      return {
+        text: `任务 ${job.id} 已出片${duration}：${files.join('、') || '队列没返回产物路径'}。`,
+        actions: [action({
+          type: ProductionAssistantActionType.RENDER,
+          status: ProductionAssistantActionStatus.OK,
+          label: '已出片',
+          detail: job.id,
+          link: '/studio',
+        })],
+      }
+    }
+    if (job.status === 'failed') {
+      return {
+        text: `任务 ${job.id} 失败：${job.error ?? '队列没给错误原文'}。改完规格重新下单，别重复查同一个失败任务。`,
+        actions: [action({
+          type: ProductionAssistantActionType.RENDER,
+          status: ProductionAssistantActionStatus.FAILED,
+          label: '出片失败',
+          detail: job.id,
+          link: '/studio',
+        })],
+      }
+    }
+    return {
+      text: `任务 ${job.id} 还在跑：${job.status}，进度 ${job.progress}%（${job.stage || '无阶段'}）。渲染要几分钟，先别取消，也别让用户重启服务。`,
+      actions: [action({
+        type: ProductionAssistantActionType.RENDER,
+        status: ProductionAssistantActionStatus.RUNNING,
+        label: '出片中',
+        detail: job.id,
+        link: '/studio',
+      })],
+    }
+  }
+
+  private async cancelRenderJob(jobId: string): Promise<ToolResult> {
+    const job = await this.jobsClient.cancel(jobId)
+    if (!job)
+      return this.fail(`队列里没有任务 ${jobId}，没法取消。`, '出片任务不存在')
+    return {
+      text: job.cancelled
+        ? `任务 ${job.id} 已取消。`
+        : `任务 ${job.id} 已经是 ${job.status}，队列没有取消它（已结束的任务不能回滚）。`,
+      actions: [action({
+        type: ProductionAssistantActionType.RENDER,
+        status: job.cancelled ? ProductionAssistantActionStatus.OK : ProductionAssistantActionStatus.FAILED,
+        label: job.cancelled ? '已取消出片' : '没取消成',
+        detail: job.id,
+        link: '/studio',
+      })],
     }
   }
 
