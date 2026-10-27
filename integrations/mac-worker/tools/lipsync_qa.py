@@ -14,6 +14,8 @@
 
 判定（与验收规范一致，见 docs/shorts/lipsync-paradigm.md）：
     |延迟| ≤ 60ms 可用，≤ 30ms 好；静音段（< -45dBFS）误开率 ≤ 5%；全长漂移 ≤ 60ms。
+    两种输入口径不同，别交叉比：口型轨（音频级）没有取样损失；成片（视频级）量的是
+    36px 嘴区代理 @30fps，r 天花板约 0.6，通过线只认「延迟 + 静音误开」，r 作参考。
 
 用法：
     /usr/bin/python3 tools/lipsync_qa.py --audio a.mp3 --states lip.json
@@ -21,7 +23,8 @@
         --spec deploy/specs/envoy_real.json
     ... --json        给流水线读；任一项不过 exit 1（--no-strict 变 0）
 
-只依赖 /usr/bin/python3 自带的 numpy 与系统 ffmpeg，不装包、不改引擎。
+只依赖 numpy 与系统 ffmpeg，不装包、不改引擎。本机 /usr/bin/python3 被 Xcode 许可挡住时，
+用带 numpy 的解释器：~/CreatorStudio/.motionvenv/bin/python。
 """
 from __future__ import annotations
 
@@ -41,11 +44,28 @@ LAG_USABLE_MS = 60.0     # |延迟| ≤ 60ms 算可用
 LAG_GOOD_MS = 30.0       # |延迟| ≤ 30ms 算好
 SILENT_FALSE_MAX = 0.05  # 静音段误开率上限 5%
 DRIFT_MAX_MS = 60.0      # 全长漂移上限：和延迟同一把尺
+# 视频级相关系数下限：只是「代理/定位可信」的参考线，不是失败线。
+# 成片里嘴区只有 30~40px、30fps 取样，r 天花板 0.6 左右（实测 f32 +0.47 / f36 +0.61），
+# 拿口型轨的 0.8 去要求成片，只会逼人放宽别的阈值。
+VIDEO_R_REF = 0.30
 DB_SILENT = -45.0        # 低于这个算静音
 # 每 100ms 换档上限：口型最短驻留 80ms，一个 100ms 窗口里最多 1 次换档；
 # 平均超过 1.25 次说明驻留已经是 50~80ms 级别，成片里读作「嘴在抖」。
 SWITCH_PER_100MS_MAX = 1.25
 MIN_DWELL_MS = 80.0      # 口型最短驻留：短于它观众读到的是抽动，不是一个字
+# 开场领先张开：语音起点前这么多毫秒内出现非闭合档，就算「还没出声嘴先动」。
+# f36 的毛病正是这个：整体延迟只有 +20ms，但每场开头 0.2s 嘴已经张着。
+EARLY_OPEN_MS = 200.0
+# 提前量预算：lipsync 的 LOOKAHEAD 是 20ms，加一帧量化就是 40ms；给到 60ms 与延迟同尺，
+# 超过它就不是「预判」而是「整段提前」，f36 那种场场 200ms 提前会被这条抓住。
+EARLY_OPEN_LEAD_MS = 60.0
+
+# 静音判据的规范口径（范式第 4 条，2026-10-27 定）：10ms RMS 窗、相对峰值 -40dBFS、
+# 连续 >=120ms 才算静音段。DB_SILENT=-45 是旧的绝对阈值（25ms 窗），保留作对照，
+# 判据用 SILENCE_REL_DB；两者都给，免得同一段音频两套解释。
+SILENCE_REL_DB = -40.0
+SILENCE_WIN_MS = 10.0
+SILENCE_MIN_S = 0.12
 
 # 8 档口型 → 开口度 0..1。数值只用来排序和算相关，不参与出片。
 OPENNESS = {
@@ -242,8 +262,122 @@ def _switch_stats(series: np.ndarray, fps: float) -> dict:
 
 # ———————————————————— 口型轨模式 ————————————————————
 
+def _early_open(states: np.ndarray, db: np.ndarray, fps: float) -> dict:
+    """开场领先张开：每个语音起点前 200ms 内已经有非闭合档，就是嘴先动。
+
+    只数「从静音切进有声」的起点：起点前的窗口里本来就在说话（句中重音/换气）不算，
+    否则一个长句子会被数成十几个起点。窗口一旦有非闭合档，记下提前量取最大。
+    """
+    voiced = db >= DB_SILENT
+    onsets_idx = np.flatnonzero(voiced & ~np.concatenate(([False], voiced[:-1])))
+    look = max(1, int(round(EARLY_OPEN_MS / 1000.0 * fps)))
+    openish = states != "closed"
+    onsets = early = 0
+    leads: list[float] = []
+    for i in onsets_idx:
+        lo = max(0, i - look)
+        if voiced[lo:i].sum() > max(1, look // 2):
+            continue  # 前面本来就在响，是句中重音，不是句子起点
+        onsets += 1
+        seg = openish[lo:i]
+        if seg.any():
+            early += 1
+            first = int(np.argmax(seg))
+            leads.append((seg[first:].sum()) / fps * 1000.0)
+    return {"window_ms": EARLY_OPEN_MS, "onsets": onsets, "early": early,
+            "rate": round(early / onsets, 3) if onsets else 0.0,
+            "lead_ms_max": round(max(leads), 0) if leads else 0.0}
+
+
+def _rms_db(pcm: np.ndarray, rate: int, win_ms: float) -> np.ndarray:
+    """不重叠 10ms 窗的 RMS→dBFS（规范口径用，区别于 _envelope 的 25ms 滑窗）。"""
+    win = max(1, int(rate * win_ms / 1000.0))
+    n = len(pcm) // win
+    out = np.zeros(max(n, 1), dtype=np.float64)
+    for i in range(n):
+        seg = pcm[i * win:(i + 1) * win]
+        out[i] = 20.0 * np.log10(max(float(np.sqrt(np.mean(seg * seg))), 1e-7))
+    return out
+
+
+def _silence_spec(pcm: np.ndarray, states: np.ndarray, fps: float) -> dict:
+    """第 4 条「静音必闭」的三项统计，全部按规范口径（10ms RMS / 峰值-40dB / >=120ms）：
+
+    - ``false_open``：**>=120ms 静音段**里的帧，非 closed 的比例（≤5% 才过）。
+      40~80ms 的塞音空隙按范式中「不得误闭」处理，不计入这个分母 —— 否则同一批帧
+      会同时被要求「不许闭」和「必须闭」。
+    - ``lead_frames``：首字之前（第一个有声帧之前）非 closed 的帧数（必须 0）
+    - ``tail_frames``：末字 + 120ms 之后非 closed 的帧数（必须 0）
+    - ``long_silent`` / ``long_bad``：>=120ms 的静音段数、其中没全 closed 的段数
+    - ``stop_gaps`` / ``stop_misclosed``：40~80ms 的句内空隙数、被整段闭成 closed 的数
+      （塞音空隙不该被 120ms 静音规则误闭；这一项数越小越好，0 是目标）
+    """
+    win_ms = SILENCE_WIN_MS
+    db10 = _rms_db(pcm, 16000, win_ms)
+    thr = float(np.max(db10)) + SILENCE_REL_DB
+    silent10 = db10 < thr
+    # 10ms 格 → 口型帧：一帧内多数 10ms 格静音就算静音帧
+    per = max(1, int(round(1000.0 / win_ms / fps)))
+    n = int(min(len(states), len(silent10) // per))
+    if n < 2:
+        return {"win_ms": win_ms, "rel_db": SILENCE_REL_DB, "threshold_db": round(thr, 1),
+                "frames": 0, "silent_ratio": 0.0, "false_open": 0.0, "lead_frames": 0,
+                "tail_frames": 0, "long_silent": 0, "long_bad": 0,
+                "stop_gaps": 0, "stop_misclosed": 0}
+    sf = silent10[:n * per].reshape(n, per).mean(axis=1) >= 0.5
+    st = np.asarray([str(x) for x in states], dtype=object)[:n]
+    openish = st != "closed"
+
+    voiced = ~sf
+    idx = np.flatnonzero(voiced)
+    lead_frames = tail_frames = 0
+    if idx.size:
+        i0, i1 = int(idx[0]), int(idx[-1])
+        lead_frames = int(openish[:i0].sum())
+        tail_ms = SILENCE_MIN_S
+        tail_start = i1 + 1 + int(round(tail_ms * fps))
+        tail_frames = int(openish[tail_start:].sum()) if tail_start < n else 0
+
+    def runs(mask):
+        out, i = [], 0
+        while i < len(mask):
+            if not mask[i]:
+                i += 1
+                continue
+            j = i
+            while j + 1 < len(mask) and mask[j + 1]:
+                j += 1
+            out.append((i, j + 1))
+            i = j + 1
+        return out
+
+    min_frames = SILENCE_MIN_S * fps
+    long_frames = long_open = 0
+    long_silent = long_bad = 0
+    stop_gaps = stop_misclosed = 0
+    for a, b in runs(sf):
+        span = b - a
+        if span >= min_frames:
+            long_silent += 1
+            long_frames += span
+            long_open += int(openish[a:b].sum())
+            if openish[a:b].any():
+                long_bad += 1
+        elif 0.04 * fps <= span < 0.08 * fps + 1e-9:
+            stop_gaps += 1
+            if not openish[a:b].any():
+                stop_misclosed += 1
+    false_open = (long_open / long_frames) if long_frames else 0.0
+    return {"win_ms": win_ms, "rel_db": SILENCE_REL_DB, "threshold_db": round(thr, 1),
+            "frames": int(n), "silent_ratio": round(float(sf.mean()), 3),
+            "false_open": round(false_open, 4), "false_open_frames": long_open,
+            "false_open_denom": long_frames, "lead_frames": lead_frames,
+            "tail_frames": tail_frames, "long_silent": long_silent, "long_bad": long_bad,
+            "stop_gaps": stop_gaps, "stop_misclosed": stop_misclosed}
+
+
 def _state_report(audio_db: np.ndarray, states: np.ndarray, fps: float, t0: float,
-                  audio_s: float) -> dict:
+                  audio_s: float, pcm: np.ndarray | None = None) -> dict:
     open_m = _openness_of(states)
     i0 = int(round(t0 * fps))
     db = audio_db[i0:i0 + len(open_m)] if i0 < len(audio_db) else np.zeros(1)
@@ -278,6 +412,8 @@ def _state_report(audio_db: np.ndarray, states: np.ndarray, fps: float, t0: floa
         "r": round(xc["r"], 3),
         "r_at_zero": round(xc["r0"], 3),
         "silent_false_open": round(false_open, 4),
+        "silence_spec": (_silence_spec(pcm, states, fps) if pcm is not None else {}),
+        "early_open": _early_open(states_al, db, fps),
         "switch": _switch_stats(states_al, fps),
         "dwell": _dwell(_runs(states_al), fps),
         "window_lags": wl,
@@ -448,14 +584,58 @@ def _video_report(video: Path, roi: tuple[int, int, int, int], fps_cap: float) -
 
 
 def _verdict(rep: dict) -> list[dict]:
+    """判据：延迟与静音误开是硬门槛；相关性在视频级只作参考。
+
+    视频级（成片）量的是「嘴区代理在 30fps 下的红色像素质量」，36px 的块 + 取样
+    会把相关系数压到 0.6 上下，所以 r < 0.30 只说明「代理/定位不可信、延迟数字仅
+    供参考」，不判失败；口型轨（音频级）没有这层损失，r 一并不设硬线。
+    """
     lag = abs(rep["lag_ms"])
+    video = rep["mode"] == "video"
     checks = [
         {"name": "对齐延迟", "value": f"{rep['lag_ms']:+.0f}ms", "limit": f"|≤{LAG_USABLE_MS:.0f}|",
          "ok": lag <= LAG_USABLE_MS, "note": "好档" if lag <= LAG_GOOD_MS else ""},
-        {"name": "静音误开率", "value": f"{rep['silent_false_open'] * 100:.1f}%",
-         "limit": f"≤{SILENT_FALSE_MAX * 100:.0f}%", "ok": rep["silent_false_open"] <= SILENT_FALSE_MAX},
+        # 规范口径（第 4 条）：>=120ms 静音段里的非闭合帧比例才是硬门槛；
+        # 旧口径是绝对 -45dB/25ms 窗，会把 40~80ms 塞音空隙也算成静音，只作参考。
+        *([{"name": "静音误开率",
+            "value": f"{rep['silence_spec']['false_open'] * 100:.1f}%"
+                     f"（{rep['silence_spec']['false_open_frames']}/"
+                     f"{rep['silence_spec']['false_open_denom']} 帧）",
+            "limit": f"≤{SILENT_FALSE_MAX * 100:.0f}%",
+            "ok": rep["silence_spec"]["false_open"] <= SILENT_FALSE_MAX,
+            "note": ">=120ms 静音段内；40~80ms 塞音空隙不在分母"}
+           ] if rep.get("silence_spec", {}).get("frames", 0) and not video else
+           [{"name": "静音误开率", "value": f"{rep['silent_false_open'] * 100:.1f}%",
+             "limit": f"≤{SILENT_FALSE_MAX * 100:.0f}%",
+             "ok": rep["silent_false_open"] <= SILENT_FALSE_MAX,
+             "note": "成片模式：代理像素静音，口径见视频级说明"}]),
         {"name": "每100ms换档", "value": f"{rep['switch']['per_100ms']['mean']:.2f}",
-         "limit": f"≤{SWITCH_PER_100MS_MAX}", "ok": rep["switch"]["per_100ms"]["mean"] <= SWITCH_PER_100MS_MAX},
+         "limit": f"≤{SWITCH_PER_100MS_MAX}",
+         "ok": rep["switch"]["per_100ms"]["mean"] <= SWITCH_PER_100MS_MAX},
+        *([{"name": "静音必闭·前导", "value": f"{rep['silence_spec']['lead_frames']} 帧非闭",
+            "limit": "= 0 帧",
+            "ok": rep["silence_spec"]["lead_frames"] == 0,
+            "note": "第一个有声帧之前必须全 closed"},
+           {"name": "静音必闭·尾部", "value": f"{rep['silence_spec']['tail_frames']} 帧非闭",
+            "limit": "= 0 帧",
+            "ok": rep["silence_spec"]["tail_frames"] == 0,
+            "note": "末字 + 120ms 之后必须全 closed"},
+           {"name": "静音必闭·误闭", "value": f"{rep['silence_spec']['stop_misclosed']} 段",
+            "limit": "= 0 段",
+            "ok": rep["silence_spec"]["stop_misclosed"] == 0,
+            "note": "词内 40~80ms 塞音空隙不该被静音规则整段闭掉"}]
+          if rep.get("silence_spec", {}).get("frames", 0) and not video else []),
+        *([{"name": "开场领先张开",
+            "value": f"最大提前 {rep['early_open']['lead_ms_max']:.0f}ms"
+                     f"（{rep['early_open']['early']}/{rep['early_open']['onsets']} 处）",
+            "limit": f"≤{EARLY_OPEN_LEAD_MS:.0f}ms",
+            "ok": rep["early_open"]["lead_ms_max"] <= EARLY_OPEN_LEAD_MS,
+            "note": f"量的是起点前 {EARLY_OPEN_MS:.0f}ms 内的非闭合档；"
+                    f"{EARLY_OPEN_LEAD_MS:.0f}ms 是协同发音预判预算"}]
+          if "early_open" in rep and not video else []),
+        {"name": "峰值相关", "value": f"r{rep['r']:+.2f}", "limit": f"≥{VIDEO_R_REF:.2f}（视频级仅参考）",
+         "ok": rep["r"] >= VIDEO_R_REF or video,
+         "note": "视频级 r<0.30 只作参考，不判失败" if video and rep["r"] < VIDEO_R_REF else ""},
     ]
     if "drift_ms" in rep:
         checks.append({"name": "全长漂移", "value": f"{rep['drift_ms']:+.0f}ms",
@@ -495,22 +675,56 @@ def _print_report(rep: dict) -> None:
         seg = " ".join(f"{w['lag_ms']:+.0f}" for w in wl["windows"][:12])
         print(f"  分段延迟每 {HOP_S:.0f}s：{seg}"
               f" · 斜率 {wl['slope_ms_per_s']:+.0f}ms/s · 极差 {wl['span_ms']:.0f}ms")
+    if rep.get("silence_spec", {}).get("frames"):
+        ss = rep["silence_spec"]
+        print(f"  静音必闭 前导 {ss['lead_frames']} 帧 / 尾部 {ss['tail_frames']} 帧非闭"
+              f" · 长静音 {ss['long_silent']} 段其中 {ss['long_bad']} 段没全闭"
+              f" · 塞音 {ss['stop_gaps']} 处误闭 {ss['stop_misclosed']}"
+              f" · 口径 {ss['win_ms']:.0f}ms RMS / 峰值{ss['rel_db']:+.0f}dB → "
+              f"{ss['threshold_db']}dBFS / ≥{SILENCE_MIN_S * 1000:.0f}ms")
+    if "early_open" in rep:
+        e = rep["early_open"]
+        print(f"  开场领先张开 {e['early']}/{e['onsets']} 处（起点前 {e['window_ms']:.0f}ms 内）"
+              f"· 最大提前 {e['lead_ms_max']:.0f}ms · 逐场必须各算")
     s = rep["switch"]["per_100ms"]
     print(f"  每100ms换档 均值 {s['mean']:.2f} p50 {s['p50']:.1f} p95 {s['p95']:.1f} 最大 {s['max']}")
     bad = [c for c in checks if not c["ok"]]
     print("  判定：" + ("通过" if not bad else "不过 —— " + "；".join(
         f"{c['name']} {c['value']}（要求 {c['limit']}）" for c in bad)))
+    if rep["mode"] == "video":
+        print("  ↳ 视频级口径：嘴区代理 @30fps，r 天花板约 0.6；通过线只认延迟与静音误开")
     lag = abs(rep["lag_ms"])
     if lag <= LAG_GOOD_MS:
         print(f"  ↳ 延迟 {lag:.0f}ms 在 {LAG_GOOD_MS:.0f}ms 以内：好档")
     elif lag <= LAG_USABLE_MS:
         print(f"  ↳ 延迟 {lag:.0f}ms 在 {LAG_USABLE_MS:.0f}ms 以内：可用档，还能再收 30ms")
-    if abs(rep["r"]) < 0.30:
-        print("  ⚠ 相关系数低于 0.30：口型和音量整体不相关，延迟数字只是陪衬，先修设计")
+    if abs(rep["r"]) < VIDEO_R_REF:
+        if rep["mode"] == "video":
+            print(f"  ⚠ 视频级 r={rep['r']:+.2f} < {VIDEO_R_REF:.2f}：代理/定位不可信，"
+                  "延迟与静音误开数字只作参考，改用口型轨复核")
+        else:
+            print("  ⚠ 相关系数低于 0.30：口型和音量整体不相关，延迟数字只是陪衬，先修设计")
     if wl["windows"] and wl["span_ms"] > 2 * LAG_USABLE_MS:
         print(f"  ⚠ 分段延迟极差 {wl['span_ms']:.0f}ms：不是恒定偏移，是逐段漂移——"
               f"整体推一帧修不掉，得改口型轨生成")
     print()
+
+
+def _j(v):
+    """把 numpy 标量/数组洗成原生类型：numpy.bool_ 不是 bool，json 会直接抛。"""
+    if isinstance(v, dict):
+        return {str(k): _j(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_j(x) for x in v]
+    if isinstance(v, np.ndarray):
+        return [_j(x) for x in v.tolist()]
+    if isinstance(v, np.bool_):
+        return bool(v)
+    if isinstance(v, np.integer):
+        return int(v)
+    if isinstance(v, np.floating):
+        return round(float(v), 4)
+    return v
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -524,6 +738,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--fps-cap", type=float, default=50.0, help="抽帧上限 fps，默认 50")
     ap.add_argument("--json", action="store_true", help="输出 JSON 而不是报告")
     ap.add_argument("--no-strict", action="store_true", help="不过也 exit 0")
+    # 第四把尺：开场领先张开（口型轨模式）——语音起点前 200ms 不许有开口档
+    # 通过线：延迟 ≤60ms 且 静音误开 ≤5%（视频级 r<0.30 只作参考，不判失败）
     args = ap.parse_args(argv)
 
     if args.states:
@@ -535,7 +751,7 @@ def main(argv: list[str] | None = None) -> int:
         fps, states, t0 = _load_states(args.states)
         pcm = _audio_pcm(args.audio)
         db = _envelope(pcm, 16000, fps)
-        rep = _state_report(db, states, fps, t0, len(pcm) / 16000.0)
+        rep = _state_report(db, states, fps, t0, len(pcm) / 16000.0, pcm)
         rep["input"] = {"audio": str(args.audio), "states": str(args.states)}
     elif args.video:
         if not args.video.exists():
@@ -561,7 +777,7 @@ def main(argv: list[str] | None = None) -> int:
     rep["ok"] = ok
     if args.json:
         rep.pop("curve", None)
-        print(json.dumps(rep, ensure_ascii=False, indent=2))
+        print(json.dumps(_j(rep), ensure_ascii=False, indent=2))
     else:
         _print_report(rep)
     return 0 if (ok or args.no_strict) else 1
