@@ -1,0 +1,32 @@
+{
+  "at": "2026-10-28T04:05:30.000Z",
+  "runId": "6ae17577affc0494af31fa2e",
+  "projectId": "6adc2161656a13996166bbfc",
+  "method": "停掉本机 worker，用 worker.token 直接 claim 一条 render 车道 job，再经 /api/production/worker/jobs/:id/fail 上报环境类错误",
+  "oldJob": {
+    "id": "6ae17577affc0494af31fa31",
+    "kind": "render_timeline",
+    "attempt": 1,
+    "status": "failed"
+  },
+  "failResponse": {
+    "ok": true,
+    "retry": true
+  },
+  "runAfterFail": {
+    "status": "queued",
+    "revision": 1,
+    "lastError": "本机环境问题，已自动重排：ModuleNotFoundError: No module named 'fakemod_for_requeue_check'"
+  },
+  "replacementJob": {
+    "id": "6ae17577affc0494af31fa4b",
+    "kind": "render_timeline",
+    "attempt": 2,
+    "status": "queued"
+  },
+  "event": {
+    "kind": "job.requeued",
+    "message": "environment failure, render requeued"
+  },
+  "verdict": "通过：环境类失败不回写成用户可见的失败，run 保持 revision=1 回到 queued，attempt 递增补发新 job，并落下 job.requeued 事件"
+}

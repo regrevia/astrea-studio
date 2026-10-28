@@ -71,9 +71,25 @@ node scripts/verify/e2e-promo.mjs --project <项目 ID>
 素材缺失也不会白跑：`pack:envoy-demo/no-such-shot` 立刻报「素材不存在：…（包里是 … 这些）」，
 离线自测 `integrations/mac-worker/export/test_vertical_materials.py` 7 项覆盖解析、后缀、坏包、坏图名。
 
-## 8. 还没验收的
+## 8. 环境类失败的重排是活的，不只是单测
+
+用真实 worker token 走一遍：停掉本机 worker → 建一条 `render_timeline` 任务 → 直接 claim 这条车道 →
+经 `POST /api/production/worker/jobs/:id/fail` 上报 `ModuleNotFoundError` → 读回 run。
+
+```
+launchctl bootout gui/501/local.creatorstudio.worker
+node scripts/verify/requeue-check.mjs
+launchctl bootstrap gui/501 ~/Library/LaunchAgents/local.creatorstudio.worker.plist
+```
+
+结果（run `6ae17577affc0494af31fa2e`）：失败接口回 `{ok:true, retry:true}`；run 仍是 `revision=1`、
+状态回到 `queued`；旧 job 记 `failed`（attempt 1），同时补发新 job `6ae17577affc0494af31fa4b`
+（attempt 2、`queued`）；事件里有 `job.requeued`；`lastError` 写的是
+「本机环境问题，已自动重排：ModuleNotFoundError…」而不是把任务判死。
+证据：[requeue-6ae17577affc0494af31fa2e.json](evidence/requeue-6ae17577affc0494af31fa2e.json)。
+
+## 9. 还没验收的
 
 - 真机解锁后走 `allowGui: true` 的成功导出（面板代点 → `exported` + 真实 `videoPath`）。当前屏幕是锁的，属于人工前置条件。
 - GUI 自动化的辅助功能授权（编译出的辅助工具尚未被授予 Accessibility）。
-- 环境类失败自动重排目前只有单测证据，还没在一次真实渲染里注入失败验证过。
 

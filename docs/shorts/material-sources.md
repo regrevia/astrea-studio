@@ -247,6 +247,21 @@ spec JSON 顶层也能写，命令行 `--shots` 为空时生效（临时换图�
 用了哪些素材、多大、sha256 前 16 位，落在成片工作目录 `spec.json` 的
 `meta.materials[]` 里，可回溯到具体文件。
 
+## 8. 日常怎么用
+
+换主题 = 一条命令 + 改 spec 里几行引用，不再手工攒图：
+
+```bash
+python3 integrations/mac-worker/tools/grab_material.py --pack <主题slug> --topic "<主题词>" --n 2
+# 看 meta.md 的清单，挑几张写进 spec 的 shots
+```
+
+素材包不进 git（`materials/` 在 `~/CreatorStudio/` 下，仓库外）；要留档就留 `index.json`，
+它记着每张图的原始 URL 和抓取时间，能重抓。
+
+两种写法共用同一段解析：spec 字段那条用坏引用试过，会立刻 `素材引用有问题：素材包不存在：nope（现有包：envoy-demo）`
+退出、不出片；命令行那条整条链路出过成片（见上）。
+
 ## 9. 哪种主题该用哪种途径
 
 先按「素材最终长什么样」分流，再按可达性降级；命中最左列就照最右列做，不要六条都试一遍。
@@ -265,18 +280,3 @@ spec JSON 顶层也能写，命令行 `--shots` 为空时生效（临时换图�
 
 - **一条主题只留一个包**：`materials/packs/<slug>/`，重抓覆盖不追加，`index.json` 是唯一档案。
 - **能自绘就别抓图**：数据图表、流程图、示意图一律 SVG，和 spec 同一套 token，比截图清楚也不掉分辨率。
-
-## 8. 日常怎么用
-
-换主题 = 一条命令 + 改 spec 里几行引用，不再手工攒图：
-
-```bash
-python3 integrations/mac-worker/tools/grab_material.py --pack <主题slug> --topic "<主题词>" --n 2
-# 看 meta.md 的清单，挑几张写进 spec 的 shots
-```
-
-素材包不进 git（`materials/` 在 `~/CreatorStudio/` 下，仓库外）；要留档就留 `index.json`，
-它记着每张图的原始 URL 和抓取时间，能重抓。
-
-两种写法共用同一段解析：spec 字段那条用坏引用试过，会立刻 `素材引用有问题：素材包不存在：nope（现有包：envoy-demo）`
-退出、不出片；命令行那条整条链路出过成片（见上）。
