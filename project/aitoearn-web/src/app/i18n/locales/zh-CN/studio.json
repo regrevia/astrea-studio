@@ -183,7 +183,10 @@
       "empty": "先写要改的地方",
       "scenes": "逐句改字幕",
       "line": "第 {{n}} 句",
-      "linePlaceholder": "改成新的台词，不动就留空"
+      "linePlaceholder": "改成新的台词，不动就留空",
+      "changed": "{{count}} 句会改",
+      "diffFrom": "改前",
+      "diffTo": "改后"
     },
     "error": {
       "detail": "任务详情没取到，稍后自动重试",

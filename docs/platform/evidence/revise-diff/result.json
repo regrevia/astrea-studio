@@ -1,0 +1,13 @@
+{
+  "run": "6ae1fddeebffbe9556faab31",
+  "project": "6adc2161656a13996166bbfc",
+  "ui": {
+    "subtitle_inputs": 6,
+    "changed_count": "1 句会改",
+    "shows_before": true,
+    "shows_after": true,
+    "before_line": "开场：一句话讲清能做什么",
+    "after_line": "开场：一句话讲清能拍什么"
+  },
+  "note": "只显示会改的句子：提交前就能看出改前改后，没改的句子不出现对比块。"
+}

@@ -183,7 +183,10 @@
       "empty": "Describe the change first",
       "scenes": "Edit subtitles",
       "line": "Line {{n}}",
-      "linePlaceholder": "New line here; leave blank to keep it"
+      "linePlaceholder": "New line here; leave blank to keep it",
+      "changed": "{{count}} line(s) change",
+      "diffFrom": "Before",
+      "diffTo": "After"
     },
     "error": {
       "detail": "Could not load run details; retrying shortly",

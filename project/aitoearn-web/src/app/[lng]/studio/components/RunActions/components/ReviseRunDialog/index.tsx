@@ -103,21 +103,33 @@ export function ReviseRunDialog({ run, open, onOpenChange, onRevised }: ReviseRu
           {original.length > 0 && (
             <div className="flex flex-col gap-2">
               <p className="text-xs font-medium">{t('run.revise.scenes')}</p>
-              {original.map((line, index) => (
-                <div key={index} className="flex flex-col gap-1">
-                  <span className="text-xs text-muted-foreground">
-                    {t('run.revise.line', { n: index + 1 })} · {line}
-                  </span>
-                  <Input
-                    value={drafts[index] ?? ''}
-                    placeholder={t('run.revise.linePlaceholder')}
-                    onChange={(event) => {
-                      const value = event.target.value
-                      setDrafts(current => ({ ...current, [index]: value }))
-                    }}
-                  />
-                </div>
-              ))}
+              {scenes.length > 0 && (
+                <p className="text-xs text-muted-foreground">{t('run.revise.changed', { count: scenes.length })}</p>
+              )}
+              {original.map((line, index) => {
+                const draft = (drafts[index] ?? '').trim()
+                return (
+                  <div key={index} className="flex flex-col gap-1">
+                    <span className="text-xs text-muted-foreground">
+                      {t('run.revise.line', { n: index + 1 })} · {line}
+                    </span>
+                    <Input
+                      value={drafts[index] ?? ''}
+                      placeholder={t('run.revise.linePlaceholder')}
+                      onChange={(event) => {
+                        const value = event.target.value
+                        setDrafts(current => ({ ...current, [index]: value }))
+                      }}
+                    />
+                    {draft && draft !== line && (
+                      <div className="flex flex-col gap-0.5 text-xs">
+                        <span className="text-muted-foreground line-through">{t('run.revise.diffFrom')} · {line}</span>
+                        <span className="text-foreground">{t('run.revise.diffTo')} · {draft}</span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
           <Textarea
