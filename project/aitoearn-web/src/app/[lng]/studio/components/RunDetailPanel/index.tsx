@@ -17,8 +17,10 @@ import { cn } from '@/utils/className'
 import { useRunDetail } from '../../hooks/useRunDetail'
 import { formatKib } from '../../studioConstants'
 import { deriveRunArtifacts, useRunVideoBlobUrl } from '../../utils/runArtifacts'
+import { deriveTimelineMarks } from '../../utils/timeline'
 import { isRunBusy, runStageMeta, runStatusMeta } from '../../utils/status'
 import { RunActions } from '../RunActions'
+import { TimelineRuler } from './components/TimelineRuler'
 
 interface RunDetailPanelProps {
   run: ProductionRun
@@ -39,6 +41,7 @@ export function RunDetailPanel({ run, projectName, onChanged }: RunDetailPanelPr
   const stageLabel = stage && stage.labelKey !== meta.labelKey ? stage : null
   // 列表 revision/status 一变就重新拉详情，改稿重跑后不会停在旧成片上。
   const { detail, error } = useRunDetail(run.id, `${run.revision ?? 0}:${run.status}`)
+  const timelineMarks = deriveTimelineMarks(run.spec)
   const events = (detail?.events ?? []).slice(-12).reverse()
   const jobs = detail?.jobs ?? []
 
@@ -104,6 +107,8 @@ export function RunDetailPanel({ run, projectName, onChanged }: RunDetailPanelPr
         : (
             <p className="text-xs text-muted-foreground">{t('run.detail.noVideo')}</p>
           )}
+
+      {timelineMarks && <TimelineRuler marks={timelineMarks} />}
 
       {/* 入库落点：素材库按项目/月分目录 */}
       {artifacts.libraryPath && (

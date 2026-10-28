@@ -1,0 +1,22 @@
+{
+  "run": "6ae1cf33f4c0456392d2d590",
+  "project": "6adc2161656a13996166bbfc",
+  "spec": {
+    "duration_s": 30,
+    "bpm": 103.36,
+    "beats_total": 120,
+    "beats_drawn": 52,
+    "keyframes": 8,
+    "shots": 4
+  },
+  "ui": {
+    "headline": "时间轴 30 秒 103 BPM 52 个卡点 8 个关键帧",
+    "marks_drawn": 64,
+    "left_range_pct": [
+      0,
+      100
+    ],
+    "ruler_width_px": 550.2
+  },
+  "note": "卡点超过 60 个时按比例抽稀再画，尺子上仍能看出密度；关键帧只收缩放真变了的那几个。"
+}
