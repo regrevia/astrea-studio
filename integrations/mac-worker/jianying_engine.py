@@ -150,9 +150,80 @@ def _deploy(draft_dir: Path, project_name: str,
         meta["draft_fold_path"] = str(dest)
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     _normalize_draft(dest, deployed_name)
+    media = _relocate_media(dest)
     _write_export_sidecar(dest, deployed_name, extra=sidecar_extra)
     os.utime(dest, None)
     return dest
+
+
+MEDIA_KEYS = ("path", "file_path", "draft_path")
+
+
+def _relocate_media(dest: Path) -> dict[str, Any]:
+    """把草稿引用的外部素材搬进草稿目录，否则剪映直接判「暂无访问权限」。
+
+    剪映 mac 版是 App Sandbox（entitlements: app-sandbox=true +
+    assets.movies.read-write），只能读 `~/Movies` 这类它自己获准的容器外目录。
+    我们的素材放在 `~/CreatorStudio/...`，沙盒里根本没有这个路径的读取权，
+    系统也不会弹授权窗（这是沙盒，不是 TCC），打开草稿就是 26 条红色
+    「暂无访问权限」+「链接媒体」弹窗，0/26。
+
+    修法：部署时把每个外部媒体文件复制进 `<草稿>/assets/`，再把 JSON 里的
+    绝对路径改指过去——草稿目录在 `~/Movies` 下，沙盒直接可读。
+    """
+    content_path = dest / "draft_content.json"
+    info_path = dest / "draft_info.json"
+    if not content_path.exists():
+        return {"skipped": "no draft_content.json"}
+    assets = dest / "assets"
+    root = str(dest)
+    copies: dict[str, str] = {}
+    missing: list[str] = []
+
+    def fix(value: str) -> str:
+        if not value or not value.startswith("/") or value.startswith(root + "/"):
+            return value
+        src = Path(value)
+        if not src.is_file():
+            missing.append(value)
+            return value
+        if value in copies:
+            return copies[value]
+        assets.mkdir(parents=True, exist_ok=True)
+        target = assets / src.name
+        if target.exists() and target.stat().st_size != src.stat().st_size:
+            target = assets / ("%s_%s" % (hashlib.sha1(value.encode()).hexdigest()[:8], src.name))
+        if not target.exists():
+            shutil.copy2(src, target)
+        copies[value] = str(target)
+        return str(target)
+
+    def walk(node):
+        if isinstance(node, dict):
+            for k, v in list(node.items()):
+                if isinstance(v, str) and k in MEDIA_KEYS:
+                    node[k] = fix(v)
+                else:
+                    walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    content = json.loads(content_path.read_text(encoding="utf-8"))
+    walk(content)
+    payload = json.dumps(content, ensure_ascii=False, indent=2)
+    if copies:
+        content_path.write_text(payload, encoding="utf-8")
+        _write_plain_json(info_path, payload)
+        timelines = dest / "Timelines"
+        if timelines.is_dir():
+            for td in timelines.iterdir():
+                if td.is_dir():
+                    for name in ("draft_content.json", "draft_info.json"):
+                        f = td / name
+                        if f.exists():
+                            f.write_text(payload, encoding="utf-8")
+    return {"copied": len(copies), "missing": missing[:10], "missingCount": len(missing)}
 
 
 # 导出端读的必须字段：缺一个就无法把产物绑到任务/修订版，宁可写盘时就炸。
