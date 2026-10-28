@@ -821,7 +821,9 @@ def _audio_track_specs(spec: dict[str, Any]) -> list[dict[str, Any]]:
             rows.append(row)
 
     add(spec.get("audioTracks"), "voiceover")
-    add(spec.get("bgm"), "bgm", loop=True, volume=0.35)
+    # 竖屏链路把配乐写在 music 里（渲染器吃 music），老草稿链路只认 bgm；
+    # 两种写法都要落到同一条 BGM 轨，不能因为字段名不同就静默丢音乐。
+    add(spec.get("bgm") or spec.get("music"), "bgm", loop=True, volume=0.35)
     add(spec.get("voiceover") if spec.get("voiceover") is not None
         else spec.get("narrationAudio"), "voiceover")
     return rows
