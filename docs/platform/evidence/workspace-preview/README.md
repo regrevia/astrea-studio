@@ -38,3 +38,18 @@
 | 3 | `6ae231ce38be775d59714096` | succeeded |
 
 截图：[versions-after-reload.png](/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/workspace-preview/versions-after-reload.png)
+
+## 同屏并排比三条
+
+「批量结果」卡从一排按钮换成三列缩略：每列播一条成片的首帧（静音、`preload=metadata`、加载完跳到 1 秒），下面写「第 N 版 + 时长」。
+点哪列，下方详情面板就播哪条。
+
+实测项目「刷新留存验收」三条全 succeeded / 30 s：
+
+| 列 | 缩略图 src | 点第一列后详情面板 src |
+| --- | --- | --- |
+| 第 1 版 | `…714084/r1/master.mp4` | `…714084/r1/master.mp4` |
+| 第 2 版 | `…71408d/r1/master.mp4` | — |
+| 第 3 版 | `…714096/r1/master.mp4` | 点击前是 `…714096` |
+
+截图：[batch-compare.png](/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/workspace-preview/batch-compare.png)

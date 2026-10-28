@@ -40,6 +40,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import NewRunForm from '../../components/NewRunForm'
 import { RunDetailPanel } from '../../components/RunDetailPanel'
 import { RunRow } from '../../components/RunRow'
+import { BatchCompare } from './components/BatchCompare'
 import { ShotRunCard } from './components/ShotRunCard'
 
 /** 任务在跑时靠轮询对齐状态；渲染本身是分钟级，3 秒够用。 */
@@ -194,6 +195,11 @@ export default function ProjectWorkspace() {
     () => (freshBatchIds.length > 1 ? freshBatchIds : project?.lastBatchRunIds ?? []),
     [freshBatchIds, project?.lastBatchRunIds],
   )
+  // 只并排还挂在列表里的那几条；翻页翻走的版本不回填，避免半截缩略图。
+  const batchRuns = useMemo(
+    () => batchIds.map(id => runs.find(item => item.id === id)).filter((run): run is ProductionRun => Boolean(run)),
+    [batchIds, runs],
+  )
   const packs = inventory?.materials?.packs ?? []
   const packRefs = useMemo(() => packs.flatMap(pack => pack.refs), [packs])
   const thumbs = useMaterialThumbs(packRefs)
@@ -330,33 +336,17 @@ export default function ProjectWorkspace() {
             </CardContent>
           </Card>
 
-          {batchIds.length > 1 && (
+          {batchRuns.length > 1 && (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">{t('project.batch')}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-wrap gap-1.5">
-                  {batchIds.map((id, index) => {
-                    const run = runs.find(item => item.id === id)
-                    return (
-                      <Button
-                        key={id}
-                        type="button"
-                        size="sm"
-                        variant={id === selectedRunId ? 'default' : 'outline'}
-                        className="h-8 text-xs"
-                        disabled={!run}
-                        onClick={() => setSelectedRunId(id)}
-                      >
-                        {t('project.batchVersion', { n: index + 1 })}
-                        {run && run.status !== 'succeeded'
-                          ? ` · ${t(`project.status_${RUN_FILTERS.includes(run.status as RunFilter) ? run.status : 'running'}`)}`
-                          : ''}
-                      </Button>
-                    )
-                  })}
-                </div>
+                <BatchCompare
+                  runs={batchRuns}
+                  selectedId={selectedRunId}
+                  onSelect={setSelectedRunId}
+                />
               </CardContent>
             </Card>
           )}

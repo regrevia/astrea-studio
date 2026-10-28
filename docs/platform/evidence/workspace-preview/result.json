@@ -80,5 +80,17 @@
     ],
     "videoAfterReload": "/oss/studio/runs/6ae231ce38be775d59714096/r1/master.mp4",
     "screenshot": "versions-after-reload.png"
+  },
+  "sideBySide": {
+    "component": "projects/[id]/components/BatchCompare",
+    "checks": "批量结果卡三列，各播一条成片首帧（静音、preload=metadata、加载后跳到 1 秒），点哪列下方详情面板就播哪条",
+    "thumbSrcs": [
+      "/oss/studio/runs/6ae231ce38be775d59714084/r1/master.mp4",
+      "/oss/studio/runs/6ae231ce38be775d5971408d/r1/master.mp4",
+      "/oss/studio/runs/6ae231ce38be775d59714096/r1/master.mp4"
+    ],
+    "detailBefore": "/oss/studio/runs/6ae231ce38be775d59714096/r1/master.mp4",
+    "detailAfterClickFirst": "/oss/studio/runs/6ae231ce38be775d59714084/r1/master.mp4",
+    "screenshot": "batch-compare.png"
   }
 }
