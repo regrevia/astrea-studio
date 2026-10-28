@@ -537,3 +537,59 @@ describe('startJianyingExport', () => {
     expect(jobRepo.create).not.toHaveBeenCalled()
   })
 })
+
+describe('failJob', () => {
+  const failingJob = {
+    id: 'job-1',
+    runId: 'run-1',
+    kind: 'render_timeline',
+    attempt: 1,
+    revision: 1,
+    stage: 'rendering',
+  }
+  const failedRun = {
+    id: 'run-1',
+    userId: 'user-1',
+    status: 'running',
+    revision: 1,
+    spec: { engine: 'timeline' },
+  }
+
+  it('本机缺依赖时自动重排，不把 run 判死', async () => {
+    const { service, jobRepo, runRepo, eventRepo } = createService()
+    jobRepo.getById.mockResolvedValue(failingJob)
+    runRepo.getById.mockResolvedValue(failedRun)
+
+    const result = await service.failJob(
+      'worker-1',
+      'job-1',
+      1,
+      'ModuleNotFoundError: No module named \'numpy\'',
+    )
+
+    expect(result).toEqual({ ok: true, retry: true })
+    expect(jobRepo.finish).toHaveBeenCalledWith('job-1', 'worker-1', 1, 1, {
+      status: 'failed',
+      lastError: 'ModuleNotFoundError: No module named \'numpy\'',
+    })
+    const runUpdate = runRepo.updateByRevision.mock.calls[0][2] as Record<string, unknown>
+    expect(runUpdate.status).toBe('queued')
+    expect(runUpdate.currentStage).toBe('queued')
+    expect(String(runUpdate.lastError)).toContain('已自动重排')
+    const created = jobRepo.create.mock.calls[0][0] as Record<string, unknown>
+    expect(created.kind).toBe('render_timeline')
+    expect(eventRepo.append).toHaveBeenCalledWith(expect.objectContaining({ kind: 'job.requeued' }))
+  })
+
+  it('稿子本身跑挂了就照实记失败，不无限重排', async () => {
+    const { service, jobRepo, runRepo } = createService()
+    jobRepo.getById.mockResolvedValue(failingJob)
+    runRepo.getById.mockResolvedValue(failedRun)
+
+    await expect(service.failJob('worker-1', 'job-1', 1, '导出失败 rc=4: 面板不可用')).resolves.toEqual({ ok: true })
+
+    const runUpdate = runRepo.updateByRevision.mock.calls[0][2] as Record<string, unknown>
+    expect(runUpdate.status).toBe('failed')
+    expect(jobRepo.create).not.toHaveBeenCalled()
+  })
+})

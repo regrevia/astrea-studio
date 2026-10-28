@@ -38,6 +38,23 @@ function revisionOf(job: Pick<ProductionJob, 'revision'>): number {
  * 渲染 spec → job kind。创建、改稿重排、超时补任务都走这一处，否则补出来的
  * 任务会退回默认引擎，和原始 spec 不符。
  */
+/**
+ * 环境类失败（缺依赖、缺文件、缺权限）不是稿子的问题，重排一次往往就好了。
+ * 这类错误以前直接把 run 记成 failed，用户看到的是「渲染失败」，其实是本机没装东西。
+ */
+const ENV_FAILURE_MARKS = [
+  'ModuleNotFoundError',
+  'ImportError',
+  'FileNotFoundError',
+  'PermissionError',
+  'No module named',
+  'is not defined',
+]
+
+function isEnvironmentFailure(error: string): boolean {
+  return ENV_FAILURE_MARKS.some(mark => error.includes(mark))
+}
+
 function renderKindOf(spec: Record<string, unknown>): ProductionJobKind {
   const engine = spec['engine']
   if (engine === 'motion') {
@@ -730,6 +747,25 @@ export class ProductionService {
     })
     if (!done) {
       return { ok: false, reason: 'stale-lease' }
+    }
+    const retryable = status === ProductionJobStatus.FAILED && isEnvironmentFailure(error)
+    // failJob 开头读到的 run 是失败前的状态，重排判断要用最新的那份。
+    const currentRun = retryable ? await this.runRepo.getById(job.runId) : null
+    if (currentRun && (job.attempt || 1) < 3 && currentRun.status !== ProductionRunStatus.CANCELLED) {
+      // 环境类失败：先把 run 放回队列再补一条同 kind 的 job，别让用户去手动重试。
+      await this.runRepo.updateByRevision(job.runId, revision, {
+        status: ProductionRunStatus.QUEUED,
+        currentStage: 'queued',
+        lastError: `本机环境问题，已自动重排：${error.slice(0, 200)}`,
+      } as never, { status: { $ne: ProductionRunStatus.CANCELLED } })
+      await this.enqueueRender(currentRun.userId, currentRun, job.kind)
+      await this.appendEvent(job.runId, {
+        kind: 'job.requeued',
+        jobId,
+        stage: 'queued',
+        message: 'environment failure, render requeued',
+      })
+      return { ok: true, retry: true }
     }
     const runStatus = status === ProductionJobStatus.WAITING_USER
       ? ProductionRunStatus.WAITING_USER
