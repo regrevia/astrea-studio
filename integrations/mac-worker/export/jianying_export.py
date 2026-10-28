@@ -144,6 +144,21 @@ def open_panel(wait=10.0):
         rect = None
     if rect:
         return rect, title
+    # 真点标题栏按钮最稳：CGEvent 直投，不依赖 System Events 的自动化授权。
+    # worker 由 launchd 拉起，osascript 菜单点击会被 TCC 拒绝（实测 rc=2 打不开面板），
+    # 而同一台机器上人手点一次就出面板，差别只在授权归属。
+    btn = None
+    for r in P.ax_tree():
+        if len(r) >= 8 and (r[3] or "").strip() == "MainWindowTitleBarExportBtn" and r[2] == "AXButton":
+            btn = P.parse_frame(r[7])
+            break
+    if btn:
+        x, y, w, h = btn
+        P.run([P.AX_TOOL, "click-at", str(x + w // 2), str(y + h // 2)])
+    time.sleep(1.2)
+    rect, title = P.dialog_rect()
+    if rect:
+        return rect, title
     front()
     sh("osascript", "-e",
        'tell application "System Events" to tell process "%s" to click menu bar item "文件" of menu bar 1'

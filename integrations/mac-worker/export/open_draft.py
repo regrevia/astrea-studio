@@ -112,6 +112,28 @@ def card_rect(name: str):
     return best[1] if best else title
 
 
+def open_draft_name(pid=None) -> str:
+    """剪映当前打开的是哪张草稿：直接问文件句柄，比读 AX 树可靠。
+
+    编辑器界面的 AX 树里没有草稿名（标题栏是应用名），从首页卡片判断又要求
+    人已经在首页。lsof 是唯一不需要界面配合的入口。
+    """
+    pids = [str(pid)] if pid else (sh("pgrep", "-x", P.APP).stdout or "").split()
+    for one in pids:
+        # -n -P 必须带：lsof 默认反解主机名/端口，剪映连着网络时会卡到超时（实测 >20s）
+        out = (sh("lsof", "-n", "-P", "-p", one, timeout=8).stdout or "")
+        names = set()
+        for line in out.splitlines():
+            if "com.lveditor.draft/" in line:
+                tail = line.split("com.lveditor.draft/", 1)[1]
+                names.add(tail.split("/", 1)[0])
+        if len(names) == 1:
+            return names.pop()
+        if len(names) > 1:
+            return "|".join(sorted(names))
+    return ""
+
+
 def open_draft(name: str, wait: float = 25.0) -> int:
     if not app_running():
         print("启动剪映…")
@@ -119,8 +141,12 @@ def open_draft(name: str, wait: float = 25.0) -> int:
         time.sleep(6.0)
     P.front()
     time.sleep(0.8)
+    opened = open_draft_name()
+    if opened == name:
+        # 编辑器里就是这张草稿：AX 树看不到草稿名，用文件句柄确认，别再点首页
+        print("草稿已在编辑器（lsof 确认）：%s" % name)
+        return 0
     if editor_open() and name in tree_text(1):
-        # 已经在这张草稿的编辑器里（标题栏带草稿名）就别重复点
         print("草稿已在编辑器：%s" % name)
         return 0
     # 不在首页就先回首页（编辑器里点返回，Esc 关掉可能的弹层）
