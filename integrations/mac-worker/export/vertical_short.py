@@ -1046,6 +1046,16 @@ def resolve_materials(raw) -> list[tuple[str, Path]]:
     return out
 
 
+def _carry_music(script: dict) -> dict | None:
+    """BGM 与拍点直通：竖屏链路不改节拍，只把 music 原样交给 timeline 渲染。
+
+    以前这里写成了另一个函数里的变量名，出片阶段直接 NameError；改回读入参，
+    并留这个函数让回归测试能单独钉住「music 有没有被带过去」。
+    """
+    music = script.get("music")
+    return dict(music) if isinstance(music, dict) else None
+
+
 def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | None = None) -> dict:
     """脚本 → timeline spec（静帧卡 + 立绘 + 逐屏配音）。"""
     workdir.mkdir(parents=True, exist_ok=True)
@@ -1311,6 +1321,9 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         # 同稿多版时推镜深浅和起手屏都错开（一版从封面开始推、一版从第二屏推），
         # 两版看起来是两条不同调度的片子，文案和节奏一点没动
         _flip = variant_seed % 2
+        # 有 music.pulse 才在静卡上打拍点：卡面是静帧，拍点顶一下不跳戏；
+        # 素材/立绘那些有运动的镜头一律不脉冲，画面会像在抖。
+        _pulse = bool((_carry_music(script) or {}).get("pulse"))
         # 推镜幅度也收小：7% 推近会把卡面那几团柔光一起放大，
         # 看着像背景在慢慢变亮。4.5% 够破 PPT 感，又看不出背景在动
         _deep = 1.045 + 0.010 * ((variant_seed // 2) % 2)
@@ -1324,6 +1337,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
             broll = round(min(BROLL_MAX, max(BROLL_MIN, dur - 1.0)), 3)
             video.append({
                 "src": str(card), "out": round(dur - broll, 3), "zoom": [z0, z1],
+                "pulse": _pulse,
                 "fade_in": 0.0, "fade_out": 0.0,
                 "xfade_in": 0.0 if i == 0 else XFADE,
             })
@@ -1336,6 +1350,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         else:
             video.append({
                 "src": str(card), "out": round(dur, 3), "zoom": [z0, z1],
+                "pulse": _pulse,
                 # 封面第一帧就是成片封面：平台取首帧当图，黑起头等于没封面
                 "fade_in": 0.0,
                 "fade_out": FADE if i == total - 1 else 0.0,
@@ -1711,7 +1726,7 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         "audio": audio,
         # BGM 与拍点是 spec 直通：竖屏这条链路只负责画面，卡点交给同一套
         # timeline 渲染（关键帧脉冲），两边不各写一份节拍逻辑。
-        "music": spec_obj.get("music"),
+        "music": _carry_music(script),
         "assetBase": str(workdir),
         "meta": {"engine": "vertical_short", "duration": round(t, 3),
                  "char_render": ("layer" if char_mov is not None else "stills"),

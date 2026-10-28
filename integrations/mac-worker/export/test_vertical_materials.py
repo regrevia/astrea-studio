@@ -80,5 +80,25 @@ class ResolveMaterialsTest(unittest.TestCase):
         self.assertIn("<图名>", str(ctx.exception))
 
 
+
+class CarryMusicTest(unittest.TestCase):
+    """竖屏链路必须把 spec 里的 music 原样带进 timeline spec。
+
+    2026-10-28 之前这里读的是另一个函数里的变量名，渲染阶段 NameError，
+    拍点/背景音乐一条都没进成片；这组用例把「带没带过去」钉住。
+    """
+
+    def test_music_passthrough(self):
+        music = {"src": "/tmp/bgm.m4a", "volume": 0.4, "bpm": 120,
+                 "pulse": {"amount": 0.08, "decay": 0.2}}
+        got = V._carry_music({"music": music})
+        self.assertEqual(got, music)
+        self.assertIsNot(got, music)
+
+    def test_missing_music_is_none(self):
+        self.assertIsNone(V._carry_music({}))
+        self.assertIsNone(V._carry_music({"music": None}))
+        self.assertIsNone(V._carry_music({"music": "bgm.m4a"}))
+
 if __name__ == "__main__":
     unittest.main()

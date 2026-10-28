@@ -24,4 +24,12 @@ rsync -a "$REPO/integrations/mac-worker/worker.py" "$RT/worker.py" 2>/dev/null |
 rsync -a "$REPO/integrations/mac-worker/motion_render_engine.py" "$RT/motion_render_engine.py" 2>/dev/null || true
 
 echo "同步完成：$DEST"
-echo "重启服务：launchctl kickstart -k gui/$(id -u)/local.creatorstudio.capabilities"
+# 同步完必须真重启：worker 常驻进程不重启就还在跑旧模块，
+# 渲染逻辑改了却看不到效果（2026-10-28 卡过一次）。
+for label in local.creatorstudio.capabilities local.creatorstudio.worker; do
+  if launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1; then
+    launchctl kickstart -k "gui/$(id -u)/$label" && echo "已重启 $label"
+  else
+    echo "未安装 $label，跳过"
+  fi
+done
