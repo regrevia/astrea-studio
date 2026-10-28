@@ -1,0 +1,29 @@
+{
+  "round": 17,
+  "at": "2026-10-28T21:10:00+08:00",
+  "materialSelection": {
+    "projectId": "6adc2161656a13996166bbfc",
+    "clicked": "第 2 张",
+    "formValue": "pack:envoy-demo/github-com-regrevia-envoy-2",
+    "localStorageKey": "studio:workspace:materials:6adc2161656a13996166bbfc",
+    "persistedAfterReload": true,
+    "screenshot": "docs/platform/evidence/project-workspace-materials.png"
+  },
+  "assistantTools": {
+    "added": [
+      "list_studio_assets",
+      "list_studio_deliverables"
+    ],
+    "toolCount": 18,
+    "sessionId": "6ae1f3032f4e645634073cb7",
+    "reply": "素材根目录 /Users/apple/CreatorStudio/materials；11 份规格、27 个镜头、素材包 envoy-demo（2 张）；成片 116 部；最近 5 部成片清单",
+    "actions": [
+      "素材 27 个 · 成片 116 部",
+      "最近 5 部成片",
+      "已读取 16 个平台"
+    ]
+  },
+  "tests": {
+    "production-assistant.service.spec.ts": "20 passed"
+  }
+}

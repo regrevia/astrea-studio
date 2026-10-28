@@ -43,6 +43,9 @@ interface NewRunFormProps {
   projectId?: string
   /** 创建成功回调：把新任务 id 交给页面选中。 */
   onCreated: (runIds: string[]) => void
+  /** 外部选中的素材（多行）；给值时表单由父组件托管，用于「素材点一下就进表单」。 */
+  materialsText?: string
+  onMaterialsTextChange?: (next: string) => void
 }
 
 /** 多条母版可选的三维差异，和后端 createProductionBatch 的 variants 一一对应。 */
@@ -62,13 +65,24 @@ const SCRIPT_PLACEHOLDER = [
   '不换代码就能接 :: 回到面板 :: 旧服务不用改代码，加一行配置就进来了',
 ].join('\n')
 
-export default function NewRunForm({ projects, projectId: selectedProjectId, onCreated }: NewRunFormProps) {
+export default function NewRunForm({
+  projects,
+  projectId: selectedProjectId,
+  onCreated,
+  materialsText: controlledMaterials,
+  onMaterialsTextChange,
+}: NewRunFormProps) {
   const projectIds = Object.keys(projects)
   const [projectId, setProjectId] = useState('')
   const [topic, setTopic] = useState('')
   const [scriptText, setScriptText] = useState('')
   const [voice, setVoice] = useState(DEFAULT_VOICE)
-  const [materialsText, setMaterialsText] = useState('')
+  const [materialsDraft, setMaterialsDraft] = useState('')
+  const materialsText = controlledMaterials ?? materialsDraft
+  const setMaterialsText = (next: string) => {
+    setMaterialsDraft(next)
+    onMaterialsTextChange?.(next)
+  }
   const [maxSeconds, setMaxSeconds] = useState<number | undefined>(DEFAULT_MAX_SECONDS)
   const [platforms, setPlatforms] = useState<string[]>(DEFAULT_PLATFORMS)
   /** 1 条=单条出片；2~3 条=同稿多母版，挑一条发。 */
@@ -115,12 +129,11 @@ export default function NewRunForm({ projects, projectId: selectedProjectId, onC
 
   /** 点素材包里的图：已写进文本框就撤掉，否则追加一行引用。 */
   const togglePackShot = (ref: string) => {
-    setMaterialsText((prev) => {
-      const lines = prev.split('\n').map(line => line.trim()).filter(Boolean)
-      return lines.includes(ref)
-        ? lines.filter(line => line !== ref).join('\n')
-        : [...lines, ref].join('\n')
-    })
+    const lines = materialsText.split('\n').map(line => line.trim()).filter(Boolean)
+    const next = lines.includes(ref)
+      ? lines.filter(line => line !== ref).join('\n')
+      : [...lines, ref].join('\n')
+    setMaterialsText(next)
   }
 
   const toggleVariant = (value: RunBatchVariant, checked: boolean) => {

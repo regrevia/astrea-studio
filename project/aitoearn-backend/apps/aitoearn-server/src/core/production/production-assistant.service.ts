@@ -28,6 +28,7 @@ import {
   listPlatformsArgsSchema,
   listProjectsArgsSchema,
   listRunsArgsSchema,
+  listStudioDeliverablesArgsSchema,
   planPublicationArgsSchema,
   researchWebArgsSchema,
   reviseRunArgsSchema,
@@ -394,6 +395,15 @@ export class ProductionAssistantService {
             return this.invalidArgs(name, args.error)
           return await this.listPlatforms(userId)
         }
+        case AssistantToolName.LIST_STUDIO_ASSETS: {
+          return await this.listStudioAssets()
+        }
+        case AssistantToolName.LIST_STUDIO_DELIVERABLES: {
+          const args = listStudioDeliverablesArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.listStudioDeliverables(args.data.limit)
+        }
         case AssistantToolName.LIST_PROJECTS: {
           const args = listProjectsArgsSchema.safeParse(raw)
           if (!args.success)
@@ -544,6 +554,54 @@ export class ProductionAssistantService {
         detail: platforms.length
           ? `就绪 ${platforms.filter(item => item.ready).length} 个 · 剪映 ${voices.jianying} / Edge ${voices.edge} 音色 · ${materials.length} 个素材包`
           : `worker 在线 ${workers.filter(item => item.online).length} 个；需在宿主机启动 capabilities server`,
+        link: '/studio',
+      })],
+    }
+  }
+
+  private async listStudioAssets(): Promise<ToolResult> {
+    const assets = await this.capabilityAssets()
+    const specs = Array.isArray(assets['specs']) ? assets['specs'] as Record<string, unknown>[] : []
+    const packs = Array.isArray(assets['packs']) ? assets['packs'] as unknown[] : []
+    const shots = (assets['shots'] ?? {}) as Record<string, unknown>
+    const films = (assets['films'] ?? {}) as Record<string, unknown>
+    const recentShots = Array.isArray(shots['recent']) ? shots['recent'] as Record<string, unknown>[] : []
+    const root = typeof assets['root'] === 'string' ? assets['root'] : ''
+    return {
+      text: [
+        root ? `素材根目录：${root}` : '',
+        `规格：${specs.length} 份${specs.length ? `（${specs.slice(0, 4).map(item => String(item['title'] ?? item['path'])).join('、')}）` : ''}`,
+        `镜头：${shots['count'] ?? 0} 个${recentShots.length ? `，最近 ${recentShots.slice(0, 3).map(item => String(item['path'] ?? '').split('/').pop()).join('、')}` : ''}`,
+        `素材包：${packs.length ? packs.join('、') : '无'}`,
+        `成片：${films['count'] ?? 0} 部`,
+      ].filter(Boolean).join('\n'),
+      actions: [action({
+        type: ProductionAssistantActionType.INFO,
+        status: ProductionAssistantActionStatus.OK,
+        label: `素材 ${shots['count'] ?? 0} 个 · 成片 ${films['count'] ?? 0} 部`,
+        detail: packs.length ? `素材包：${packs.join('、')}` : '暂无素材包',
+        link: '/studio',
+      })],
+    }
+  }
+
+  private async listStudioDeliverables(limit: number): Promise<ToolResult> {
+    const files = await this.capabilityDeliverables(limit)
+    const rows = files as Record<string, unknown>[]
+    const text = rows.length
+      ? rows.map((item, index) => {
+          const bytes = Number(item['bytes'] ?? 0)
+          const size = bytes > 0 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : '大小未知'
+          return `${index + 1}. ${String(item['name'] ?? '')} · ${size} · ${String(item['path'] ?? '')}`
+        }).join('\n')
+      : '还没有交付过成片。'
+    return {
+      text,
+      actions: [action({
+        type: ProductionAssistantActionType.INFO,
+        status: rows.length ? ProductionAssistantActionStatus.OK : ProductionAssistantActionStatus.FAILED,
+        label: rows.length ? `最近 ${rows.length} 部成片` : '暂无成片',
+        detail: rows.length ? String(rows[0]?.['name'] ?? '') : '先把任务跑完再来看',
         link: '/studio',
       })],
     }

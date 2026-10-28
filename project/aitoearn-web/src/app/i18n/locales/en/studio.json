@@ -279,6 +279,7 @@
     "emptyRuns": "No tasks in this project yet",
     "back": "Back to studio",
     "sourceRepo": "Source repo",
-    "notFound": "Project not found"
+    "notFound": "Project not found",
+    "materialsShot": "Shot {{index}}"
   }
 }

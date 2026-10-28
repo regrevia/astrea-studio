@@ -279,6 +279,7 @@
     "emptyRuns": "这个项目还没有任务",
     "back": "返回制作台",
     "sourceRepo": "源码仓库",
-    "notFound": "没找到这个项目"
+    "notFound": "没找到这个项目",
+    "materialsShot": "第 {{index}} 张"
   }
 }

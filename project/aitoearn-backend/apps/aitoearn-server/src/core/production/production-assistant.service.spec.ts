@@ -538,4 +538,37 @@ describe('productionAssistantService', () => {
     expect(toolMessages[1]).toContain('还没有成片')
     expect(result.reply.actions?.[0]).toMatchObject({ type: 'render', status: 'ok', label: '剪映工程已落地' })
   })
+
+  it('list_studio_assets 与 list_studio_deliverables 读宿主机素材与成片清单', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const body = String(url).endsWith('/assets')
+        ? {
+            root: '/Users/me/materials',
+            specs: [{ path: 'a.yaml', title: '竖屏 30 秒', engine: 'timeline', kind: 'spec', ok: true }],
+            shots: { count: 2, recent: [{ path: '/Users/me/materials/packs/envoy/hero.png', bytes: 1024, mtime: 0 }] },
+            packs: ['envoy-demo'],
+            films: { count: 3, recent: [] },
+          }
+        : {
+            files: [{ name: '片子A.mp4', path: '/Users/me/deliver/片子A.mp4', bytes: 2097152, mtime: 2 }],
+          }
+      return { ok: true, status: 200, json: async () => body }
+    }))
+    client.chat
+      .mockResolvedValueOnce({ content: '', toolCalls: [toolCall('list_studio_assets', {})] })
+      .mockResolvedValueOnce({ content: '', toolCalls: [toolCall('list_studio_deliverables', { limit: 5 })] })
+      .mockResolvedValueOnce({ content: '素材和成片都看到了。', toolCalls: [] })
+
+    await service.sendMessage('user-1', SESSION_ID, '有什么素材和成片')
+
+    const firstRound = client.chat.mock.calls[1][0] as Array<{ role: string, content: string }>
+    const assetText = firstRound.filter(message => message.role === 'tool').map(message => message.content)[0]
+    expect(assetText).toContain('/Users/me/materials')
+    expect(assetText).toContain('envoy-demo')
+    expect(assetText).toContain('成片：3 部')
+    const secondRound = client.chat.mock.calls[2][0] as Array<{ role: string, content: string }>
+    const deliverText = secondRound.filter(message => message.role === 'tool').map(message => message.content).at(-1)
+    expect(deliverText).toContain('片子A.mp4')
+    expect(deliverText).toContain('2.0 MB')
+  })
 })

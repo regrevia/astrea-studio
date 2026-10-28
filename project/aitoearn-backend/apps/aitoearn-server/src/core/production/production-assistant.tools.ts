@@ -6,6 +6,8 @@ import { StudioJobKind } from './studio-jobs.client'
 export enum AssistantToolName {
   RESEARCH_WEB = 'research_web',
   LIST_PLATFORMS = 'list_platforms',
+  LIST_STUDIO_ASSETS = 'list_studio_assets',
+  LIST_STUDIO_DELIVERABLES = 'list_studio_deliverables',
   LIST_PROJECTS = 'list_projects',
   CREATE_PROJECT = 'create_project',
   CREATE_RUN = 'create_run',
@@ -124,6 +126,10 @@ export const cancelRenderJobArgsSchema = z.object({
   jobId: z.string().min(1).describe('要取消的出片任务号'),
 })
 
+export const listStudioDeliverablesArgsSchema = z.object({
+  limit: z.number().int().min(1).max(20).default(10).describe('最多返回几条成片，默认 10'),
+})
+
 export const createJianyingDraftArgsSchema = z.object({
   runId: runIdSchema,
   title: z.string().min(1).max(40).optional().describe('工程名，省略就用任务标题'),
@@ -157,6 +163,28 @@ export const ASSISTANT_TOOLS: AssistantToolDefinition[] = [
       name: AssistantToolName.LIST_PLATFORMS,
       description: '查询当前本机已就绪的发布平台账号、可用音色、素材包（可用 pack:<包名>/<名字> 引用）和 worker 支持的能力。回答「能发哪里/有没有声音/有什么素材」之前先调它。',
       parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: AssistantToolName.LIST_STUDIO_ASSETS,
+      description: '列出本机渲染素材的落盘情况：素材根目录、规格说明、已备好的镜头、素材包和成片数量与最近几部。要判断「有没有可用的素材/已经出过什么」时用它。',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: AssistantToolName.LIST_STUDIO_DELIVERABLES,
+      description: '列出已交付的成片清单（文件名、绝对路径、大小、时间，按时间倒序）。用户问「最近的成片在哪/给我打开」时用它。',
+      parameters: {
+        type: 'object',
+        properties: {
+          limit: { type: 'number', description: '最多返回几条，默认 10' },
+        },
+        additionalProperties: false,
+      },
     },
   },
   {

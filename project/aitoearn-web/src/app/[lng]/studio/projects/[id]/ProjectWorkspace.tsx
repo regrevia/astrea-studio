@@ -34,6 +34,9 @@ export default function ProjectWorkspace() {
   const [runs, setRuns] = useState<ProductionRun[]>([])
   const [inventory, setInventory] = useState<Inventory | null>(null)
   const [selectedRunId, setSelectedRunId] = useState('')
+  /** 素材选中结果按项目记住：下次进这个项目还在，不用重新点。 */
+  const materialsKey = `studio:workspace:materials:${projectId}`
+  const [materialsText, setMaterialsText] = useState('')
   const [loading, setLoading] = useState(true)
 
   const refresh = useCallback(async () => {
@@ -62,6 +65,25 @@ export default function ProjectWorkspace() {
     const timer = window.setInterval(tick, POLL_MS)
     return () => { alive = false; window.clearInterval(timer) }
   }, [refresh])
+
+  useEffect(() => {
+    if (!projectId)
+      return
+    setMaterialsText(window.localStorage.getItem(materialsKey) ?? '')
+  }, [materialsKey, projectId])
+
+  const updateMaterials = useCallback((next: string) => {
+    setMaterialsText(next)
+    window.localStorage.setItem(materialsKey, next)
+  }, [materialsKey])
+
+  /** 点素材包里的图：已选中就撤掉，否则加进表单。 */
+  const toggleShot = useCallback((ref: string) => {
+    const lines = materialsText.split('\n').map(line => line.trim()).filter(Boolean)
+    updateMaterials(
+      lines.includes(ref) ? lines.filter(line => line !== ref).join('\n') : [...lines, ref].join('\n'),
+    )
+  }, [materialsText, updateMaterials])
 
   useEffect(() => {
     let alive = true
@@ -161,12 +183,23 @@ export default function ProjectWorkspace() {
                     <span className="truncate text-xs font-medium">{pack.slug}</span>
                     <Badge variant="secondary">{t('project.materialsShots', { count: pack.shots })}</Badge>
                   </div>
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {pack.refs.slice(0, 6).map(ref => (
-                      <span key={ref} className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                        {ref.split('/').pop() ?? ref}
-                      </span>
-                    ))}
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {pack.refs.map((ref, index) => {
+                      const picked = materialsText.split('\n').map(line => line.trim()).includes(ref)
+                      return (
+                        <Button
+                          key={ref}
+                          type="button"
+                          size="sm"
+                          title={ref}
+                          variant={picked ? 'default' : 'outline'}
+                          className="h-7 px-2 text-[11px]"
+                          onClick={() => toggleShot(ref)}
+                        >
+                          {t('project.materialsShot', { index: index + 1 })}
+                        </Button>
+                      )
+                    })}
                   </div>
                 </div>
               ))}
@@ -185,6 +218,8 @@ export default function ProjectWorkspace() {
             <NewRunForm
               projects={projectMap}
               projectId={project.id}
+              materialsText={materialsText}
+              onMaterialsTextChange={updateMaterials}
               onCreated={(ids) => {
                 if (ids[0])
                   setSelectedRunId(ids[0])
