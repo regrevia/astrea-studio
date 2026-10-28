@@ -284,8 +284,10 @@ describe('reviseRun', () => {
 
     await service.reviseRun('user-1', 'run-3', { scenes: [{ index: 1, text: '再改第二句' }] })
 
-    const timeline = (runRepo.updateByRevision.mock.calls[0][2] as Record<string, any>).spec.timeline
-    expect(timeline.text.map((row: Record<string, unknown>) => row.text)).toEqual(['第一句改过', '再改第二句'])
+    const written = runRepo.updateByRevision.mock.calls[0][2] as {
+      spec: { timeline: { text: Array<Record<string, unknown>> } }
+    }
+    expect(written.spec.timeline.text.map(row => row['text'])).toEqual(['第一句改过', '再改第二句'])
   })
 
   it('按场景改稿落在新 revision 的时间轴上，底稿仍能审计', async () => {
