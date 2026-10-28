@@ -26,6 +26,8 @@ export interface ProductionProject {
   isDefault?: boolean
   sourceRepo?: string
   materialGroupId?: string
+  /** 最近一次「一次出多版」的任务 id，工作区据此把版本按钮留住。 */
+  lastBatchRunIds?: string[]
   createdAt?: string
   updatedAt?: string
 }

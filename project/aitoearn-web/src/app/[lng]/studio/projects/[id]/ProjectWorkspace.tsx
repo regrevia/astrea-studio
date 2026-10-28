@@ -70,7 +70,8 @@ export default function ProjectWorkspace() {
   const [inventory, setInventory] = useState<Inventory | null>(null)
   const [selectedRunId, setSelectedRunId] = useState('')
   // 一次出多版时记住这批 id，面板顶上直接切版本，不用回任务列表里翻。
-  const [batchIds, setBatchIds] = useState<string[]>([])
+  // 项目上存了一份，刷新页面后按钮还在。
+  const [freshBatchIds, setBatchIds] = useState<string[]>([])
   /** 素材选中结果按项目记住：下次进这个项目还在，不用重新点。 */
   const materialsKey = `studio:workspace:materials:${projectId}`
   const [materialsText, setMaterialsText] = useState('')
@@ -187,6 +188,11 @@ export default function ProjectWorkspace() {
   const selectedRun = useMemo(
     () => runs.find(item => item.id === selectedRunId) ?? null,
     [runs, selectedRunId],
+  )
+  // 刚出的这批优先，刷新后回落到项目上记的那批。
+  const batchIds = useMemo(
+    () => (freshBatchIds.length > 1 ? freshBatchIds : project?.lastBatchRunIds ?? []),
+    [freshBatchIds, project?.lastBatchRunIds],
   )
   const packs = inventory?.materials?.packs ?? []
   const packRefs = useMemo(() => packs.flatMap(pack => pack.refs), [packs])

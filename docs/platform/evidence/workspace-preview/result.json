@@ -48,5 +48,37 @@
     }
   ],
   "preview": "/oss/studio/runs/6ae22f4ad4961ac32cc57ac4/r1/master.mp4",
-  "note": "点「第 2 版」后播放器源切到第 2 条任务的成片（runId …57ac4），三条全 succeeded"
+  "note": "点「第 2 版」后播放器源切到第 2 条任务的成片（runId …57ac4），三条全 succeeded",
+  "persistence": {
+    "project": "刷新留存验收",
+    "projectId": "6ae2313738be775d59713e99",
+    "checks": "点「出 3 版」后刷新两次页面，版本按钮仍在（读项目的 lastBatchRunIds），点第 3 版播放器切到第 3 条成片",
+    "runs": [
+      {
+        "runId": "6ae231ce38be775d59714084",
+        "version": 1,
+        "status": "succeeded",
+        "duration": 30
+      },
+      {
+        "runId": "6ae231ce38be775d5971408d",
+        "version": 2,
+        "status": "succeeded",
+        "duration": 30
+      },
+      {
+        "runId": "6ae231ce38be775d59714096",
+        "version": 3,
+        "status": "succeeded",
+        "duration": 30
+      }
+    ],
+    "pillsAfterReload": [
+      "第 1 版",
+      "第 2 版",
+      "第 3 版"
+    ],
+    "videoAfterReload": "/oss/studio/runs/6ae231ce38be775d59714096/r1/master.mp4",
+    "screenshot": "versions-after-reload.png"
+  }
 }

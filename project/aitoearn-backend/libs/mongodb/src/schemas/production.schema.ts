@@ -83,6 +83,14 @@ export class ProductionProject extends WithTimestampSchema {
   @Prop({ type: Object, default: {} })
   brand: Record<string, unknown>
 
+  /**
+   * 最近一次「一次出多版」的任务 id。
+   *
+   * 工作区靠它把版本按钮留住：刷新页面后不用再回任务列表里猜哪几条是同一批。
+   */
+  @Prop({ type: [String], default: [] })
+  lastBatchRunIds: string[]
+
   /** Bound accounts: { platform, accountId, dispatcher, alias } */
   @Prop({ type: [Object], default: [] })
   accountBindings: Array<Record<string, unknown>>

@@ -335,6 +335,19 @@ export class ProductionService {
         title: count > 1 ? `${input.title} · ${i + 1}/${count}` : input.title,
       }))
     }
+    // 记下这一批，工作区刷新后还能把版本按钮摆出来；只留 id，成片仍以任务为准。
+    // 记账失败不影响已经排好的任务，所以整段吞掉。
+    if (runs.length > 1 && runs[0]?.projectId) {
+      try {
+        await this.projectRepo.updateById(
+          runs[0].projectId,
+          { lastBatchRunIds: runs.map(run => run.id) } as never,
+        )
+      }
+      catch {
+        // 项目记账是附带信息，失败不回滚任务。
+      }
+    }
     return runs
   }
 
