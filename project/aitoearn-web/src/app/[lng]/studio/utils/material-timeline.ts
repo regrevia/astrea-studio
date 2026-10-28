@@ -26,6 +26,12 @@ export interface MaterialBeatPlan {
   beats: number[]
 }
 
+/** 成片上的两层文字：标题常驻，副标题稍后进场。 */
+export interface MaterialTextPlan {
+  title: string
+  subtitle?: string
+}
+
 /** 一段视频最少 1 秒，再短的关键帧推拉肉眼看不出，也让字幕/拍点没有落点。 */
 export const MIN_SEGMENT_SECONDS = 1
 
@@ -54,6 +60,7 @@ export function buildMaterialTimeline(
   clips: MaterialTimelineClip[],
   targetSeconds: number,
   beatPlan?: MaterialBeatPlan | null,
+  textPlan?: MaterialTextPlan | null,
 ) {
   const usable = clips.filter(clip => clip.src && clip.duration >= MIN_SEGMENT_SECONDS)
   if (!usable.length)
@@ -130,12 +137,45 @@ export function buildMaterialTimeline(
       }
     : null
 
+  // 标题压在上三分之一常驻，副标题晚半秒进、早半秒走，别跟收尾压黑撞在一起。
+  const texts: Array<Record<string, unknown>> = []
+  if (textPlan?.title) {
+    texts.push({
+      text: textPlan.title,
+      start: 0.3,
+      end: round(targetSeconds - 0.4),
+      x: 0.5,
+      y: 0.2,
+      size: 0.062,
+      color: '#ffffff',
+      stroke: 2,
+      stroke_color: '#000000',
+      fade: 0.3,
+      align: 'center',
+    })
+  }
+  if (textPlan?.subtitle) {
+    texts.push({
+      text: textPlan.subtitle,
+      start: 0.9,
+      end: round(targetSeconds - 0.5),
+      x: 0.5,
+      y: 0.29,
+      size: 0.04,
+      color: '#ffffff',
+      stroke: 2,
+      stroke_color: '#000000',
+      fade: 0.3,
+      align: 'center',
+    })
+  }
+
   return {
     engine: 'timeline',
     timeline: {
       canvas: { width: 1080, height: 1920, fps: 30 },
       video,
-      text: [],
+      text: texts,
       audio: [],
       ...(music ? { music } : {}),
     },

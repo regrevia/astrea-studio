@@ -13,6 +13,7 @@ import { createRun, fetchMaterialFrameUrl, getMaterialShots, getMaterialMusic, g
 import { useTransClient } from '@/app/i18n/client'
 import { buildMaterialTimeline, TARGET_SECONDS, type MaterialBeatPlan, type TargetSeconds } from '@/app/[lng]/studio/utils/material-timeline'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -38,6 +39,8 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
   const [tracks, setTracks] = useState<MaterialMusic[]>([])
   /** 空串表示不加配乐。 */
   const [musicRel, setMusicRel] = useState('')
+  const [title, setTitle] = useState('')
+  const [subtitle, setSubtitle] = useState('')
   const [beatOn, setBeatOn] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -134,6 +137,7 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
       pickedClips.map(clip => ({ src: clip.path, duration: clip.duration ?? 0 })),
       target,
       beatPlan,
+      title.trim() || subtitle.trim() ? { title: title.trim(), subtitle: subtitle.trim() } : null,
     )
     if (!spec) {
       setError(t('project.clipFailed'))
@@ -163,7 +167,7 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
     finally {
       setSubmitting(false)
     }
-  }, [beatOn, onCreated, pickedClips, pickedTrack, projectId, projectName, t, target])
+  }, [beatOn, onCreated, pickedClips, pickedTrack, projectId, projectName, subtitle, t, target, title])
 
   return (
     <Card>
@@ -209,6 +213,24 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
                   </button>
                 )
               })}
+            </div>
+            <div className="grid gap-1.5">
+              <Input
+                className="h-8 text-xs"
+                value={title}
+                maxLength={18}
+                aria-label={t('project.clipTitle')}
+                placeholder={t('project.clipTitlePlaceholder')}
+                onChange={event => setTitle(event.target.value)}
+              />
+              <Input
+                className="h-8 text-xs"
+                value={subtitle}
+                maxLength={26}
+                aria-label={t('project.clipSubtitle')}
+                placeholder={t('project.clipSubtitlePlaceholder')}
+                onChange={event => setSubtitle(event.target.value)}
+              />
             </div>
             <div className="flex items-center justify-between gap-2">
               <Badge variant="secondary">{t('project.clipsPicked', { count: pickedClips.length })}</Badge>

@@ -351,7 +351,11 @@
     "clipTarget": "Target length",
     "clipSubmit": "Cut from these clips",
     "clipFailed": "Could not queue it. Try again.",
-    "clipMusic": "Music",
+    "clipTitle": "Title",
+            "clipTitlePlaceholder": "Title (optional)",
+            "clipSubtitle": "Subtitle",
+            "clipSubtitlePlaceholder": "Subtitle (optional)",
+            "clipMusic": "Music",
     "clipMusicNone": "No music",
     "clipBeat": "Cut on beat",
     "clipBeatsFailed": "No beat detected for this track, cutting by clip length"

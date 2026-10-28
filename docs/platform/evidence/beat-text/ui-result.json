@@ -1,0 +1,70 @@
+{
+  "projectId": "6ae2284123fdf914233845e6",
+  "runId": "6ae2286723fdf914233846b7",
+  "status": "succeeded",
+  "segments": 15,
+  "music": {
+    "src": "/Users/apple/CreatorStudio/materials/bgm/demo-120.m4a",
+    "volume": 0.32,
+    "loop": true,
+    "bpm": 60.09,
+    "offset": 0
+  },
+  "texts": [
+    {
+      "text": "一杯好咖啡",
+      "start": 0.3,
+      "end": 29.6,
+      "x": 0.5,
+      "y": 0.2,
+      "size": 0.062,
+      "color": "#ffffff",
+      "stroke": 2,
+      "stroke_color": "#000000",
+      "fade": 0.3,
+      "align": "center"
+    },
+    {
+      "text": "三分钟送到家",
+      "start": 0.9,
+      "end": 29.5,
+      "x": 0.5,
+      "y": 0.29,
+      "size": 0.04,
+      "color": "#ffffff",
+      "stroke": 2,
+      "stroke_color": "#000000",
+      "fade": 0.3,
+      "align": "center"
+    }
+  ],
+  "shots": 3,
+  "musicPickerVisible": true,
+  "beatChecked": true,
+  "output": {
+    "videoPath": "studio/runs/6ae2286723fdf914233846b7/r1/master.mp4",
+    "materialId": "6ae2287523fdf91423384731",
+    "videoUrl": "/oss/studio/runs/6ae2286723fdf914233846b7/r1/master.mp4",
+    "duration": 30,
+    "canvas": {
+      "width": 1080,
+      "height": 1920,
+      "fps": 30
+    },
+    "videoQa": {
+      "video": "/Users/apple/CreatorStudio/timeline/6ae2286723fdf914233846ba/master.mp4",
+      "duration": 30,
+      "findings": [],
+      "ok": true
+    },
+    "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261029-005308__studio__001__标题卡点验收-30-秒__douyin__r1.mp4",
+    "libraryAssetId": "20261029-005308__studio__001__标题卡点验收-30-秒__douyin__r1",
+    "md5": "ed590190446dde00381f6ff34542759a",
+    "libraryEntries": [
+      {
+        "kind": "master",
+        "path": "/Users/apple/CreatorStudio/library/studio/2026-10/20261029-005308__studio__001__标题卡点验收-30-秒__douyin__r1.mp4"
+      }
+    ]
+  }
+}
