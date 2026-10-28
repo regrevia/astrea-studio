@@ -24,7 +24,24 @@ import time
 from pathlib import Path
 
 APP = "VideoFusion-macOS"
+APP_PATH = Path(os.environ.get("JIANYING_APP") or "/Applications/VideoFusion-macOS.app")
 PANEL_PREFIX = "导出-"
+
+
+def app_version() -> str:
+    """剪映版本号（取自 bundle 的 Info.plist）。
+
+    为什么记它：面板控件名、草稿格式、导出页布局都随版本变，写死「11.6 的 AX 名字」
+    等于把升级路径堵死。每次导出把版本号写进证据，出问题时先看是不是版本漂移。
+    """
+    try:
+        import plistlib
+        with open(APP_PATH / "Contents/Info.plist", "rb") as fh:
+            info = plistlib.load(fh)
+        return "%s/%s" % (info.get("CFBundleShortVersionString") or "?",
+                          info.get("CFBundleVersion") or "?")
+    except Exception:
+        return "unknown"
 # 辅助工具是编译出来的小可执行文件。以前放在 /tmp，被系统清理过一次，
 # 导出任务就 FileNotFoundError 直接失败；改到稳定目录，并在缺失时自己编译。
 BIN_DIR = Path(os.environ.get("STUDIO_BIN") or os.path.expanduser("~/CreatorStudio/bin"))

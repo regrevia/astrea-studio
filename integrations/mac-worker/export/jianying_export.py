@@ -483,6 +483,7 @@ def main(argv=None):
     if not rect:
         print("打不开导出面板（需要剪映在前台且草稿已打开）", file=sys.stderr)
         return 2
+    print("剪映版本: %s" % P.app_version())
     print("面板: %r  %dx%d @ %d,%d  相对坐标基准 = 此窗口" % (title, rect[2], rect[3], rect[0], rect[1]))
     draft = (title or "").replace(P.PANEL_PREFIX, "").strip()
     print("草稿时长: %s（%.2fs）" % (dur.get("raw"), dur.get("seconds") or 0))
