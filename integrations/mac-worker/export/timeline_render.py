@@ -71,6 +71,61 @@ def find_font() -> str:
         "找不到可用字体：设 TIMELINE_FONT 指向一个 .ttf/.ttc，或安装 Noto Sans CJK")
 
 
+def _keys_at(keys: list[tuple[float, float]], at: float) -> float:
+    """在关键帧折线上取某一秒的 zoom，越界就贴边。"""
+    if at <= keys[0][0]:
+        return keys[0][1]
+    for (a0, z0), (a1, z1) in zip(keys, keys[1:]):
+        if at <= a1:
+            if a1 - a0 < 1e-9:
+                return z1
+            return z0 + (z1 - z0) * (at - a0) / (a1 - a0)
+    return keys[-1][1]
+
+
+def _pulse_keys(keys: list[tuple[float, float]], dur: float,
+                beats: list[float], amount: float, decay: float) -> list[tuple[float, float]]:
+    """卡点脉冲：每个拍点上把当前 zoom 顶高 amount，再在 decay 秒内回到原曲线。"""
+    pts = list(keys)
+    for t in beats:
+        t = max(0.0, min(t, dur))
+        pts.append((t, _keys_at(keys, t) * (1.0 + amount)))
+        pts.append((min(dur, t + decay), _keys_at(keys, min(dur, t + decay))))
+    pts.sort(key=lambda x: x[0])
+    out: list[tuple[float, float]] = []
+    for at, z in pts:
+        if out and abs(at - out[-1][0]) < 1e-4:
+            out[-1] = (at, max(out[-1][1], z))
+        else:
+            out.append((at, z))
+    return out
+
+
+def _zoom_expr(points: list[tuple[float, float]], frames: int, fps: float) -> str:
+    """关键帧推拉：把 (秒, zoom) 折线交给 zoompan 的 z 表达式。
+
+    zoompan 的 `on` 是输出帧号，所以先把秒换成帧，再做分段线性插值。
+    只有首尾两点时退化成一条直线（和老的 zoom 行为逐字一致）。
+    """
+    pts = [(min(max(0.0, float(at)) * fps, float(frames)), float(z)) for at, z in points]
+    if len(pts) < 2:
+        return f"{pts[0][1]:.4f}" if pts else "1.0"
+    if len(pts) == 2 and pts[0][0] <= 0 and pts[1][0] >= frames:
+        z0, z1 = pts[0][1], pts[1][1]
+        return f"{z0:.4f}+({z1 - z0:.4f})*on/{frames}"
+    # 倒着套 if：最后一帧之后保持最后一个值，往前每段一个区间
+    expr = f"{pts[-1][1]:.4f}"
+    for i in range(len(pts) - 1, 0, -1):
+        f0, z0 = pts[i - 1]
+        f1, z1 = pts[i]
+        if f1 - f0 < 1e-6:
+            seg = f"{z1:.4f}"
+        else:
+            seg = f"{z0:.4f}+({z1 - z0:.4f})*(on-{f0:.2f})/{f1 - f0:.2f}"
+        expr = f"if(lt(on,{f1:.2f}),{seg},{expr})"
+    return expr
+
+
 def _color(value, default: str) -> tuple:
     """'#rrggbb' / '#rrggbbaa' → (r,g,b,a)。也接受已经是元组的。"""
     if value is None:
@@ -162,11 +217,37 @@ def load_spec(path, base: Path | None = None) -> dict:
         zoom = (float(zoom[0]), float(zoom[1]))
         if min(zoom) < 1.0:
             raise SpecError(f"video[{i}] zoom 不能小于 1（会露出画布边）")
+        raw_keys = c.get("keyframes") or []
+        if not isinstance(raw_keys, list):
+            raise SpecError(f"video[{i}] keyframes 要是数组，得到 {type(raw_keys).__name__}")
+        keys: list[tuple[float, float]] = []
+        dur_raw = end - start
+        for k, item in enumerate(raw_keys):
+            if not isinstance(item, dict):
+                raise SpecError(f"video[{i}].keyframes[{k}] 要是 {{at, zoom}} 对象")
+            at = item.get("at")
+            if at is None:
+                raise SpecError(f"video[{i}].keyframes[{k}] 缺 at（段内秒数）")
+            at = float(at)
+            if at < -1e-6 or at > dur_raw + 1e-6:
+                raise SpecError(f"video[{i}].keyframes[{k}] 的 at({at}) 超出本段 0~{dur_raw:.2f}s")
+            z = float(item.get("zoom", zoom[0]))
+            if z < 1.0:
+                raise SpecError(f"video[{i}].keyframes[{k}] zoom 不能小于 1（会露出画布边）")
+            keys.append((max(0.0, at), z))
+        if keys:
+            keys.sort(key=lambda x: x[0])
+            if keys[0][0] > 1e-6:
+                keys.insert(0, (0.0, zoom[0]))
+        else:
+            keys = [(0.0, zoom[0]), (dur_raw, zoom[1])]
         clips.append({
             "src": src, "in": start, "out": end,
             "dur": end - start, "fit": fit,
             "speed": float(c.get("speed") or 1.0),
-            "still": still, "zoom": zoom,
+            "still": still, "zoom": zoom, "keys": keys,
+            # 卡点脉冲只给「没自己写关键帧的静卡」，手写的节奏说了算
+            "pulse": bool(c.get("pulse", True)), "explicit_keys": bool(raw_keys),
             "fade_in": float(c.get("fade_in") or 0.0),
             "fade_out": float(c.get("fade_out") or 0.0),
             "xfade_in": float(c.get("xfade_in") or 0.0),
@@ -228,6 +309,80 @@ def load_spec(path, base: Path | None = None) -> dict:
             "role": str(a.get("role") or ""),
         })
 
+    music = raw.get("music")
+    beats: list[float] = []
+    music_info = None
+    if music is not None:
+        if not isinstance(music, dict):
+            raise SpecError(f"music 要是对象，得到 {type(music).__name__}")
+        m_src = Path(os.path.expanduser(str(music.get("src") or "")))
+        if not m_src.is_absolute():
+            m_src = (here / m_src).resolve()
+        if not m_src.is_file():
+            raise SpecError(f"music 素材不存在: {m_src}")
+        m_vol = float(music.get("volume") if music.get("volume") is not None else 0.35)
+        if not 0.0 < m_vol <= 2.0:
+            raise SpecError(f"music.volume 要在 0~2，得到 {m_vol}")
+        m_in = float(music.get("in") or 0.0)
+        if m_in < 0:
+            raise SpecError(f"music.in 不能为负，得到 {m_in}")
+        m_loop = bool(music.get("loop", True))
+        m_bpm = music.get("bpm")
+        m_offset = float(music.get("offset") or 0.0)
+        if m_offset < 0:
+            raise SpecError(f"music.offset 不能为负，得到 {m_offset}")
+        raw_beats = music.get("beats") or []
+        if raw_beats:
+            if not isinstance(raw_beats, list):
+                raise SpecError(f"music.beats 要是数组，得到 {type(raw_beats).__name__}")
+            beats = [float(x) for x in raw_beats]
+            if any(b < 0 for b in beats):
+                raise SpecError("music.beats 不能有负数")
+            if any(beats[k + 1] <= beats[k] for k in range(len(beats) - 1)):
+                raise SpecError("music.beats 必须严格递增（单位秒）")
+        elif m_bpm is not None:
+            m_bpm = float(m_bpm)
+            if m_bpm <= 0:
+                raise SpecError(f"music.bpm 必须大于 0，得到 {m_bpm}")
+            step = 60.0 / m_bpm
+            k = 0
+            while m_offset + k * step <= total + 1e-9:
+                beats.append(round(m_offset + k * step, 6))
+                k += 1
+        else:
+            m_bpm = None
+        beats = [b for b in beats if b <= total + 1e-6]
+        music_info = {"src": str(m_src), "volume": m_vol, "in": m_in,
+                      "loop": m_loop, "bpm": m_bpm, "offset": m_offset,
+                      "beats": beats}
+        audios.append({"src": m_src, "start": 0.0, "in": m_in, "volume": m_vol,
+                       "loop": m_loop, "fade": 0.0, "out": 0.0, "role": "bgm"})
+
+        # 卡点：拍点上给静卡顶一下。改的是关键帧，不是画面时长——
+        # 竖屏的语音/字幕时间来自配音，动时长会把人声和画面对不上。
+        pulse = music.get("pulse") or {}
+        if pulse:
+            if not isinstance(pulse, dict):
+                raise SpecError(f"music.pulse 要是对象，得到 {type(pulse).__name__}")
+            amount = float(pulse.get("amount") or 0.045)
+            decay = float(pulse.get("decay") or 0.16)
+            if amount < 0 or amount > 0.4:
+                raise SpecError(f"music.pulse.amount 要在 0~0.4，得到 {amount}")
+            if not 0.03 <= decay <= 1.0:
+                raise SpecError(f"music.pulse.decay 要在 0.03~1，得到 {decay}")
+            applied = 0
+            cursor = 0.0
+            for clip in clips:
+                dur = clip["dur"] / (clip["speed"] or 1.0)
+                if clip["still"] and clip["pulse"] and not clip["explicit_keys"] and beats:
+                    local = [b - cursor for b in beats
+                             if cursor - 1e-6 <= b < cursor + dur - 1e-6]
+                    if local:
+                        clip["keys"] = _pulse_keys(clip["keys"], dur, local, amount, decay)
+                        applied += len(local)
+                cursor += dur
+            music_info["pulse"] = {"amount": amount, "decay": decay, "applied": applied}
+
     overlays = []
     for i, o in enumerate(raw.get("overlay") or []):
         src = Path(os.path.expanduser(str(o.get("src") or "")))
@@ -286,6 +441,8 @@ def load_spec(path, base: Path | None = None) -> dict:
         "text": texts,
         "overlay": overlays,
         "audio": audios,
+        "music": music_info,
+        "beats": beats,
         "font": str(raw.get("font") or find_font()),
     }
 
@@ -490,9 +647,11 @@ class RenderPlan:
             if clip.get("still"):
                 z0, z1 = clip.get("zoom") or (1.0, 1.0)
                 frames = max(1, int(round(dur * FPS)))
-                if abs(z1 - z0) > 1e-3:
-                    # 静卡不动就是 PPT：一屏里极慢地推/拉，肉眼几乎看不出位移，画面是活的
-                    chain = (f"zoompan=z='{z0:.4f}+({z1 - z0:.4f})*on/{frames}':"
+                keys = clip.get("keys") or [(0.0, z0), (dur, z1)]
+                moving = any(abs(z - keys[0][1]) > 1e-3 for _, z in keys[1:])
+                if moving:
+                    # 静卡不动就是 PPT；有关键帧就按折线推，一段里可以推近-停-拉远
+                    chain = (f"zoompan=z='{_zoom_expr(keys, frames, FPS)}':"
                              f"d={frames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
                              f"s={W}x{H}:fps={FPS:g},trim=duration={dur:g}")
                 else:
@@ -653,6 +812,8 @@ def render(spec: dict, dst, workdir=None, timeout: int = 7200,
         "clips": len(spec["video"]),
         "texts": len(spec["text"]),
         "audios": len(spec["audio"]),
+        "beats": len(spec.get("beats") or []),
+        "bgm": bool(spec.get("music")),
         "font": spec["font"],
         "seconds": round(cost, 1),
         "cmd": cmd,

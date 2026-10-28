@@ -50,7 +50,14 @@ export const createRunArgsSchema = z.object({
   bgm: z.object({
     src: z.string().min(1),
     volume: z.number().min(0).max(1).optional(),
-  }).optional().describe('背景音乐'),
+    bpm: z.number().min(1).max(300).optional().describe('心率：给了就按 60/bpm 自动排拍点'),
+    offset: z.number().min(0).optional().describe('第一拍在音频里的秒数'),
+    beats: z.array(z.number().min(0)).optional().describe('手动拍点秒数，严格递增；与 bpm 二选一'),
+    pulse: z.object({
+      amount: z.number().min(0).max(0.4).optional().describe('拍点把画面顶大多少，默认 0.045'),
+      decay: z.number().min(0.03).max(1).optional().describe('顶起后回落秒数，默认 0.16'),
+    }).optional().describe('卡点脉冲：给了才在拍点上推镜头'),
+  }).optional().describe('背景音乐与卡点；src 为音频文件绝对路径'),
   clipSeconds: z.number().min(1).max(15).optional().describe('每个镜头的秒数，默认 3'),
 })
 
@@ -73,6 +80,13 @@ export const reviseRunArgsSchema = z.object({
     bgm: z.object({
       src: z.string().min(1),
       volume: z.number().min(0).max(1).optional(),
+      bpm: z.number().min(1).max(300).optional(),
+      offset: z.number().min(0).optional(),
+      beats: z.array(z.number().min(0)).optional(),
+      pulse: z.object({
+        amount: z.number().min(0).max(0.4).optional(),
+        decay: z.number().min(0.03).max(1).optional(),
+      }).optional(),
     }).optional(),
     assetBase: z.string().optional(),
     clipSeconds: z.number().min(1).max(15).optional(),
@@ -177,12 +191,23 @@ export const ASSISTANT_TOOLS: AssistantToolDefinition[] = [
           bgm: {
             type: 'object',
             properties: {
-              src: { type: 'string' },
-              volume: { type: 'number' },
+              src: { type: 'string', description: '音频文件绝对路径' },
+              volume: { type: 'number', description: '0~1，默认 0.35' },
+              bpm: { type: 'number', description: '心率；给了就按 60/bpm 排拍点' },
+              offset: { type: 'number', description: '第一拍在音频里的秒数' },
+              beats: { type: 'array', items: { type: 'number' }, description: '手动拍点秒数，严格递增' },
+              pulse: {
+                type: 'object',
+                properties: {
+                  amount: { type: 'number', description: '拍点推镜头幅度，默认 0.045' },
+                  decay: { type: 'number', description: '拍点回落秒数，默认 0.16' },
+                },
+                additionalProperties: false,
+              },
             },
             required: ['src'],
             additionalProperties: false,
-            description: '背景音乐',
+            description: '背景音乐与卡点；bpm/beats 决定拍点，pulse 决定拍点上是否推镜头',
           },
           clipSeconds: { type: 'number', description: '每个镜头秒数，默认 3' },
         },
@@ -231,7 +256,7 @@ export const ASSISTANT_TOOLS: AssistantToolDefinition[] = [
           runId: { type: 'string', description: '任务 ID' },
           patch: {
             type: 'object',
-            description: '要覆盖的字段：brief/script/materials/canvas/platforms/bgm/assetBase/clipSeconds',
+            description: '要覆盖的字段：brief/script/materials/canvas/platforms/bgm（含 bpm/beats/pulse 卡点）/assetBase/clipSeconds',
             additionalProperties: true,
           },
         },

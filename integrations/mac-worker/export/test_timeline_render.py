@@ -145,6 +145,36 @@ class TestSpecValidation(unittest.TestCase):
         self.assertIsNone(o["enter"])
 
 
+    def test_keyframes_accept_piecewise_zoom(self):
+        spec = T.load_spec(self._write(self._ok(video=[{
+            "src": "c.mp4", "in": 0, "out": 1,
+            "keyframes": [{"at": 0.0, "zoom": 1.0}, {"at": 0.5, "zoom": 1.2},
+                          {"at": 1.0, "zoom": 1.0}],
+        }])))
+        self.assertEqual([round(z, 2) for _, z in spec["video"][0]["keys"]], [1.0, 1.2, 1.0])
+
+    def test_keyframe_out_of_range_rejected(self):
+        with self.assertRaises(T.SpecError) as ctx:
+            T.load_spec(self._write(self._ok(video=[{
+                "src": "c.mp4", "in": 0, "out": 1,
+                "keyframes": [{"at": 1.5, "zoom": 1.1}],
+            }])))
+        self.assertIn("超出本段", str(ctx.exception))
+
+    def test_keyframe_zoom_below_one_rejected(self):
+        with self.assertRaises(T.SpecError) as ctx:
+            T.load_spec(self._write(self._ok(video=[{
+                "src": "c.mp4", "in": 0, "out": 1,
+                "keyframes": [{"at": 0.0, "zoom": 0.8}],
+            }])))
+        self.assertIn("不能小于 1", str(ctx.exception))
+
+    def test_zoom_expr_is_piecewise(self):
+        expr = T._zoom_expr([(0.0, 1.0), (0.5, 1.2), (1.0, 1.0)], 30, 30)
+        self.assertEqual(expr.count("if(lt(on,"), 2, expr)
+        self.assertIn("1.2000", expr)
+
+
 class TestOverlayExpr(unittest.TestCase):
     canvas = {"width": 1920, "height": 1080}
 
@@ -175,6 +205,171 @@ class TestOverlayExpr(unittest.TestCase):
     def test_enter_on_x_ignored_for_y_axis(self):
         it = self._item(enter={"side": "right", "duration": 0.4})
         self.assertNotIn("if(", T._overlay_axis_expr(it, "y", self.canvas))
+
+
+
+class TestMusicBeats(unittest.TestCase):
+    """音乐 + 卡点：BGM 进混音，拍点要么给 bpm 算，要么直接给 beats。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp(prefix="tl-music-"))
+        cls.clip = cls.tmp / "c.mp4"
+        cls.box = cls.tmp / "box.png"
+        cls.bgm = cls.tmp / "bgm.wav"
+        subprocess.run(
+            [T.FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+             "-f", "lavfi", "-i", "color=c=white:s=320x180:d=1",
+             "-vf", "drawbox=x=120:y=60:w=80:h=60:color=black:t=fill",
+             "-frames:v", "1", str(cls.box)], check=True)
+        subprocess.run(
+            [T.FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+             "-f", "lavfi", "-i", "color=c=white:s=320x180:d=1:r=30",
+             "-c:v", "libx264", "-preset", "ultrafast",
+             "-pix_fmt", "yuv420p", str(cls.clip)], check=True)
+        subprocess.run(
+            [T.FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+             "-f", "lavfi", "-i", "sine=frequency=220:duration=1",
+             str(cls.bgm)], check=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def _write(self, obj):
+        p = self.tmp / "spec.json"
+        p.write_text(json.dumps(obj), encoding="utf-8")
+        return p
+
+    def _ok(self, **over):
+        obj = {"canvas": {"width": 320, "height": 180, "fps": 30},
+               "video": [{"src": "c.mp4", "in": 0, "out": 2}],
+               "music": {"src": "bgm.wav", "bpm": 60, "offset": 0.25}}
+        obj.update(over)
+        return obj
+
+    def test_bpm_beats_fill_timeline(self):
+        spec = T.load_spec(self._write(self._ok()))
+        self.assertEqual([round(b, 2) for b in spec["beats"]], [0.25, 1.25])
+        self.assertEqual(len([a for a in spec["audio"] if a["role"] == "bgm"]), 1)
+        self.assertAlmostEqual(spec["music"]["volume"], 0.35, places=2)
+
+    def test_explicit_beats_used_and_clipped_to_duration(self):
+        spec = T.load_spec(self._write(self._ok(
+            music={"src": "bgm.wav", "beats": [0.0, 0.5, 0.8, 9.0]})))
+        self.assertEqual(spec["beats"], [0.0, 0.5, 0.8])
+
+    def test_beats_must_increase(self):
+        with self.assertRaises(T.SpecError) as cm:
+            T.load_spec(self._write(self._ok(
+                music={"src": "bgm.wav", "beats": [0.5, 0.5]})))
+        self.assertIn("严格递增", str(cm.exception))
+
+    def test_bad_volume_rejected(self):
+        with self.assertRaises(T.SpecError) as cm:
+            T.load_spec(self._write(self._ok(
+                music={"src": "bgm.wav", "bpm": 60, "volume": 5})))
+        self.assertIn("volume", str(cm.exception))
+
+    def test_pulse_adds_zoom_spikes_on_beats(self):
+        spec = T.load_spec(self._write(self._ok(
+            video=[{"src": "box.png", "in": 0, "out": 2}],
+            music={"src": "bgm.wav", "bpm": 60, "offset": 0.25,
+                   "pulse": {"amount": 0.05, "decay": 0.16}})))
+        keys = spec["video"][0]["keys"]
+        self.assertGreater(len(keys), 2)
+        self.assertAlmostEqual(max(z for _, z in keys), 1.05, places=3)
+        self.assertEqual(spec["music"]["pulse"]["applied"], 2)
+
+    def test_explicit_keyframes_win_over_pulse(self):
+        spec = T.load_spec(self._write(self._ok(
+            video=[{"src": "c.mp4", "in": 0, "out": 2,
+                    "keyframes": [{"at": 0, "zoom": 1.0}, {"at": 2, "zoom": 1.2}]}],
+            music={"src": "bgm.wav", "bpm": 60, "offset": 0.25,
+                   "pulse": {"amount": 0.05}})))
+        self.assertEqual([round(z, 3) for _, z in spec["video"][0]["keys"]], [1.0, 1.2])
+
+
+class TestBeatPulseRender(unittest.TestCase):
+    """拍点顶zoom 要在像素上看得见：黑块在拍点那一帧变大、两拍之间回去。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp(prefix="tl-pulse-"))
+        cls.box = cls.tmp / "box.png"
+        cls.bgm = cls.tmp / "bgm.wav"
+        subprocess.run(
+            [T.FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+             "-f", "lavfi", "-i", "color=c=white:s=400x400:d=1",
+             "-vf", "drawbox=x=150:y=150:w=100:h=100:color=black:t=fill",
+             "-frames:v", "1", str(cls.box)], check=True)
+        subprocess.run(
+            [T.FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+             "-f", "lavfi", "-i", "sine=frequency=220:duration=1",
+             str(cls.bgm)], check=True)
+        spec = {"canvas": {"width": 400, "height": 400, "fps": 30},
+                "video": [{"src": str(cls.box), "in": 0, "out": 3}],
+                "music": {"src": str(cls.bgm), "bpm": 60, "offset": 0.5,
+                          "pulse": {"amount": 0.4, "decay": 0.2}}}
+        spec_path = cls.tmp / "spec.json"
+        spec_path.write_text(json.dumps(spec), encoding="utf-8")
+        cls.spec = T.load_spec(spec_path)
+        cls.ev = T.render(cls.spec, cls.tmp / "master.mp4")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_pulse_visible_on_beat(self):
+        beat = mean_luma(self.ev["output"], 0.5)
+        gap = mean_luma(self.ev["output"], 1.0)
+        self.assertLess(beat, gap - 8, f"拍点该顶大黑块，{beat} vs {gap}")
+
+    def test_evidence_reports_beats_and_bgm(self):
+        self.assertEqual(self.ev["beats"], 3)
+        self.assertTrue(self.ev["bgm"])
+
+
+class TestKeyframeZoomRender(unittest.TestCase):
+    """关键帧推拉要在无图证据下也能判：黑块占屏比例随时间变大再停住。"""
+
+    @classmethod
+    def setUpClass(cls):
+        if not HAS_FFMPEG:
+            raise unittest.SkipTest("没有 ffmpeg")
+        cls.tmp = Path(tempfile.mkdtemp(prefix="tl-keys-"))
+        box = cls.tmp / "box.png"
+        subprocess.run(
+            [T.FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
+             "-f", "lavfi", "-i", "color=c=white:s=400x400:d=1",
+             "-vf", "drawbox=x=150:y=150:w=100:h=100:color=black:t=fill",
+             "-frames:v", "1", str(box)], check=True)
+        spec_obj = {
+            "canvas": {"width": 400, "height": 400, "fps": 30},
+            "video": [{
+                "src": "box.png", "in": 0, "out": 3,
+                "keyframes": [{"at": 0.0, "zoom": 1.0}, {"at": 1.0, "zoom": 1.0},
+                              {"at": 3.0, "zoom": 3.0}],
+            }],
+        }
+        sp = cls.tmp / "spec.json"
+        sp.write_text(json.dumps(spec_obj), encoding="utf-8")
+        cls.spec = T.load_spec(sp)
+        T.render(cls.spec, cls.tmp / "master.mp4")
+        cls.master = cls.tmp / "master.mp4"
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_hold_then_zoom_in(self):
+        hold_a = mean_luma(self.master, 0.2)
+        hold_b = mean_luma(self.master, 0.9)
+        end = mean_luma(self.master, 2.8)
+        self.assertLess(abs(hold_a - hold_b), 6,
+                        f"0~1s 该停住，{hold_a:.0f}→{hold_b:.0f}")
+        self.assertLess(end, hold_a - 40,
+                        f"末段黑块该放大占屏，{hold_a:.0f}→{end:.0f}")
 
 
 

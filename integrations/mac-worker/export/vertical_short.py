@@ -1709,6 +1709,9 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         "video": video,
         "overlay": bg_overlay + card_overlays + overlay,
         "audio": audio,
+        # BGM 与拍点是 spec 直通：竖屏这条链路只负责画面，卡点交给同一套
+        # timeline 渲染（关键帧脉冲），两边不各写一份节拍逻辑。
+        "music": spec_obj.get("music"),
         "assetBase": str(workdir),
         "meta": {"engine": "vertical_short", "duration": round(t, 3),
                  "char_render": ("layer" if char_mov is not None else "stills"),

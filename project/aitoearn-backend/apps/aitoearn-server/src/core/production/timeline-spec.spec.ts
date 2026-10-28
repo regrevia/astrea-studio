@@ -161,6 +161,48 @@ describe('buildTimelineSpec', () => {
     expect(buildTimelineSpec(vertical)).toBe(vertical)
   })
 
+  it('竖屏 bgm 按拍点转成 music，音量/节奏原样带给渲染', () => {
+    const vertical: Record<string, unknown> = {
+      engine: 'timeline',
+      mode: 'vertical_short',
+      topic: 'KV Cache',
+      points: ['一::甲', '二::乙'],
+      bgm: { src: '/tmp/bgm.mp3', volume: 0.4, bpm: 120, offset: 0.5, pulse: { amount: 0.06 } },
+    }
+
+    const out = buildTimelineSpec(vertical)
+
+    expect(out['music']).toEqual({
+      src: '/tmp/bgm.mp3',
+      volume: 0.4,
+      bpm: 120,
+      offset: 0.5,
+      pulse: { amount: 0.06 },
+    })
+  })
+
+  it('竖屏 bgm 缺 src 时报错', () => {
+    expect(() =>
+      buildTimelineSpec({
+        engine: 'timeline',
+        mode: 'vertical_short',
+        points: ['一::甲'],
+        bgm: { volume: 0.4 },
+      }),
+    ).toThrow('背景音乐缺少 src')
+  })
+
+  it('竖屏 beats 不递增时报错', () => {
+    expect(() =>
+      buildTimelineSpec({
+        engine: 'timeline',
+        mode: 'vertical_short',
+        points: ['一::甲'],
+        bgm: { src: '/tmp/bgm.mp3', beats: [0.5, 0.5] },
+      }),
+    ).toThrow('beats 必须严格递增')
+  })
+
   it('非 timeline 引擎原样透传', () => {
     const slides = { engine: 'slides', theme: 'dark' }
 

@@ -41,6 +41,109 @@ function stringList(value: unknown) {
  * 友好输入的字段（materials/script/canvas/bgm…）会保留到 `input` 里做审计，
  * 出问题能回溯这一版到底按什么指令渲染。
  */
+/**
+ * 竖屏通道的卡点：友好输入写 `bgm`，渲染层要的是 `music`。
+ * 字段一致，这里只做一次校验+改名，worker 按 music 混 BGM、按拍点顶关键帧。
+ */
+function attachVerticalMusic(spec: Record<string, unknown>): void {
+  const raw = spec['music'] ?? spec['bgm']
+  if (raw === undefined || raw === null) return
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new AppException(
+      ResponseCode.ProductionInvalidState,
+      '背景音乐要写成对象：{ src, volume?, bpm?, offset?, beats?, pulse? }',
+    )
+  }
+  const m = raw as Record<string, unknown>
+  const src = typeof m['src'] === 'string' ? m['src'].trim() : ''
+  if (!src) {
+    throw new AppException(ResponseCode.ProductionInvalidState, '背景音乐缺少 src（音频文件路径）')
+  }
+  const music: Record<string, unknown> = { src }
+  for (const key of ['volume'] as const) {
+    const v = m[key]
+    if (v === undefined) continue
+    if (typeof v !== 'number' || !(v > 0 && v <= 1)) {
+      throw new AppException(
+        ResponseCode.ProductionInvalidState,
+        `背景音乐 volume 要在 0~1，得到 ${String(v)}`,
+      )
+    }
+    music[key] = v
+  }
+  for (const key of ['in', 'offset'] as const) {
+    const v = m[key]
+    if (v === undefined) continue
+    if (typeof v !== 'number' || v < 0) {
+      throw new AppException(
+        ResponseCode.ProductionInvalidState,
+        `背景音乐 ${key} 要是非负秒数，得到 ${String(v)}`,
+      )
+    }
+    music[key] = v
+  }
+  if (m['loop'] !== undefined) {
+    if (typeof m['loop'] !== 'boolean') {
+      throw new AppException(ResponseCode.ProductionInvalidState, '背景音乐 loop 只能是 true/false')
+    }
+    music['loop'] = m['loop']
+  }
+  if (m['bpm'] !== undefined) {
+    const bpm = m['bpm']
+    if (typeof bpm !== 'number' || !(bpm > 0)) {
+      throw new AppException(
+        ResponseCode.ProductionInvalidState,
+        `背景音乐 bpm 要大于 0，得到 ${String(bpm)}`,
+      )
+    }
+    music['bpm'] = bpm
+  }
+  if (m['beats'] !== undefined) {
+    const beats = m['beats']
+    if (!Array.isArray(beats) || !beats.length) {
+      throw new AppException(ResponseCode.ProductionInvalidState, '背景音乐 beats 要是秒数数组')
+    }
+    const nums = beats.map(b => (typeof b === 'number' && b >= 0 ? b : Number.NaN))
+    if (nums.some(n => Number.isNaN(n))) {
+      throw new AppException(ResponseCode.ProductionInvalidState, '背景音乐 beats 只能是非负秒数')
+    }
+    for (let i = 1; i < nums.length; i += 1) {
+      if (nums[i] <= nums[i - 1]) {
+        throw new AppException(ResponseCode.ProductionInvalidState, '背景音乐 beats 必须严格递增')
+      }
+    }
+    music['beats'] = nums
+  }
+  if (m['pulse'] !== undefined) {
+    const pulse = m['pulse']
+    if (typeof pulse !== 'object' || Array.isArray(pulse) || !pulse) {
+      throw new AppException(ResponseCode.ProductionInvalidState, '背景音乐 pulse 要写成对象 { amount?, decay? }')
+    }
+    const { amount, decay } = pulse as Record<string, unknown>
+    const p: Record<string, unknown> = {}
+    if (amount !== undefined) {
+      if (typeof amount !== 'number' || amount < 0 || amount > 0.4) {
+        throw new AppException(
+          ResponseCode.ProductionInvalidState,
+          `背景音乐 pulse.amount 要在 0~0.4，得到 ${String(amount)}`,
+        )
+      }
+      p['amount'] = amount
+    }
+    if (decay !== undefined) {
+      if (typeof decay !== 'number' || decay < 0.03 || decay > 1) {
+        throw new AppException(
+          ResponseCode.ProductionInvalidState,
+          `背景音乐 pulse.decay 要在 0.03~1，得到 ${String(decay)}`,
+        )
+      }
+      p['decay'] = decay
+    }
+    music['pulse'] = p
+  }
+  spec['music'] = music
+}
+
 export function buildTimelineSpec(spec: Record<string, unknown>): Record<string, unknown> {
   const existing = spec['timeline']
   if (spec['engine'] !== 'timeline' || (existing !== undefined && existing !== null)) {
@@ -58,6 +161,7 @@ export function buildTimelineSpec(spec: Record<string, unknown>): Record<string,
         `素材 ${extra.length} 行多于 ${scenes} 屏，第 ${scenes + 1} 行起不会进片`,
       )
     }
+    attachVerticalMusic(spec)
     return spec
   }
 
