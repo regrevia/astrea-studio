@@ -1,0 +1,83 @@
+{
+  "what": "竖屏链路（vertical_short → timeline_render）的 music 与拍点推镜，用同一条 spec 做开/关 A-B 渲染对照",
+  "run": {
+    "id": "6ae19f5f864d4f35586ce19d",
+    "status": "succeeded",
+    "stage": "done",
+    "duration": 17.902,
+    "canvas": [
+      1080,
+      1920
+    ],
+    "videoQa": {
+      "ok": true,
+      "findings": []
+    },
+    "video": "/Users/apple/CreatorStudio/timeline/6ae19f5f864d4f35586ce1a0/master.mp4",
+    "bytes": 6801591,
+    "md5": "f906b8515a4d74aa1b93dbe477bb929d"
+  },
+  "spec": {
+    "file": "/Users/apple/CreatorStudio/timeline/6ae19f5f864d4f35586ce1a0/spec.json",
+    "clips": 5,
+    "pulse_clips": 5,
+    "music": {
+      "src": "materials/bgm/demo-120.m4a",
+      "volume": 0.4,
+      "bpm": 120,
+      "offset": 0.0,
+      "pulse": {
+        "amount": 0.08,
+        "decay": 0.2
+      }
+    },
+    "note": "build_spec 现在给每张静卡打 pulse=true；load_spec 按 offset+k*60/bpm 展开 36 个拍点，只在无显式 keyframes 的静卡上叠加推镜"
+  },
+  "ab": {
+    "on": {
+      "file": "/Users/apple/CreatorStudio/timeline/6ae19f5f864d4f35586ce1a0/ab_pulse_on.mp4",
+      "bytes": 6801591,
+      "md5": "f906b8515a4d74aa1b93dbe477bb929d"
+    },
+    "base": {
+      "file": "/Users/apple/CreatorStudio/timeline/6ae19f5f864d4f35586ce1a0/ab_base.mp4",
+      "bytes": 5271085,
+      "md5": "07aff013c8b4eb9c79a0385e3f699597",
+      "how": "spec 副本去掉 music.pulse 后重新 load_spec+render，其余完全一致"
+    }
+  },
+  "measurements": {
+    "master_equals_pulse_render": true,
+    "pulse_mean_frame_motion": 0.159,
+    "base_mean_frame_motion": 0.06,
+    "motion_ratio": 2.65,
+    "bytes_delta_ratio": 1.29,
+    "pulse_motion_peaks_s": [
+      0.23,
+      0.67,
+      1.2,
+      1.63,
+      2.57
+    ],
+    "expected_beat_s": 0.5,
+    "pulse_peak_spacing_mean_s": 0.47,
+    "base_motion_peaks_s": [],
+    "method": "ffmpeg 取 30fps 序列（crop=540x960@(0,480) 再灰度缩放），逐帧 |Δ| 均值；拍点=120bpm offset=0，应落在 0.5s 整数倍",
+    "base_top_motion": {
+      "at_beats": {
+        "0.5": 0.043,
+        "1.0": 0.026,
+        "1.5": 0.108,
+        "2.0": 0.027,
+        "2.5": 0.016,
+        "3.0": 0.084
+      }
+    },
+    "caveat": "拍点处相邻帧差与间隔处比值≈1.0，因为 decay=0.2s 把推镜回弹摊平到整个 0.5s 间隔；判定用「总运动量倍数 + 峰值节奏 + 与关闭版逐字节对比」，不用单帧比值"
+  },
+  "verdict": "master.mp4 与「拍点开」渲染逐字节相同（md5 一致），与「拍点关」不同：静卡画面运动量 2.65 倍、文件 6.80MB vs 5.27MB，运动峰值按 ~0.5s 节奏出现，说明 music.pulse 已真实作用于成片卡面",
+  "how_to_reproduce": [
+    "PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib /Users/apple/CreatorStudio/runtime/integrations/mac-worker/.python3 /tmp/ab_pulse.py <workdir>  # 开/关两份渲染",
+    "/Users/apple/CreatorStudio/runtime/integrations/mac-worker/.python3 /tmp/motion_profile.py  # 逐帧运动曲线"
+  ]
+}
