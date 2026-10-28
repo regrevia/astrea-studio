@@ -380,6 +380,64 @@ def _scan(root: Path, exts: tuple[str, ...], limit: int = 400) -> list[dict]:
     return rows[: max(1, min(limit, 2000))]
 
 
+_probe_cache: dict[str, tuple[float, dict]] = {}
+
+
+def _probe_shot(path: Path) -> dict:
+    """视频素材的时长/画幅/帧率，给面板按真实素材排片用。
+
+    ffprobe 每次几十毫秒，但面板会一次列几十条，所以按「路径 + 修改时间」缓存：
+    素材被替换掉（mtime 变）才会重新探。探不出来就只报大小，不假装知道时长。
+    """
+    key = str(path)
+    try:
+        st = path.stat()
+    except OSError:
+        return {}
+    cached = _probe_cache.get(key)
+    if cached is not None and cached[0] == st.st_mtime:
+        return dict(cached[1])
+    info: dict = {}
+    proc = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+         "stream=width,height,r_frame_rate:format=duration", "-of", "json", str(path)],
+        capture_output=True, timeout=20,
+    )
+    if proc.returncode == 0:
+        try:
+            data = json.loads(proc.stdout.decode("utf-8", "replace"))
+            stream = (data.get("streams") or [{}])[0]
+            num, _, den = str(stream.get("r_frame_rate") or "0/1").partition("/")
+            fps = float(num) / float(den or 1) if float(num or 0) > 0 else 0.0
+            duration = float((data.get("format") or {}).get("duration") or 0)
+            if duration > 0:
+                info = {"duration": round(duration, 2),
+                        "width": int(stream.get("width") or 0),
+                        "height": int(stream.get("height") or 0),
+                        "fps": round(fps, 2)}
+        except (ValueError, TypeError, KeyError, IndexError):
+            info = {}
+    _probe_cache[key] = (st.st_mtime, dict(info))
+    if len(_probe_cache) > 512:
+        _probe_cache.clear()
+    return info
+
+
+def shot_rows(limit: int = 200) -> list[dict]:
+    """素材根目录内的素材行：相对路径 + 体积 + 时间 + 视频的真实规格。"""
+    rows = _scan(MATERIALS_DIR / "shots", _SHOT_EXT, limit)
+    for row in rows:
+        path = Path(row["path"])
+        try:
+            row["rel"] = str(path.relative_to(MATERIALS_DIR))
+        except ValueError:
+            row["rel"] = path.name
+        row["kind"] = "video" if path.suffix.lower() in (".mp4", ".mov") else "image"
+        if row["kind"] == "video":
+            row.update(_probe_shot(path))
+    return rows
+
+
 def assets() -> dict:
     """平台自己管的三样东西：可渲的规格、可用的素材、已出的成片。
 
@@ -400,7 +458,7 @@ def assets() -> dict:
         kind = engine if engine in ("slides", "motion", "jianying", "timeline") else "paper"
         specs.append({"path": str(p), "title": d.get("title") or p.stem,
                       "engine": engine, "kind": kind, "ok": True})
-    shots = _scan(MATERIALS_DIR / "shots", _SHOT_EXT)
+    shots = shot_rows()
     packs = sorted(p.name for p in (MATERIALS_DIR / "packs").glob("*")) \
         if (MATERIALS_DIR / "packs").is_dir() else []
     films = deliverables(200)

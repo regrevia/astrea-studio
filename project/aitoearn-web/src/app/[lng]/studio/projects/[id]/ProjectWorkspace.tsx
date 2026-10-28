@@ -40,6 +40,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import NewRunForm from '../../components/NewRunForm'
 import { RunDetailPanel } from '../../components/RunDetailPanel'
 import { RunRow } from '../../components/RunRow'
+import { ShotRunCard } from './components/ShotRunCard'
 
 /** 任务在跑时靠轮询对齐状态；渲染本身是分钟级，3 秒够用。 */
 const POLL_MS = 3000
@@ -374,6 +375,16 @@ export default function ProjectWorkspace() {
               ))}
             </CardContent>
           </Card>
+
+          <ShotRunCard
+            projectId={projectId}
+            projectName={project?.name ?? ''}
+            onCreated={(ids) => {
+              if (ids[0])
+                setSelectedRunId(ids[0])
+              refresh().catch(() => {})
+            }}
+          />
 
         </div>
       </div>

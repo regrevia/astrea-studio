@@ -1,0 +1,13 @@
+{
+  "projectId": "6ae22119dafe17ccf68120e7",
+  "runId": "6ae221c7dafe17ccf68123c3",
+  "title": "素材排片验收 · 30 秒",
+  "shotCount": 3,
+  "titles": [
+    "shots/promo2/seg-c.mp4",
+    "shots/promo2/seg-b.mp4",
+    "shots/promo2/seg-a.mp4"
+  ],
+  "picked": 3,
+  "target": 30
+}

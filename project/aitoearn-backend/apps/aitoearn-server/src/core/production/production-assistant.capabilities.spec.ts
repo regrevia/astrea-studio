@@ -48,6 +48,25 @@ describe('宿主机能力读取（MCP 工具用）', () => {
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe('http://host.docker.internal:8899/assets')
   })
 
+  it('素材清单只取 shots.recent 里带路径的行，视频规格原样带回', async () => {
+    const rows = [
+      { path: '/Users/apple/CreatorStudio/materials/shots/promo2/seg-a.mp4', rel: 'shots/promo2/seg-a.mp4', kind: 'video', duration: 7.13, width: 1600, height: 1000, fps: 30 },
+      { path: '/Users/apple/CreatorStudio/materials/shots/promo2/bg.png' },
+      null,
+    ]
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ shots: { count: 3, recent: rows } }) as never)
+
+    const clips = await service().capabilityShotRows()
+    expect(clips).toHaveLength(1)
+    expect(clips[0]['duration']).toBe(7.13)
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe('http://host.docker.internal:8899/assets')
+  })
+
+  it('旧能力服务没有 shots 段时素材清单是空数组，不抛错', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ packs: ['demo'] }) as never)
+    await expect(service().capabilityShotRows()).resolves.toEqual([])
+  })
+
   it('成片清单只取 files，并把 limit 收进 1-500', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ files: [{ name: 'a.mp4', path: '/x/a.mp4' }] }) as never)
 

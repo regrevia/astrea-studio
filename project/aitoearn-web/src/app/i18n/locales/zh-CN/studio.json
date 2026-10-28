@@ -339,6 +339,17 @@
     "rename": "重命名",
     "renamePlaceholder": "项目名",
     "renameSubmit": "保存",
-    "renameFailed": "没改名成功，请再试一次"
+    "renameFailed": "没改名成功，请再试一次",
+    "clips": "片子素材",
+    "clipsLoading": "正在读素材",
+    "clipsUnreachable": "素材服务没连上，重启后刷新",
+    "clipsEmpty": "宿主机上还没有可用的视频素材",
+    "clipsNoFrame": "无预览",
+    "clipsPicked": "已选 {{count}} 条",
+    "clipDuration": "{{seconds}} 秒",
+    "clipSeconds": "{{seconds}} 秒",
+    "clipTarget": "目标时长",
+    "clipSubmit": "按素材排片",
+    "clipFailed": "没排上，稍后再试"
   }
 }

@@ -440,6 +440,22 @@ export interface AvatarModel {
   root?: string
 }
 
+/** 宿主机的视频素材：面板按真实时长/画幅排片，缩略图走抽帧通道。 */
+export interface MaterialShot {
+  /** 宿主机绝对路径，直接写进 timeline.video[].src。 */
+  path: string
+  /** 素材根目录内的相对路径，抽帧接口用它。 */
+  rel: string
+  kind: 'video' | 'image'
+  /** 视频秒数；探不出来时缺省。 */
+  duration?: number
+  width?: number
+  height?: number
+  fps?: number
+  bytes: number
+  mtime: string
+}
+
 /** 素材包：本地目录里按主题收好的一批图，spec 里用 pack:<slug>/<名字> 引用。 */
 export interface MaterialPack {
   slug: string

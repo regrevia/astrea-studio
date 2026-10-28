@@ -9,6 +9,7 @@ import type {
   CreateFactCardRunInput,
   CreateRunResult,
   Inventory,
+  MaterialShot,
   PageResult,
   ProductionEvent,
   ProductionProject,
@@ -314,6 +315,25 @@ export async function fetchRunVideoBlobUrl(runId: string): Promise<string | null
     return null
   const res = await fetch(
     `${process.env.NEXT_PUBLIC_API_URL}/production/runs/${encodeURIComponent(runId)}/video`,
+    { headers: { Authorization: `Bearer ${credential}` } },
+  )
+  if (!res.ok)
+    return null
+  return URL.createObjectURL(await res.blob())
+}
+
+/** 宿主机视频素材清单：视频带真实时长与画幅，按修改时间新的在前。 */
+export function getMaterialShots() {
+  return http.get<{ clips: MaterialShot[] }>('production/materials/shots')
+}
+
+/** 视频素材抽帧当缩略图；图片标签带不上登录头，同样取回 blob URL。 */
+export async function fetchMaterialFrameUrl(rel: string, at = 0): Promise<string | null> {
+  const credential = useUserStore.getState().token
+  if (!credential)
+    return null
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/production/materials/frame?path=${encodeURIComponent(rel)}&t=${Math.max(0, at)}`,
     { headers: { Authorization: `Bearer ${credential}` } },
   )
   if (!res.ok)

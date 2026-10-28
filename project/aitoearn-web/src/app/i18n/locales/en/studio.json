@@ -339,6 +339,17 @@
     "rename": "Rename",
     "renamePlaceholder": "Project name",
     "renameSubmit": "Save",
-    "renameFailed": "Rename failed. Try again."
+    "renameFailed": "Rename failed. Try again.",
+    "clips": "Video clips",
+    "clipsLoading": "Reading clips",
+    "clipsUnreachable": "Clip service unreachable — restart it and refresh",
+    "clipsEmpty": "No video clips on the host yet",
+    "clipsNoFrame": "No preview",
+    "clipsPicked": "{{count}} selected",
+    "clipDuration": "{{seconds}}s",
+    "clipSeconds": "{{seconds}}s",
+    "clipTarget": "Target length",
+    "clipSubmit": "Cut from these clips",
+    "clipFailed": "Could not queue it. Try again."
   }
 }

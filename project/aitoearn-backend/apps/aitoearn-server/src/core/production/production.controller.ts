@@ -203,6 +203,12 @@ export class ProductionController {
     return new StreamableFile(file.body, { type: file.contentType })
   }
 
+  @ApiDoc({ summary: '宿主机素材清单（视频带真实规格）' })
+  @Get('materials/shots')
+  async materialShots() {
+    return { clips: await this.assistant.capabilityShotRows() }
+  }
+
   @ApiDoc({ summary: '项目列表' })
   @Get('projects')
   async listProjects(@GetToken() token: TokenInfo) {

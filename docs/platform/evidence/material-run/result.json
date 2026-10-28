@@ -1,0 +1,90 @@
+{
+  "projectId": "6ae22119dafe17ccf68120e7",
+  "runId": "6ae221c7dafe17ccf68123c3",
+  "title": "素材排片验收 · 30 秒",
+  "materialShotsEndpoint": {
+    "url": "/api/production/materials/shots",
+    "clips": 27,
+    "videos": 3
+  },
+  "picked": [
+    "shots/promo2/seg-c.mp4",
+    "shots/promo2/seg-b.mp4",
+    "shots/promo2/seg-a.mp4"
+  ],
+  "pickedFromUi": true,
+  "reportedDurations": {
+    "seg-c.mp4": 6.6,
+    "seg-b.mp4": 10.9,
+    "seg-a.mp4": 7.13
+  },
+  "targetSeconds": 30,
+  "specSegments": [
+    {
+      "src": "seg-c.mp4",
+      "in": 0,
+      "out": 6.6
+    },
+    {
+      "src": "seg-b.mp4",
+      "in": 0,
+      "out": 10.9
+    },
+    {
+      "src": "seg-a.mp4",
+      "in": 0,
+      "out": 7.13
+    },
+    {
+      "src": "seg-c.mp4",
+      "in": 0,
+      "out": 5.37
+    }
+  ],
+  "keyframesPerSegment": 2,
+  "deterministicMd5Runs": [
+    "6ae22122dafe17ccf6812125",
+    "6ae221c7dafe17ccf68123c3"
+  ],
+  "md5": "39e0b7bff969d7a1a288d639b1bd3cfa",
+  "duration": 30,
+  "canvas": "1080x1920",
+  "fps": 30,
+  "probe": {
+    "duration": 30.0,
+    "width": 1080,
+    "height": 1920,
+    "rFrameRate": "30/1",
+    "audioStream": true
+  },
+  "qaFindings": [
+    {
+      "code": "text_gap",
+      "level": "warn",
+      "at": 6.5,
+      "detail": "6.5s 起卡面没字（42% 的帧）"
+    },
+    {
+      "code": "character_gap",
+      "level": "warn",
+      "at": 6.5,
+      "detail": "6.5s 起卡面没字（5% 的帧）"
+    }
+  ],
+  "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261029-002445__studio__001__素材排片验收-30-秒__douyin__r1.mp4",
+  "libraryAssetId": "20261029-002445__studio__001__素材排片验收-30-秒__douyin__r1",
+  "ui": {
+    "entry": "项目工作台右侧「片子素材」",
+    "clipsShown": 3,
+    "selectedBadge": "已选 3 条",
+    "targetSelect": "30 秒",
+    "primaryButton": "按素材排片",
+    "result": "任务卡片出现「素材排片验收 · 30 秒」并自动选中详情"
+  },
+  "screenshots": [
+    "ui-clips-before.png",
+    "ui-clips-picked.png",
+    "ui-clip-run-queued.png",
+    "frames-1-8-20s.png"
+  ]
+}

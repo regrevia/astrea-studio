@@ -268,6 +268,27 @@ export class ProductionAssistantService {
     }
   }
 
+  /**
+   * 面板排片用：宿主机素材清单，视频带真实时长/画幅/帧率。
+   *
+   * 素材不是成片，只读 /assets 里的 shots 段；字段缺失的旧能力服务（没有 duration）
+   * 原样保留，交给面板决定「还不能按规格排」，不在这里补假数据。
+   */
+  async capabilityShotRows(): Promise<Array<Record<string, unknown>>> {
+    const payload = await this.readCapabilityJson('/assets')
+    const shots = payload['shots']
+    if (!shots || typeof shots !== 'object') {
+      return []
+    }
+    const recent = (shots as Record<string, unknown>)['recent']
+    if (!Array.isArray(recent)) {
+      return []
+    }
+    return recent
+      .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object')
+      .filter(row => typeof row['path'] === 'string' && typeof row['rel'] === 'string')
+  }
+
   /** MCP 工具用：已交付成片清单（/deliverables），按修改时间新的在前。 */
   async capabilityDeliverables(limit: number): Promise<unknown[]> {
     const payload = await this.readCapabilityJson(`/deliverables?limit=${Math.max(1, Math.min(limit, 500))}`)
