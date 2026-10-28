@@ -80,6 +80,10 @@ const RenderJobIdSchema = z.object({
   jobId: z.string().describe('渲染队列任务 ID'),
 })
 
+const StudioDeliverablesSchema = z.object({
+  limit: z.number().int().min(1).max(200).default(20).describe('最多返回多少条，新的在前'),
+})
+
 const PlanPublicationSchema = z.object({
   runId: z.string().describe('任务 ID（必须有已验证的成片）'),
   platform: z.string().default('douyin').describe('目标平台'),
@@ -322,6 +326,41 @@ export class ProductionMcpController {
     if (!job)
       return toTextResult(`队列里没有任务 ${params.jobId}`)
     return toYamlTextResult(this.normalize(job))
+  }
+
+  @Tool({
+    name: 'listStudioInventory',
+    description: 'Read the render host\'s capability inventory: platform accounts with readiness, voice counts, and material packs usable as run materials. Call this before choosing materials or before telling the user a platform is unavailable.',
+    parameters: z.object({}),
+  })
+  async listStudioInventory() {
+    getUser()
+    const inventory = await this.assistant.capabilityInventory()
+    if (!inventory)
+      return toTextResult('宿主机能力服务连不上：素材包、音色与平台账号都读不到。先在宿主机启动 mac worker 的 capabilities server，再重试。')
+    return toYamlTextResult(this.normalize(inventory))
+  }
+
+  @Tool({
+    name: 'listStudioAssets',
+    description: 'List what this render host can actually use: deployable specs, material shot roots, and recent films, with absolute paths. Material pack refs look like pack:<slug>/<name> and can be passed straight into a run spec.',
+    parameters: z.object({}),
+  })
+  async listStudioAssets() {
+    getUser()
+    const assets = await this.assistant.capabilityAssets()
+    return toYamlTextResult(this.normalize(assets))
+  }
+
+  @Tool({
+    name: 'listStudioDeliverables',
+    description: 'List finished deliverables already landed on this host (absolute path, size, mtime). Use it to confirm a render produced a file instead of trusting a run status alone.',
+    parameters: StudioDeliverablesSchema,
+  })
+  async listStudioDeliverables(params: z.infer<typeof StudioDeliverablesSchema>) {
+    getUser()
+    const files = await this.assistant.capabilityDeliverables(params.limit)
+    return toYamlTextResult(this.normalize(files))
   }
 
   @Tool({

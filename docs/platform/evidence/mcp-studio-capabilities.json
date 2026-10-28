@@ -1,0 +1,21 @@
+{
+  "capturedAt": "2026-10-28T20:34:31+08:00",
+  "surface": "POST /api/production/mcp",
+  "toolCount": 18,
+  "newTools": [
+    "listStudioInventory",
+    "listStudioAssets",
+    "listStudioDeliverables"
+  ],
+  "why": "Agent 侧原来只能拿任务状态，看不到宿主机上真有哪些素材包、规格和成片，选素材靠猜",
+  "liveCalls": {
+    "listStudioInventory": "platforms:\n  - platform: douyin\n    label: 抖音\n    ready: true\n    accounts:\n      - yefen\n  - platform: kuaishou\n    label: 快手\n    ready: true\n    accounts:\n      - yefen\n  - platform: xiaohongshu\n    label: 小红书\n    ready: true\n    accounts:\n      - yefen\n  - platform: bilibili\n    label: B站\n    ready: true\n    accounts:\n      - yefen\n  - platform: tencent\n    label: 视频号\n    ready: true\n    accoun",
+    "listStudioAssets": "root: /Users/apple/CreatorStudio/materials\nspecs:\n  - path: /Users/apple/CreatorStudio/runtime/deploy/specs/envoy_intro.json\n    title: 介绍 Envoy · 数字版\n    engine: timeline\n    kind: timeline\n    ok: true\n  - path: /Users/apple/CreatorStudio/runtime/deploy/specs/envoy_jianying.json\n    title: 介绍 Envoy · 剪映草稿版\n    engine: jianying\n    kind: jianying\n    ok: true\n  - path: /Users/apple/CreatorStudio/",
+    "listStudioDeliverables": "- name: timeline-261028-182419-62b564.mp4\n  path: /Users/apple/CreatorStudio/deliver/timeline-261028-182419-62b564.mp4\n  bytes: 3892955\n  mtime: 2026-10-28T18:24:23\n- name: product-promo-final.mp4\n  path: /Users/apple/CreatorStudio/deliver/product-promo-final.mp4\n  bytes: 5121048\n  mtime: 2026-10-28"
+  },
+  "tests": {
+    "file": "apps/aitoearn-server/src/core/production/production-assistant.capabilities.spec.ts",
+    "result": "EXIT=0"
+  },
+  "typecheck": "tsc apps/aitoearn-server/tsconfig.app.json --noEmit → 0"
+}

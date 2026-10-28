@@ -178,6 +178,47 @@ export class ProductionAssistantService {
     return await this.jobsClient.submit(kind, payload)
   }
 
+  /** MCP 工具用：宿主能力清单（平台账号 / 音色 / 素材包），连不上返回 null 由工具层说人话。 */
+  async capabilityInventory(): Promise<Awaited<ReturnType<ProductionAssistantService['readInventory']>>> {
+    return await this.readInventory()
+  }
+
+  /** MCP 工具用：宿主机上的可渲规格、素材与已出成片（/assets）。 */
+  async capabilityAssets(): Promise<Record<string, unknown>> {
+    return await this.readCapabilityJson('/assets')
+  }
+
+  /** MCP 工具用：已交付成片清单（/deliverables），按修改时间新的在前。 */
+  async capabilityDeliverables(limit: number): Promise<unknown[]> {
+    const payload = await this.readCapabilityJson(`/deliverables?limit=${Math.max(1, Math.min(limit, 500))}`)
+    const files = payload['files']
+    return Array.isArray(files) ? files : []
+  }
+
+  /** 读宿主能力服务的只读接口；网络/协议错误统一翻成「机器没连上」，别把原始异常甩给模型。 */
+  private async readCapabilityJson(path: string): Promise<Record<string, unknown>> {
+    const url = `${config.studioAssistant.inventoryUrl.replace(/\/+$/, '')}${path}`
+    let response: Response
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(INVENTORY_TIMEOUT_MS) })
+    }
+    catch (error) {
+      throw new AppException(
+        ResponseCode.ProductionRenderQueueUnavailable,
+        `宿主机能力服务连不上：${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '')
+      throw new AppException(
+        ResponseCode.ProductionRenderQueueUnavailable,
+        `宿主机能力服务返回 ${response.status}：${detail.slice(0, 200) || '无正文'}`,
+      )
+    }
+    const payload = await response.json().catch(() => null)
+    return payload && typeof payload === 'object' ? payload as Record<string, unknown> : {}
+  }
+
   /** MCP 工具用：查队列任务；队列返回 404 时给 null，由调用方说明任务不存在。 */
   async readQueueJob(jobId: string): Promise<StudioJob | null> {
     return await this.jobsClient.get(jobId)
