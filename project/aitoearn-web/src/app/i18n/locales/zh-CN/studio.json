@@ -350,6 +350,10 @@
     "clipSeconds": "{{seconds}} 秒",
     "clipTarget": "目标时长",
     "clipSubmit": "按素材排片",
-    "clipFailed": "没排上，稍后再试"
+    "clipFailed": "没排上，稍后再试",
+    "clipMusic": "配乐",
+    "clipMusicNone": "不加配乐",
+    "clipBeat": "按鼓点切",
+    "clipBeatsFailed": "这段配乐没测出拍点，先按素材时长切"
   }
 }

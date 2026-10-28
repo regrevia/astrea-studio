@@ -438,6 +438,84 @@ def shot_rows(limit: int = 200) -> list[dict]:
     return rows
 
 
+_AUDIO_EXT = (".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg")
+
+_music_beats_cache: dict[str, tuple[float, dict]] = {}
+
+
+def _probe_audio(path: Path) -> dict:
+    """音频素材的时长；探不出来就只报大小。"""
+    try:
+        st = path.stat()
+    except OSError:
+        return {}
+    key = str(path)
+    cached = _music_beats_cache.get(key)
+    if cached is not None and cached[0] == st.st_mtime:
+        return {"duration": float(cached[1].get("duration") or 0)}
+    proc = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "json", str(path)],
+        capture_output=True, timeout=20,
+    )
+    duration = 0.0
+    if proc.returncode == 0:
+        try:
+            data = json.loads(proc.stdout.decode("utf-8", "replace"))
+            duration = float((data.get("format") or {}).get("duration") or 0)
+        except (ValueError, TypeError, KeyError):
+            duration = 0.0
+    return {"duration": round(duration, 2)} if duration > 0 else {}
+
+
+def music_rows(limit: int = 200) -> list[dict]:
+    """配乐素材行：相对路径 + 时长，给面板挑 BGM 用。"""
+    rows = _scan(MATERIALS_DIR / "bgm", _AUDIO_EXT, limit)
+    for row in rows:
+        path = Path(row["path"])
+        try:
+            row["rel"] = str(path.relative_to(MATERIALS_DIR))
+        except ValueError:
+            row["rel"] = path.name
+        row["kind"] = "music"
+        row.update(_probe_audio(path))
+    return rows
+
+
+def music_beats(rel: str) -> dict:
+    """估一段配乐的 BPM 与拍点，给字幕/切点对拍用。
+
+    按「路径 + 修改时间」缓存：同一段音乐反复排片只算一次（纯 numpy 跑一遍
+    整首歌约 1–3 秒）。路径只允许 materials 根目录里的音频，越界一律当作没有。
+    """
+    root = MATERIALS_DIR.resolve()
+    target = (root / rel).resolve()
+    if not str(target).startswith(str(root) + os.sep) or not target.is_file():
+        raise KeyError(rel)
+    if target.suffix.lower() not in _AUDIO_EXT:
+        raise KeyError(rel)
+    st = target.stat()
+    cached = _music_beats_cache.get(rel)
+    if cached is not None and cached[0] == st.st_mtime:
+        return dict(cached[1])
+    from beats import analyze as _analyze_beats
+
+    data = _analyze_beats(str(target))
+    info = {
+        "rel": str(target.relative_to(root)),
+        "path": str(target),
+        "duration": _probe_audio(target).get("duration"),
+        "bpm": float(data.get("bpm") or 0),
+        "offset": float(data.get("offset") or 0),
+        "beats": [round(float(b), 3) for b in (data.get("beats") or [])],
+        "confidence": float(data.get("confidence") or 0),
+    }
+    _music_beats_cache[rel] = (st.st_mtime, dict(info))
+    if len(_music_beats_cache) > 128:
+        _music_beats_cache.clear()
+    return info
+
+
 def assets() -> dict:
     """平台自己管的三样东西：可渲的规格、可用的素材、已出的成片。
 
@@ -466,6 +544,7 @@ def assets() -> dict:
         "root": str(MATERIALS_DIR),
         "specs": specs,
         "shots": {"count": len(shots), "recent": shots[:60]},
+        "bgm": {"count": len(music_rows()), "recent": music_rows()[:60]},
         "packs": packs,
         "films": {"count": len(films), "recent": films[:60]},
     }

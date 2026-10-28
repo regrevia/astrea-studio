@@ -6,13 +6,15 @@
 
 'use client'
 
-import type { MaterialShot } from '@/api/production/production.types'
+import type { MaterialMusic, MaterialShot } from '@/api/production/production.types'
 import { Clapperboard, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createRun, fetchMaterialFrameUrl, getMaterialShots } from '@/api/production/production.api'
+import { createRun, fetchMaterialFrameUrl, getMaterialShots, getMaterialMusic, getMusicBeats } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
-import { buildMaterialTimeline, TARGET_SECONDS, type TargetSeconds } from '@/app/[lng]/studio/utils/material-timeline'
+import { buildMaterialTimeline, TARGET_SECONDS, type MaterialBeatPlan, type TargetSeconds } from '@/app/[lng]/studio/utils/material-timeline'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -33,6 +35,10 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
   const [picked, setPicked] = useState<string[]>([])
   const [frames, setFrames] = useState<Record<string, string>>({})
   const [target, setTarget] = useState<TargetSeconds>(30)
+  const [tracks, setTracks] = useState<MaterialMusic[]>([])
+  /** 空串表示不加配乐。 */
+  const [musicRel, setMusicRel] = useState('')
+  const [beatOn, setBeatOn] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -49,6 +55,17 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
       })
       .catch(() => { if (alive) setReachable(false) })
       .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    getMaterialMusic()
+      .then((res) => {
+        if (alive && res?.code === 0)
+          setTracks(res.data?.tracks ?? [])
+      })
+      .catch(() => {})
     return () => { alive = false }
   }, [])
 
@@ -93,10 +110,30 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
     })
   }, [pickedKey])
 
+  const pickedTrack = useMemo(() => tracks.find(track => track.rel === musicRel), [tracks, musicRel])
+
   const submit = useCallback(async () => {
+    let beatPlan: MaterialBeatPlan | null = null
+    if (pickedTrack) {
+      beatPlan = { src: pickedTrack.path, bpm: 0, offset: 0, beats: [] }
+      if (beatOn) {
+        try {
+          const res = await getMusicBeats(pickedTrack.rel)
+          const data = res?.data
+          if (res?.code === 0 && data && data.bpm > 0 && data.beats.length)
+            beatPlan = { src: pickedTrack.path, bpm: data.bpm, offset: data.offset, beats: data.beats }
+          else
+            setError(t('project.clipBeatsFailed'))
+        }
+        catch {
+          setError(t('project.clipBeatsFailed'))
+        }
+      }
+    }
     const spec = buildMaterialTimeline(
       pickedClips.map(clip => ({ src: clip.path, duration: clip.duration ?? 0 })),
       target,
+      beatPlan,
     )
     if (!spec) {
       setError(t('project.clipFailed'))
@@ -108,7 +145,9 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
       const res = await createRun({
         projectId,
         title: `${projectName} · ${target} 秒`,
-        brief: `${target} 秒竖屏：${pickedClips.length} 条素材`,
+        brief: pickedTrack
+          ? `${target} 秒竖屏：${pickedClips.length} 条素材${beatOn ? '，按鼓点切' : ''}`
+          : `${target} 秒竖屏：${pickedClips.length} 条素材`,
         spec,
       })
       const runId = res?.data?.runId
@@ -124,7 +163,7 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
     finally {
       setSubmitting(false)
     }
-  }, [onCreated, pickedClips, projectId, projectName, t, target])
+  }, [beatOn, onCreated, pickedClips, pickedTrack, projectId, projectName, t, target])
 
   return (
     <Card>
@@ -196,6 +235,38 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
                   {t('project.clipSubmit')}
                 </Button>
               </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Select
+                value={musicRel || 'none'}
+                onValueChange={(value) => {
+                  const next = value === 'none' ? '' : value
+                  setMusicRel(next)
+                  setBeatOn(true)
+                }}
+              >
+                <SelectTrigger className="h-8 w-36" aria-label={t('project.clipMusic')}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t('project.clipMusicNone')}</SelectItem>
+                  {tracks.map(track => (
+                    <SelectItem key={track.rel} value={track.rel}>{track.rel.replace(/^bgm\//, '')}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {pickedTrack && (
+                <div className="flex items-center gap-1.5">
+                  <Checkbox
+                    id="shot-run-beat"
+                    checked={beatOn}
+                    onCheckedChange={checked => setBeatOn(checked === true)}
+                  />
+                  <Label htmlFor="shot-run-beat" className="cursor-pointer text-xs font-normal text-muted-foreground">
+                    {t('project.clipBeat')}
+                  </Label>
+                </div>
+              )}
             </div>
           </>
         )}

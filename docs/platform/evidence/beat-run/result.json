@@ -1,0 +1,39 @@
+{
+  "project": "卡点成片验收",
+  "projectId": "6ae2268123fdf91423383ec9",
+  "runId": "6ae2269123fdf91423383f2c",
+  "source": "前端工作区「片子素材」卡：选 3 条真实素材 + 配乐 demo-120.m4a + 勾「按鼓点切」→ 按素材排片",
+  "music": {
+    "rel": "bgm/demo-120.m4a",
+    "path": "/Users/apple/CreatorStudio/materials/bgm/demo-120.m4a",
+    "bpm": 60.09,
+    "offset": 0,
+    "cutEvery": "2 拍",
+    "loop": true,
+    "volume": 0.32
+  },
+  "segments": 15,
+  "totalSeconds": 30.0,
+  "canvas": { "width": 1080, "height": 1920, "fps": 30 },
+  "output": {
+    "master": "/Users/apple/CreatorStudio/timeline/6ae2269123fdf91423383f2f/master.mp4",
+    "library": "/Users/apple/CreatorStudio/library/studio/2026-10/20261029-004514__studio__001__卡点成片验收-30-秒__douyin__r1.mp4",
+    "md5": "1eb47212f8b00666123e5f8b9f1771cd",
+    "bytes": 3793220,
+    "videoQa": ["text_gap"]
+  },
+  "audio": {
+    "codec": "aac",
+    "sampleRate": 48000,
+    "channels": 2,
+    "measuredBpm": 60.09,
+    "measuredOffset": 0.04,
+    "measuredBeats": 31
+  },
+  "cutAlignment": {
+    "method": "对成片抽音轨跑 beats.estimate，再用切点时间与最近拍点相减",
+    "meanResidualMs": 26.0,
+    "maxResidualMs": 125.0,
+    "frameQuantizationMs": 33.3
+  }
+}

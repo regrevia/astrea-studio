@@ -308,6 +308,14 @@ class Handler(BaseHTTPRequestHandler):
                     at = 0.0
                 data, ctype = material_frame((q.get("path") or [""])[0], at)
                 self._send(200, data, ctype)
+            elif path == "/music":
+                self._send(200, json.dumps({"tracks": jobs.music_rows()},
+                                           ensure_ascii=False).encode())
+            elif path == "/music/beats":
+                q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+                rel = _utf8_query_value((q.get("path") or [""])[0])
+                self._send(200, json.dumps(jobs.music_beats(rel),
+                                           ensure_ascii=False).encode())
             elif path == "/assets":
                 self._send(200, json.dumps(jobs.assets(), ensure_ascii=False).encode())
             elif path == "/deliverables":

@@ -441,6 +441,29 @@ export interface AvatarModel {
 }
 
 /** 宿主机的视频素材：面板按真实时长/画幅排片，缩略图走抽帧通道。 */
+export interface MaterialMusic {
+  /** 宿主机绝对路径，直接写进 spec 的 music.src。 */
+  path: string
+  /** 素材根目录内的相对路径，拍点接口用它。 */
+  rel: string
+  kind: 'music'
+  /** 音频秒数。 */
+  duration?: number
+  bytes: number
+  mtime: string
+}
+
+export interface MusicBeats {
+  rel: string
+  /** 每分钟拍数。 */
+  bpm: number
+  /** 第一拍相对音频开头的偏移秒数。 */
+  offset: number
+  /** 拍点绝对秒数，严格递增。 */
+  beats: number[]
+  confidence: number
+}
+
 export interface MaterialShot {
   /** 宿主机绝对路径，直接写进 timeline.video[].src。 */
   path: string

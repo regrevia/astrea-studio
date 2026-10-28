@@ -1,0 +1,49 @@
+{
+  "projectId": "6ae2268123fdf91423383ec9",
+  "runId": "6ae2269123fdf91423383f2c",
+  "status": "succeeded",
+  "segments": 15,
+  "music": {
+    "src": "/Users/apple/CreatorStudio/materials/bgm/demo-120.m4a",
+    "volume": 0.32,
+    "loop": true,
+    "bpm": 60.09,
+    "offset": 0
+  },
+  "shots": 3,
+  "musicPickerVisible": true,
+  "beatChecked": true,
+  "output": {
+    "videoPath": "studio/runs/6ae2269123fdf91423383f2c/r1/master.mp4",
+    "materialId": "6ae2269a23fdf91423383f95",
+    "videoUrl": "/oss/studio/runs/6ae2269123fdf91423383f2c/r1/master.mp4",
+    "duration": 30,
+    "canvas": {
+      "width": 1080,
+      "height": 1920,
+      "fps": 30
+    },
+    "videoQa": {
+      "video": "/Users/apple/CreatorStudio/timeline/6ae2269123fdf91423383f2f/master.mp4",
+      "duration": 30,
+      "findings": [
+        {
+          "code": "text_gap",
+          "level": "warn",
+          "at": 6,
+          "detail": "6.0s 起卡面没字（39% 的帧）"
+        }
+      ],
+      "ok": true
+    },
+    "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261029-004514__studio__001__卡点成片验收-30-秒__douyin__r1.mp4",
+    "libraryAssetId": "20261029-004514__studio__001__卡点成片验收-30-秒__douyin__r1",
+    "md5": "1eb47212f8b00666123e5f8b9f1771cd",
+    "libraryEntries": [
+      {
+        "kind": "master",
+        "path": "/Users/apple/CreatorStudio/library/studio/2026-10/20261029-004514__studio__001__卡点成片验收-30-秒__douyin__r1.mp4"
+      }
+    ]
+  }
+}

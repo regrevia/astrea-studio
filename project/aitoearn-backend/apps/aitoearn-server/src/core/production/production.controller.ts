@@ -203,6 +203,21 @@ export class ProductionController {
     return new StreamableFile(file.body, { type: file.contentType })
   }
 
+  @ApiDoc({ summary: '配乐素材清单（带真实时长）' })
+  @Get('materials/music')
+  async materialMusic() {
+    return { tracks: await this.assistant.capabilityMusicRows() }
+  }
+
+  @ApiDoc({ summary: '配乐拍点（BPM + 拍点网格）' })
+  @Get('materials/music/beats')
+  async materialMusicBeats(@Query('path') path?: string) {
+    if (!path) {
+      throw new AppException(ResponseCode.ProductionRenderQueueUnavailable, '缺少配乐路径')
+    }
+    return await this.assistant.capabilityMusicBeats(path)
+  }
+
   @ApiDoc({ summary: '宿主机素材清单（视频带真实规格）' })
   @Get('materials/shots')
   async materialShots() {

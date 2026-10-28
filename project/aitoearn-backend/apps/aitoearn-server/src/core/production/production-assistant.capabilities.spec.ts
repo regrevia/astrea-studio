@@ -67,6 +67,33 @@ describe('宿主机能力读取（MCP 工具用）', () => {
     await expect(service().capabilityShotRows()).resolves.toEqual([])
   })
 
+  it('配乐清单只取 tracks 里带路径的行，时长原样带回', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({
+      tracks: [
+        { path: '/m/bgm/demo.m4a', rel: 'bgm/demo.m4a', duration: 8 },
+        { path: '/m/bgm/no-rel.m4a', duration: 3 },
+      ],
+    }) as never)
+
+    const tracks = await service().capabilityMusicRows()
+    expect(tracks).toHaveLength(1)
+    expect(tracks[0]['rel']).toBe('bgm/demo.m4a')
+    expect(tracks[0]['duration']).toBe(8)
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe('http://host.docker.internal:8899/music')
+  })
+
+  it('拍点接口把相对路径编码进查询，没测出拍点就说清原因', async () => {
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({
+      rel: 'bgm/demo.m4a', bpm: 120, offset: 0.02, beats: [0.02, 0.52], duration: 8,
+    }) as never)
+    const beats = await service().capabilityMusicBeats('bgm/demo.m4a')
+    expect(beats['bpm']).toBe(120)
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe('http://host.docker.internal:8899/music/beats?path=bgm%2Fdemo.m4a')
+
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ rel: 'bgm/quiet.m4a', bpm: 0, beats: [] }) as never)
+    await expect(service().capabilityMusicBeats('bgm/quiet.m4a')).rejects.toThrow('这条配乐没测出拍点')
+  })
+
   it('成片清单只取 files，并把 limit 收进 1-500', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse({ files: [{ name: 'a.mp4', path: '/x/a.mp4' }] }) as never)
 

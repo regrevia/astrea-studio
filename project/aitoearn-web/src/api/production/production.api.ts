@@ -9,7 +9,9 @@ import type {
   CreateFactCardRunInput,
   CreateRunResult,
   Inventory,
+  MaterialMusic,
   MaterialShot,
+  MusicBeats,
   PageResult,
   ProductionEvent,
   ProductionProject,
@@ -325,6 +327,16 @@ export async function fetchRunVideoBlobUrl(runId: string): Promise<string | null
 /** 宿主机视频素材清单：视频带真实时长与画幅，按修改时间新的在前。 */
 export function getMaterialShots() {
   return http.get<{ clips: MaterialShot[] }>('production/materials/shots')
+}
+
+/** 配乐素材清单（时长由宿主机实测）。 */
+export function getMaterialMusic() {
+  return http.get<{ tracks: MaterialMusic[] }>('production/materials/music')
+}
+
+/** 一段配乐的 BPM 与拍点，排片切点按它对齐。 */
+export function getMusicBeats(rel: string) {
+  return http.get<MusicBeats>(`production/materials/music/beats?path=${encodeURIComponent(rel)}`)
 }
 
 /** 视频素材抽帧当缩略图；图片标签带不上登录头，同样取回 blob URL。 */

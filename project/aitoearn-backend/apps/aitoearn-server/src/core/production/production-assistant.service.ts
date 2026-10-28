@@ -289,6 +289,29 @@ export class ProductionAssistantService {
       .filter(row => typeof row['path'] === 'string' && typeof row['rel'] === 'string')
   }
 
+  /** 面板用：配乐素材清单（/music），每条带真实时长。 */
+  async capabilityMusicRows(): Promise<Array<Record<string, unknown>>> {
+    const payload = await this.readCapabilityJson('/music')
+    const tracks = payload['tracks']
+    if (!Array.isArray(tracks)) {
+      return []
+    }
+    return tracks
+      .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object')
+      .filter(row => typeof row['path'] === 'string' && typeof row['rel'] === 'string')
+  }
+
+  /** 面板用：一段配乐的 BPM 与拍点（/music/beats），排片切点按这个对拍。 */
+  async capabilityMusicBeats(rel: string): Promise<Record<string, unknown>> {
+    const payload = await this.readCapabilityJson(`/music/beats?path=${encodeURIComponent(rel)}`)
+    const beats = payload['beats']
+    const bpm = Number(payload['bpm'] ?? 0)
+    if (!Array.isArray(beats) || beats.length === 0 || !(bpm > 0)) {
+      throw new AppException(ResponseCode.ProductionRenderQueueUnavailable, '这条配乐没测出拍点')
+    }
+    return payload
+  }
+
   /** MCP 工具用：已交付成片清单（/deliverables），按修改时间新的在前。 */
   async capabilityDeliverables(limit: number): Promise<unknown[]> {
     const payload = await this.readCapabilityJson(`/deliverables?limit=${Math.max(1, Math.min(limit, 500))}`)
