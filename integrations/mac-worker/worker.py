@@ -161,6 +161,29 @@ def _land_export(video: str, payload: dict, job_id: str, revision: int,
         return None
 
 
+def _land_timeline(video: str, payload: dict, job_id: str, revision: int, *,
+                   platform: str = "", duration: float | None = None,
+                   meta: dict | None = None) -> dict | None:
+    """timeline 通道的成片也入库：母版与各平台规格走同一套命名与台账。
+
+    与剪映导出不同，这里成片还在 deliver/ 里等 S3 上传，所以只拷贝不搬走。
+    """
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import library as lib  # noqa: WPS433
+        project = str(payload.get("libraryProject") or payload.get("project") or "studio")
+        title = str(payload.get("libraryTitle") or payload.get("title")
+                    or payload.get("runId") or job_id)
+        return lib.land(video, project=project, title=title,
+                        platform=platform or str(payload.get("platform") or "douyin"),
+                        revision=revision, run_id=str(payload.get("runId") or ""),
+                        job_id=job_id, duration=duration,
+                        meta=dict(meta or {}), move=False)
+    except Exception as exc:  # 入库失败不能吞掉成片，但也必须留痕
+        log.warning("timeline 成片入库失败（%s）：%s 仍留在 %s", job_id, exc, video)
+        return None
+
+
 def _foreground_pid() -> int:
     """当前前台 App 的 pid；拿不到就 0（导出结束后不还台，但也不算失败）。"""
     try:
@@ -896,6 +919,33 @@ class Worker:
                         "所有平台交付失败：" + "；".join(notes)[:700]
                         if notes else "所有平台交付失败，未产出任何平台规格"
                     )
+
+        # 平台规格同样入库：一条 run 出来的每个尺寸都能在库里按 platform 找到
+        if run_id or payload.get("library"):
+            for item in result["deliveries"]:
+                if not item.get("ok") or not item.get("output"):
+                    continue
+                prow = _land_timeline(item["output"], payload, job_id, revision,
+                                      platform=str(item.get("platform") or ""),
+                                      duration=(item.get("probe") or {}).get("duration"))
+                if not prow:
+                    continue
+                item["libraryPath"] = prow["path"]
+                item["libraryAssetId"] = prow["assetId"]
+                result.setdefault("libraryEntries", []).append(
+                    {"kind": "platform", "platform": item.get("platform"),
+                     "path": prow["path"]})
+
+        # 成片入库：run 任务一律入库，本地试跑只在显式要求时入，免得试跑把库搅乱
+        if run_id or payload.get("library"):
+            landed = _land_timeline(ev["output"], payload, job_id, revision,
+                                    duration=ev["duration"],
+                                    meta={"engine": "timeline", "clips": ev["clips"]})
+            if landed:
+                result["libraryPath"] = landed["path"]
+                result["libraryAssetId"] = landed["assetId"]
+                result["md5"] = landed["md5"]
+                result["libraryEntries"] = [{"kind": "master", "path": landed["path"]}]
 
         if not run_id:
             # 没有 runId 就是本地试跑：不传 S3，路径直接交回调用方

@@ -1,0 +1,51 @@
+{
+  "at": "2026-10-28T18:34:28",
+  "runId": "6ae1cf33f4c0456392d2d590",
+  "jobId": "timeline",
+  "channel": "createProductionRun engine=timeline → worker render_timeline → S3 → library.land",
+  "spec": "/tmp/spec30.json (30.0s, 1080x1920@30, 4 clips, keyframes, bpm 103.36 pulse 0.12)",
+  "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261028-183224__studio__001__30秒产品宣传片-关键帧卡点-入库验收__douyin__r1.mp4",
+  "libraryAssetId": "20261028-183224__studio__001__30秒产品宣传片-关键帧卡点-入库验收__douyin__r1",
+  "md5": "7f250578fec55e68cce604f0cdb156ba",
+  "bytes": 3892955,
+  "probe": {
+    "duration": 30.0,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "audio": true
+  },
+  "keyframeAB": {
+    "control": "/tmp/spec_kf_b.mp4 (identical spec, keyframes removed)",
+    "variant": "/tmp/spec_kf_a.mp4 (keyframes present)",
+    "frames": [
+      {
+        "at": 0.5,
+        "meanAbsDiff": 2.6,
+        "changedPct": 6.1
+      },
+      {
+        "at": 3.5,
+        "meanAbsDiff": 6.47,
+        "changedPct": 10.5
+      },
+      {
+        "at": 6.5,
+        "meanAbsDiff": 8.42,
+        "changedPct": 11.2
+      }
+    ],
+    "reading": "段内差异随时间递增与 zoom 1.00→1.12 的线性推镜一致，说明关键帧推拉真的作用在活动素材上"
+  },
+  "runOutput": {
+    "libraryPath": true,
+    "libraryAssetId": true,
+    "md5": true,
+    "duration": 30,
+    "canvas": {
+      "width": 1080,
+      "height": 1920,
+      "fps": 30
+    }
+  }
+}

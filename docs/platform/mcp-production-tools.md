@@ -28,3 +28,17 @@
 - `allowGui: true`：worker 先自检。屏幕锁着直接返回 `reasonCode = screen_locked`（不开剪映、不等 1800 秒）；工具链缺失现场编译；面板可用才代点导出，返回 `stage = exported` 与真实 `videoPath`，或按 rc 映射成 `export_panel_unavailable` / `export_timeout` / `export_aspect_mismatch` 等原因码。
 
 `reasonCode` 写在结果顶层，任务详情把它归一进 `run.output.manualExportReason`，界面据此给不同的下一步。一个不变量：**没有真实产物就不写 `videoPath`**，也不会把这类任务记成 `succeeded`。
+
+## `submitRender` 的 timeline 契约
+
+`kind: "timeline"` 走本机 ffmpeg 时间轴渲染，不启剪映、不抢前台，可后台排队。`payload` 的形状固定：
+
+```
+payload: { spec: { canvas, video[], overlay[], audio[], text[], music } }
+```
+
+- `spec.canvas` = `{width, height, fps}`；`video[]` 每段要 `src / in / out`（`in`、`out` 是秒，不是时长），`fit` 决定裁切。
+- `video[].keyframes = [{at, zoom}]` 是折线推镜：`at` 是段内 0–1 的相对时间点，给两帧以上且缩放不同才会真的推拉，纯静帧照样可推。
+- `music.pulse.amount` 上限 `0.4`（超过直接判 spec 不合法），`decay` 是回弹长度；`beats` 用 `beats.py` 从音频里测出来，`bpm`/`offset`/`beats` 三者给其一即可。
+- `createProductionRun` 要传完整时间轴时把上面整段放进 `spec.timeline`，否则后端会按「素材 + 文案」友好输入重新展开，缺 `materials` 会报「时间轴规格缺少素材」。
+- 有 `runId` 的任务渲染完自动入库：`output.libraryPath` / `libraryAssetId` / `md5`，`libraryEntries` 里连各平台规格一起列。

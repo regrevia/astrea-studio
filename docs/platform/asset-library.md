@@ -63,7 +63,7 @@ landedAt meta{checks, profile, panel}
 
 只通过 `integrations/mac-worker/library.py` 的 `land()` 落库：
 
-- worker 的 `jianying_export` 成功分支自动调用，`output` 里带 `libraryPath` / `assetId` / `md5`；
+- worker 的 `jianying_export` 与 `render_timeline` 成功分支自动调用，`output` 里带 `libraryPath` / `libraryAssetId` / `md5`（timeline 通道还带各平台规格的 `libraryEntries`）；
 - 人工补录：`library.py land --video … --project … --title … --platform …`；
 - 禁止直接把文件 `cp` 进库，也不要在 `out/` 里长期留成片。
 

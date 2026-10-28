@@ -171,6 +171,16 @@ function normalizeRunOutput(
   if (videoQa) {
     output['videoQa'] = videoQa
   }
+  // 成片入库的落点要跟着 output 回前端：库里按规范命名，界面和发布都认这一条路径
+  for (const key of ['libraryPath', 'libraryAssetId', 'md5'] as const) {
+    const value = result[key]
+    if (typeof value === 'string' && value) {
+      output[key] = value
+    }
+  }
+  if (Array.isArray(result['libraryEntries'])) {
+    output['libraryEntries'] = result['libraryEntries']
+  }
   return output
 }
 
@@ -517,7 +527,14 @@ export class ProductionService {
       attempt,
       status: ProductionJobStatus.QUEUED,
       lane: RENDER_LANE,
-      payload: { runId: run.id, revision: run.revision, spec: run.spec, brief: run.brief },
+      payload: {
+        runId: run.id,
+        revision: run.revision,
+        spec: run.spec,
+        brief: run.brief,
+        // 入库命名要用人看得懂的标题，worker 回退到 runId 只会得到一串十六进制
+        libraryTitle: run.title,
+      },
     } as unknown as Partial<ProductionJob>)
     return job
   }
