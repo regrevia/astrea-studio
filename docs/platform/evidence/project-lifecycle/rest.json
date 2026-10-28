@@ -1,0 +1,33 @@
+{
+  "checkedAt": "2026-10-28T15:04Z",
+  "api": "http://127.0.0.1:8080/api/production/projects",
+  "cases": [
+    {
+      "case": "delete-empty-project",
+      "method": "DELETE",
+      "id": "6ae20dac2fdd771c10040740",
+      "response": { "code": 0, "data": { "id": "6ae20dac2fdd771c10040740", "deleted": true } }
+    },
+    {
+      "case": "delete-project-with-runs",
+      "method": "DELETE",
+      "id": "6adc2161656a13996166bbfc",
+      "response": { "code": 12860, "message": "This project still has tasks — clear them first" },
+      "note": "默认项目 531+ runs，拒绝删除且台账未动"
+    },
+    {
+      "case": "delete-unknown-project",
+      "method": "DELETE",
+      "id": "000000000000000000000000",
+      "response": { "code": 12850, "message": "Production project not found" }
+    }
+  ],
+  "uiFlow": {
+    "script": "/tmp/create-delete-e2e.mjs",
+    "createdProjectId": "6ae20dea2fdd771c10040887",
+    "selectShowsCreatedName": true,
+    "afterDeleteUrl": "http://127.0.0.1:8080/zh-CN/studio",
+    "goneFromList": true,
+    "projectInApi": false
+  }
+}

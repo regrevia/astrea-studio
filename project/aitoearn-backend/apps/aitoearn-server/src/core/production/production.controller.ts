@@ -3,6 +3,7 @@ import { StreamableFile } from '@nestjs/common'
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
@@ -215,6 +216,12 @@ export class ProductionController {
     @Body() body: UpdateProjectDto,
   ) {
     return await this.production.updateProject(token.id, id, body)
+  }
+
+  @ApiDoc({ summary: '删除项目' })
+  @Delete('projects/:id')
+  async deleteProject(@GetToken() token: TokenInfo, @Param('id') id: string) {
+    return await this.production.deleteProject(token.id, id)
   }
 
   @ApiDoc({ summary: '任务列表' })

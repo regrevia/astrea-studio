@@ -45,6 +45,11 @@ export function updateProject(id: string, data: { name?: string, sourceRepo?: st
   return http.post<ProductionProject>(`production/projects/${id}`, data)
 }
 
+/** 删项目只清台账；项目里还有任务时后端拒绝。 */
+export function deleteProject(id: string) {
+  return http.delete<{ id: string, deleted: boolean }>(`production/projects/${id}`)
+}
+
 /** 任务列表。 */
 export function getRuns(params: { pageNo?: number, pageSize?: number, status?: string, projectId?: string } = {}) {
   return http.get<PageResult<ProductionRun>>('production/runs', params)

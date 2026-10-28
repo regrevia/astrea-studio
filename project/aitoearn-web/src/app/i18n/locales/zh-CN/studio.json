@@ -304,6 +304,11 @@
     "createPlaceholder": "项目名，例如「双十一预热」",
     "createSubmit": "创建",
     "cancel": "取消",
-    "createFailed": "创建失败，换个名字再试"
+    "createFailed": "创建失败，换个名字再试",
+    "delete": "删除项目",
+    "deleteConfirmTitle": "删除这个项目？",
+    "deleteConfirmHint": "项目里还有任务就删不了。",
+    "deleteSubmit": "删除",
+    "deleteFailed": "没删掉，稍后再试"
   }
 }

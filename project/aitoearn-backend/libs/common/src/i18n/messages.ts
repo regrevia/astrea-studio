@@ -200,6 +200,14 @@ export const messages: Record<ResponseCode, Record<Locale, MessageValue>> = {
     'en-US': 'Production project not found',
     'zh-CN': '生产项目未找到',
   },
+  [ResponseCode.ProductionProjectNotEmpty]: {
+    'en-US': 'This project still has tasks — clear them first',
+    'zh-CN': '项目里还有任务，先清掉再删',
+  },
+  [ResponseCode.ProductionProjectIsDefault]: {
+    'en-US': 'The default project cannot be deleted',
+    'zh-CN': '默认项目不能删',
+  },
   [ResponseCode.ProductionRunNotFound]: {
     'en-US': 'Production run not found',
     'zh-CN': '生产任务未找到',

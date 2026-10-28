@@ -1,3 +1,4 @@
+import { ResponseCode } from '@yikart/common'
 import { describe, expect, it, vi } from 'vitest'
 
 import { ProductionService } from './production.service'
@@ -81,6 +82,7 @@ function createService() {
   type Deps = ConstructorParameters<typeof ProductionService>
   const projectRepo = {
     getByIdForUser: vi.fn(),
+    deleteById: vi.fn().mockResolvedValue({ id: 'project-1' }),
   }
   const runRepo = {
     create: vi.fn().mockImplementation(async (data: Record<string, unknown>) => ({ id: 'run-1', ...data })),
@@ -909,5 +911,34 @@ describe('listRuns', () => {
     const { service, runRepo } = createService()
     await service.listRuns('user-1', 1, 20, undefined, '')
     expect(runRepo.listByUser).toHaveBeenCalledWith('user-1', 1, 20, {})
+  })
+})
+
+describe('deleteProject', () => {
+  it('空项目直接删掉，返回删除标记', async () => {
+    const { service, projectRepo } = createService()
+    projectRepo.getByIdForUser.mockResolvedValue({ id: '6adc2161656a13996166bbfc', isDefault: false })
+    const result = await service.deleteProject('user-1', '6adc2161656a13996166bbfc')
+    expect(result).toEqual({ id: '6adc2161656a13996166bbfc', deleted: true })
+    expect(projectRepo.deleteById).toHaveBeenCalledWith('6adc2161656a13996166bbfc')
+  })
+
+  it('还有任务的项目拒绝删除，台账一条不动', async () => {
+    const { service, projectRepo, runRepo } = createService()
+    projectRepo.getByIdForUser.mockResolvedValue({ id: '6adc2161656a13996166bbfc', isDefault: false })
+    runRepo.listByUser.mockResolvedValue([[{ id: 'run-1' }], 3])
+    await expect(service.deleteProject('user-1', '6adc2161656a13996166bbfc'))
+      .rejects
+      .toMatchObject({ code: ResponseCode.ProductionProjectNotEmpty })
+    expect(projectRepo.deleteById).not.toHaveBeenCalled()
+  })
+
+  it('默认项目不能删', async () => {
+    const { service, projectRepo } = createService()
+    projectRepo.getByIdForUser.mockResolvedValue({ id: '6adc2161656a13996166bbfc', isDefault: true })
+    await expect(service.deleteProject('user-1', '6adc2161656a13996166bbfc'))
+      .rejects
+      .toMatchObject({ code: ResponseCode.ProductionProjectIsDefault })
+    expect(projectRepo.deleteById).not.toHaveBeenCalled()
   })
 })

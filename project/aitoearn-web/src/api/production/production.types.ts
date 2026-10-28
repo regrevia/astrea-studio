@@ -23,6 +23,7 @@ export type ProductionRunStatus
 export interface ProductionProject {
   id: string
   name: string
+  isDefault?: boolean
   sourceRepo?: string
   materialGroupId?: string
   createdAt?: string

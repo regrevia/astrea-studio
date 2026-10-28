@@ -20,10 +20,12 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiGetMaterialGroupList } from '@/api/materials/material.api'
-import { getCharacters, getHealth, getInventory, getProjects, getPublications, getRenderJobs, getRuns, updateProject } from '@/api/production/production.api'
+import { createProject, getCharacters, getHealth, getInventory, getProjects, getPublications, getRenderJobs, getRuns, updateProject } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/utils/className'
@@ -432,6 +434,40 @@ export default function StudioOverview() {
     void refresh()
   }, [refresh, syncUrl])
 
+  const [createOpen, setCreateOpen] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
+
+  /** 建完立刻切到这个项目，省掉再去下拉里找一遍。 */
+  const submitCreate = useCallback(async () => {
+    const name = newName.trim()
+    if (!name || creating)
+      return
+    setCreating(true)
+    setCreateError('')
+    try {
+      const created = await createProject({ name })
+      const id = created?.data?.id
+      if (!id) {
+        setCreateError(t('project.createFailed'))
+        return
+      }
+      setProjects(map => ({ ...map, [id]: name }))
+      setProjectGroups(groups => ({ ...groups, [id]: '' }))
+      setCreateOpen(false)
+      setNewName('')
+      setProjectId(id)
+      syncUrl({ projectId: id, runId: '' })
+    }
+    catch {
+      setCreateError(t('project.createFailed'))
+    }
+    finally {
+      setCreating(false)
+    }
+  }, [creating, newName, syncUrl, t])
+
   const projectOptions = useMemo(() => Object.entries(projects), [projects])
   const { lng } = useParams<{ lng: string }>()
   const onlineMachines = workers.filter(w => w.online)
@@ -464,6 +500,10 @@ export default function StudioOverview() {
           {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="h-8 cursor-pointer" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-3.5 w-3.5" />
+            {t('project.create')}
+          </Button>
           <Select value={projectId || ALL_PROJECTS} onValueChange={changeProject}>
             <SelectTrigger className="h-8 w-[180px] text-xs" aria-label={t('overview.project')}>
               <SelectValue placeholder={t('overview.allProjects')} />
@@ -643,6 +683,35 @@ export default function StudioOverview() {
           <span className="text-warning">{t('overview.workerAllOffline')}</span>
         )}
       </div>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('project.create')}</DialogTitle>
+          </DialogHeader>
+          <form
+            className="space-y-3"
+            onSubmit={(event) => { event.preventDefault(); submitCreate().catch(() => {}) }}
+          >
+            <Input
+              value={newName}
+              maxLength={40}
+              autoFocus
+              placeholder={t('project.createPlaceholder')}
+              onChange={event => setNewName(event.target.value)}
+            />
+            {createError && <p role="alert" className="text-xs text-destructive">{createError}</p>}
+            <DialogFooter>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setCreateOpen(false)}>
+                {t('project.cancel')}
+              </Button>
+              <Button type="submit" size="sm" disabled={creating || !newName.trim()}>
+                {t('project.createSubmit')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

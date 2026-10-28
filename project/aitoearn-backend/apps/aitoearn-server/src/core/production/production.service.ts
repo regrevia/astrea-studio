@@ -254,6 +254,23 @@ export class ProductionService {
     return await this.projectRepo.updateById(projectId, { ...data, userId } as never)
   }
 
+  /**
+   * 删项目只清空台账，不连带删任务与成片：任务里引用着素材库路径和证据文件，
+   * 静默级联会把可追溯的东西一起抹掉。还有任务的项目先让用户清干净。
+   */
+  async deleteProject(userId: string, projectId: string) {
+    const project = await this.getProject(userId, projectId)
+    if (project.isDefault) {
+      throw new AppException(ResponseCode.ProductionProjectIsDefault)
+    }
+    const [, total] = await this.runRepo.listByUser(userId, 1, 1, { projectId: project.id })
+    if (total > 0) {
+      throw new AppException(ResponseCode.ProductionProjectNotEmpty)
+    }
+    await this.projectRepo.deleteById(project.id)
+    return { id: project.id, deleted: true }
+  }
+
   // -------------------------------------------------------------------- runs
 
   async createRun(userId: string, input: CreateRunInput): Promise<ProductionRun> {

@@ -304,6 +304,11 @@
     "createPlaceholder": "Project name",
     "createSubmit": "Create",
     "cancel": "Cancel",
-    "createFailed": "Could not create it"
+    "createFailed": "Could not create it",
+    "delete": "Delete project",
+    "deleteConfirmTitle": "Delete this project?",
+    "deleteConfirmHint": "A project with tasks cannot be deleted.",
+    "deleteSubmit": "Delete",
+    "deleteFailed": "Could not delete it"
   }
 }

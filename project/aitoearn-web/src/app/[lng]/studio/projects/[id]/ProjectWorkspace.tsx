@@ -12,8 +12,18 @@ import { ArrowLeft, Package } from 'lucide-react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createProject, fetchMaterialBlobUrl, getInventory, getProjects, getRuns } from '@/api/production/production.api'
+import { createProject, deleteProject, fetchMaterialBlobUrl, getInventory, getProjects, getRuns } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { packShotPath, useMaterialThumbs } from '@/app/[lng]/studio/utils/materials'
@@ -50,6 +60,9 @@ export default function ProjectWorkspace() {
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   const [project, setProject] = useState<ProductionProject | null>(null)
   const [runs, setRuns] = useState<ProductionRun[]>([])
@@ -140,6 +153,29 @@ export default function ProjectWorkspace() {
     }
   }, [creating, lng, newName, router, t])
 
+  /** 删完回制作台；还有任务的项目后端会拒绝，错误留在弹窗里。 */
+  const submitDelete = useCallback(async () => {
+    if (!project || deleting)
+      return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      const res = await deleteProject(project.id)
+      if (res?.code !== 0) {
+        setDeleteError(res?.message || t('project.deleteFailed'))
+        return
+      }
+      setDeleteOpen(false)
+      router.push(`/${lng}/studio`)
+    }
+    catch {
+      setDeleteError(t('project.deleteFailed'))
+    }
+    finally {
+      setDeleting(false)
+    }
+  }, [deleting, lng, project, router, t])
+
   const projectName = project?.name ?? ''
   const projectMap = useMemo<Record<string, string>>(
     () => (project ? { [project.id]: project.name } : {}),
@@ -180,10 +216,36 @@ export default function ProjectWorkspace() {
             </p>
           )}
         </div>
-        <Button variant="outline" size="sm" className="shrink-0" onClick={() => setCreateOpen(true)}>
-          {t('project.create')}
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)}>
+            {t('project.create')}
+          </Button>
+          {project && !project.isDefault && (
+            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setDeleteOpen(true)}>
+              {t('project.delete')}
+            </Button>
+          )}
+        </div>
       </div>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('project.deleteConfirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('project.deleteConfirmHint')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && <p role="alert" className="text-xs text-destructive">{deleteError}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('project.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={(event) => { event.preventDefault(); submitDelete().catch(() => {}) }}
+            >
+              {t('project.deleteSubmit')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-sm">
