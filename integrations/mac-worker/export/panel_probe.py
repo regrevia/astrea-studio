@@ -24,7 +24,7 @@
     python3 panel_probe.py --out x.json    # 指定输出
     python3 panel_probe.py --only 格式,帧率 # 只探这几个标签
 
-依赖: /tmp/ax_tool, /tmp/ocr, screencapture（均在 export/ 下编译）。
+依赖: ax_tool、ocr（由 panel.ensure_tools 编到 ~/CreatorStudio/bin）与 screencapture。
 """
 from __future__ import annotations
 
@@ -35,9 +35,12 @@ import re
 import subprocess
 import sys
 import time
+from pathlib import Path
 
-AX_TOOL = os.environ.get("AX_TOOL", "/tmp/ax_tool")
-OCR_TOOL = os.environ.get("OCR_TOOL", "/tmp/ocr")
+BIN_DIR = Path(os.environ.get("STUDIO_BIN") or os.path.expanduser("~/CreatorStudio/bin"))
+AX_TOOL = os.environ.get("AX_TOOL") or str(BIN_DIR / "ax_tool")
+OCR_TOOL = os.environ.get("OCR_TOOL") or str(BIN_DIR / "ocr")
+WINLIST = os.environ.get("WINLIST") or str(BIN_DIR / "winlist")
 APP = "VideoFusion-macOS"
 PANEL_TITLE_PREFIX = "导出-"
 
@@ -150,7 +153,7 @@ def open_dropdown(input_rect, wait=1.3):
 
 def popup_rect(input_rect, panel_rect):
     """弹层窗口矩形：用 winlist 找紧邻输入框下方、layer>=1 的剪映窗口。"""
-    p = run(["/tmp/winlist"])
+    p = run([WINLIST])
     ix, iy, iw, ih = input_rect
     best = None
     for line in p.stdout.splitlines():
