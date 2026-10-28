@@ -189,6 +189,32 @@ export class ProductionAssistantService {
     return await this.readCapabilityJson('/assets')
   }
 
+  /** 面板要缩略图：读宿主机素材原图，只允许 materials 根目录内的图片相对路径。 */
+  async capabilityMaterialFile(rel: string): Promise<{ body: Buffer, contentType: string }> {
+    const clean = rel.replace(/^\/+/, '')
+    if (!clean || clean.includes('..')) {
+      throw new AppException(ResponseCode.ProductionRenderQueueUnavailable, '素材路径不合法')
+    }
+    const url = `${config.studioAssistant.inventoryUrl.replace(/\/+$/, '')}/materials/file?path=${encodeURIComponent(clean)}`
+    let response: Response
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(INVENTORY_TIMEOUT_MS) })
+    }
+    catch (error) {
+      throw new AppException(
+        ResponseCode.ProductionRenderQueueUnavailable,
+        `宿主机能力服务连不上：${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+    if (!response.ok) {
+      throw new AppException(ResponseCode.ProductionRenderQueueUnavailable, '没有这张素材')
+    }
+    return {
+      body: Buffer.from(await response.arrayBuffer()),
+      contentType: response.headers.get('content-type') || 'application/octet-stream',
+    }
+  }
+
   /** MCP 工具用：已交付成片清单（/deliverables），按修改时间新的在前。 */
   async capabilityDeliverables(limit: number): Promise<unknown[]> {
     const payload = await this.readCapabilityJson(`/deliverables?limit=${Math.max(1, Math.min(limit, 500))}`)

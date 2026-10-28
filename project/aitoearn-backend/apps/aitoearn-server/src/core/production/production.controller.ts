@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { StreamableFile } from '@nestjs/common'
 import {
   Body,
   Controller,
@@ -15,6 +16,7 @@ import { GetToken, Public, TokenInfo } from '@yikart/aitoearn-auth'
 import { ApiDoc, AppException, createZodDto, ResponseCode } from '@yikart/common'
 import { ProductionJobStatus, PublicationDispatcher, PublicationStatus } from '@yikart/mongodb'
 import { z } from 'zod'
+import { ProductionAssistantService } from './production-assistant.service'
 import { ProductionService } from './production.service'
 import { normalizeRunSpec } from './production.run-spec'
 
@@ -166,7 +168,17 @@ class WorkerEventDto extends createZodDto(WorkerEventSchema, 'WorkerEventDto') {
 @ApiTags('Production')
 @Controller('production')
 export class ProductionController {
-  constructor(private readonly production: ProductionService) {}
+  constructor(
+    private readonly production: ProductionService,
+    private readonly assistant: ProductionAssistantService,
+  ) {}
+
+  @ApiDoc({ summary: '素材原图（缩略图用）' })
+  @Get('materials/file')
+  async materialFile(@Query('path') path: string) {
+    const file = await this.assistant.capabilityMaterialFile(path ?? '')
+    return new StreamableFile(file.body, { type: file.contentType })
+  }
 
   @ApiDoc({ summary: '项目列表' })
   @Get('projects')

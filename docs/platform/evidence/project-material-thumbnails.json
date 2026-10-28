@@ -1,0 +1,22 @@
+{
+  "round": 20,
+  "workerRoute": "GET /materials/file?path=<materials 内相对路径>",
+  "workerChecks": {
+    "packShot": "200 image/png 410615 B",
+    "traversal": "404"
+  },
+  "backendRoute": "GET /api/production/materials/file?path=",
+  "backendChecks": {
+    "authed": "200 image/png 410615 B",
+    "traversal": "code 12859 素材路径不合法"
+  },
+  "web": {
+    "thumbsRendered": 2,
+    "naturalSize": "1080x1920",
+    "src": "blob:"
+  },
+  "spec": "production-assistant.capabilities.spec.ts 6 passed",
+  "screenshots": [
+    "docs/platform/evidence/project-material-thumbnails.png"
+  ]
+}

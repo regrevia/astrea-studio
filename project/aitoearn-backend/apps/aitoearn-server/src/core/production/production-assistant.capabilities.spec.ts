@@ -55,6 +55,21 @@ describe('宿主机能力读取（MCP 工具用）', () => {
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe('http://host.docker.internal:8899/deliverables?limit=500')
   })
 
+  it('素材原图只认根目录内的相对路径，越界直接拒', async () => {
+    await expect(service().capabilityMaterialFile('../config.py')).rejects.toThrow('素材路径不合法')
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled()
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'image/png' }),
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+    } as never)
+    const file = await service().capabilityMaterialFile('/packs/demo/shots/a.png')
+    expect(file.contentType).toBe('image/png')
+    expect(file.body.length).toBe(3)
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe('http://host.docker.internal:8899/materials/file?path=packs%2Fdemo%2Fshots%2Fa.png')
+  })
+
   it('返回体里没有 files 时给空清单，不抛在工具里', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse({}) as never)
     await expect(service().capabilityDeliverables(5)).resolves.toEqual([])

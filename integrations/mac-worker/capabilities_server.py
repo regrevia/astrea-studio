@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import threading
 import time
@@ -120,6 +121,24 @@ def set_default_outfit(cid: str, outfit: str) -> dict:
     return {"default_outfit": oid}
 
 
+def material_file(rel: str) -> tuple[bytes, str]:
+    """只读地吐一张素材原图，路径必须落在 materials 根目录里。
+
+    面板要缩略图，但概念上素材不是成片，所以只按「根目录内相对路径」取，
+    任何越界、非图片、不存在都当成 404，不暴露磁盘上的其它东西。
+    """
+    import mimetypes
+
+    root = jobs.MATERIALS_DIR.resolve()
+    target = (root / rel).resolve()
+    if not str(target).startswith(str(root) + os.sep) or not target.is_file():
+        raise KeyError(rel)
+    ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+    if not ctype.startswith("image/"):
+        raise KeyError(rel)
+    return target.read_bytes(), ctype
+
+
 def snapshot(force: bool = False) -> dict:
     with _lock:
         now = time.time()
@@ -196,6 +215,10 @@ class Handler(BaseHTTPRequestHandler):
                         ensure_ascii=False).encode())
                 else:
                     self._send(200, json.dumps(jobs.get(jid), ensure_ascii=False).encode())
+            elif path == "/materials/file":
+                q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+                data, ctype = material_file((q.get("path") or [""])[0])
+                self._send(200, data, ctype)
             elif path == "/assets":
                 self._send(200, json.dumps(jobs.assets(), ensure_ascii=False).encode())
             elif path == "/deliverables":

@@ -11,9 +11,10 @@ import type { Inventory, ProductionProject, ProductionRun } from '@/api/producti
 import { ArrowLeft, Package } from 'lucide-react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createProject, getInventory, getProjects, getRuns } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
+import { useUserStore } from '@/store/user'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -38,6 +39,55 @@ const PAGE_SIZE = 12
 /** 任务区能筛的几档状态；all 表示不加条件。 */
 type RunFilter = 'all' | 'succeeded' | 'running' | 'failed'
 const RUN_FILTERS: RunFilter[] = ['all', 'succeeded', 'running', 'failed']
+
+/** `pack:slug/name` 对应的素材原图相对路径，和后端只读图片通道约定一致。 */
+function packShotPath(ref: string): string | null {
+  if (!ref.startsWith('pack:'))
+    return null
+  const [slug, name] = ref.slice(5).split('/')
+  if (!slug || !name)
+    return null
+  return `packs/${slug}/shots/${name}.png`
+}
+
+/** 材质原图要带登录头，图片标签带不上，所以取回来放进 blob URL。 */
+function useMaterialThumbs(refs: string[]) {
+  const [thumbs, setThumbs] = useState<Record<string, string>>({})
+  const urls = useRef<string[]>([])
+
+  useEffect(() => {
+    let alive = true
+    const created: string[] = []
+    const token = useUserStore.getState().token
+    if (!token) {
+      return () => {}
+    }
+    refs.forEach((ref) => {
+      const rel = packShotPath(ref)
+      if (!rel)
+        return
+      fetch(`${process.env.NEXT_PUBLIC_API_URL}/production/materials/file?path=${encodeURIComponent(rel)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(res => (res.ok ? res.blob() : null))
+        .then((blob) => {
+          if (!blob || !alive)
+            return
+          const url = URL.createObjectURL(blob)
+          created.push(url)
+          setThumbs(current => ({ ...current, [ref]: url }))
+        })
+        .catch(() => {})
+    })
+    urls.current = created
+    return () => {
+      alive = false
+      created.forEach(url => URL.revokeObjectURL(url))
+    }
+  }, [refs])
+
+  return thumbs
+}
 
 export default function ProjectWorkspace() {
   const { t } = useTransClient('studio')
@@ -149,6 +199,8 @@ export default function ProjectWorkspace() {
     [runs, selectedRunId],
   )
   const packs = inventory?.materials?.packs ?? []
+  const packRefs = useMemo(() => packs.flatMap(pack => pack.refs), [packs])
+  const thumbs = useMaterialThumbs(packRefs)
 
   if (!loading && !project) {
     return (
@@ -290,17 +342,18 @@ export default function ProjectWorkspace() {
                     {pack.refs.map((ref, index) => {
                       const picked = materialsText.split('\n').map(line => line.trim()).includes(ref)
                       return (
-                        <Button
+                        <button
                           key={ref}
                           type="button"
-                          size="sm"
                           title={ref}
-                          variant={picked ? 'default' : 'outline'}
-                          className="h-7 px-2 text-[11px]"
+                          aria-pressed={picked}
+                          className={`overflow-hidden rounded-md border transition-colors ${picked ? 'border-primary ring-1 ring-primary' : 'border-border hover:border-muted-foreground'}`}
                           onClick={() => toggleShot(ref)}
                         >
-                          {t('project.materialsShot', { index: index + 1 })}
-                        </Button>
+                          {thumbs[ref]
+                            ? <img src={thumbs[ref]} alt={t('project.materialsShot', { index: index + 1 })} className="size-16 object-cover" />
+                            : <span className="flex size-16 items-center justify-center text-[11px] text-muted-foreground">{t('project.materialsShot', { index: index + 1 })}</span>}
+                        </button>
                       )
                     })}
                   </div>
