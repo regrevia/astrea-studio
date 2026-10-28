@@ -751,7 +751,12 @@ export class ProductionService {
     const retryable = status === ProductionJobStatus.FAILED && isEnvironmentFailure(error)
     // failJob 开头读到的 run 是失败前的状态，重排判断要用最新的那份。
     const currentRun = retryable ? await this.runRepo.getById(job.runId) : null
-    if (currentRun && (job.attempt || 1) < 3 && currentRun.status !== ProductionRunStatus.CANCELLED) {
+    // 只重排还在跑或排队的 run：已出片或被取消的 run 不因一条迟到的失败结果复活。
+    const runActive = currentRun
+      && currentRun.status !== ProductionRunStatus.CANCELLED
+      && currentRun.status !== ProductionRunStatus.SUCCEEDED
+      && (currentRun.revision || 1) === revision
+    if (currentRun && runActive && (job.attempt || 1) < 3) {
       // 环境类失败：先把 run 放回队列再补一条同 kind 的 job，别让用户去手动重试。
       await this.runRepo.updateByRevision(job.runId, revision, {
         status: ProductionRunStatus.QUEUED,

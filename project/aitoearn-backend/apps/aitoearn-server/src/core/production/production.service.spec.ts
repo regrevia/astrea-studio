@@ -592,4 +592,16 @@ describe('failJob', () => {
     expect(runUpdate.status).toBe('failed')
     expect(jobRepo.create).not.toHaveBeenCalled()
   })
+
+  it('已出片的 run 不会被一条迟到的环境类失败拉回队列', async () => {
+    const { service, jobRepo, runRepo } = createService()
+    jobRepo.getById.mockResolvedValue(failingJob)
+    runRepo.getById.mockResolvedValue({ ...failedRun, status: 'succeeded' })
+
+    await expect(service.failJob('worker-1', 'job-1', 1, 'FileNotFoundError: /tmp/ax_tool')).resolves.toEqual({ ok: true })
+
+    const runUpdate = runRepo.updateByRevision.mock.calls[0][2] as Record<string, unknown>
+    expect(runUpdate.status).toBe('failed')
+    expect(jobRepo.create).not.toHaveBeenCalled()
+  })
 })
