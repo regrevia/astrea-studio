@@ -169,3 +169,24 @@ PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib \
 `<草稿目录>/assets/` 并把 JSON 里的绝对路径改指过去（草稿在 `~/Movies` 下，沙盒可读）。
 实测该草稿 `copied=26 missing=0`，重启剪映重开草稿后 `ax_tool tree` 里
 「暂无访问权限」计数 **0**，不再弹链接媒体。
+
+## 9.1 剪映 GUI 导出实测（2026-10-28）
+
+- 命令（直连驱动，等价于 worker 的 `jianying:export`）：
+  `jianying_export.py --job-id direct17 --revision 2 --platform 抖音 --draft-path …/studio_6ae13f0f791bd5bc23ed991a__r2 --wait-idle 0 --return-pid <Chrome pid>`
+- 结果：`产物 27.10 MB`，`1080x1920 @ 30fps h264 + aac`，`30.833s`，6 项校验全 OK。
+- 归位：`/Users/apple/CreatorStudio/out/direct17/r2/direct17__r2__抖音.mp4`（28,418,773 B，md5 `71d5abe966a97d983629ecb90f43d09d`）。
+- 日志片段：`鼠标点击导出 1975,1322` → `已点导出，前台交还 pid=1313（ok）` → `产物: ~/Movies/studio_6ae13f0f791bd5bc23ed991a__r2.mp4`。
+- 由此确认：**编码阶段不需要前台**。点击后驱动器只做 `poll_outputs(~/Movies)` + `ffprobe` 校验 + 归档。
+
+## 9.5 导出的打扰边界（用户会感觉到什么）
+
+| 阶段 | 占用前台 | 动鼠标 |
+| --- | --- | --- |
+| 打开草稿、读导出面板、选参数 | 约 10–20s（窗口需在最前） | 有，若干次真实点击 |
+| 点「导出」那一下 | < 1s | 有，一次点击；随后 `cursor_restore()` 把光标挪回原位 |
+| 编码 / 校验 / 归档 | 不需要 | 不需要 |
+
+- 点完导出立刻 `restore_front(return_pid)`：前台还给用户原来的 App（实测 `pid=1313 Google Chrome`）。
+- `waitIdle>0` 时，用户一直在用机器就整轮不动鼠标（退出码 9 `export_user_busy`）；`waitIdle=0` 才允许立刻开始。
+- 想零打扰出片就走内置引擎（`TIMELINE_RENDER` / `RENDER_FFMPEG`），那一路完全不碰 GUI。
