@@ -1,0 +1,58 @@
+{
+  "title": "批量出片（MCP createProductionBatch）真机验收",
+  "at": "2026-10-28",
+  "goal": "agent 走 MCP 一次排多条同稿母版，每条独立渲染、可分辨、带卡点推镜",
+  "surface": "POST http://127.0.0.1:8080/api/production/mcp → createProductionBatch",
+  "call": {
+    "projectId": "6adc2161656a13996166bbfc",
+    "title": "批量卡点验证",
+    "count": 2,
+    "spec": "复用 run 6ae19f5f864d4f35586ce19d 的友好输入（mode=vertical_short, bgm 带 bpm120+offset0+pulse{amount:0.08,decay:0.2}）"
+  },
+  "response_text": "Queued 2 run(s): 6ae1a8c61719dc0c8b1d8303, 6ae1a8c61719dc0c8b1d830c. Do not block; poll getProductionRun per runId.",
+  "runs": [
+    {
+      "runId": "6ae1a8c61719dc0c8b1d8303",
+      "title": "批量卡点验证 · 1/2",
+      "status": "succeeded",
+      "stage": "done",
+      "duration_s": 17.902,
+      "videoQa_ok": true,
+      "videoPath": "studio/runs/6ae1a8c61719dc0c8b1d8303/r1/master.mp4",
+      "workdir": "/Users/apple/CreatorStudio/timeline/6ae1a8c61719dc0c8b1d830f",
+      "master_bytes": 6801591,
+      "master_md5": "f906b8515a4d74aa1b93dbe477bb929d",
+      "pulse_clips": 5
+    },
+    {
+      "runId": "6ae1a8c61719dc0c8b1d830c",
+      "title": "批量卡点验证 · 2/2",
+      "status": "succeeded",
+      "stage": "done",
+      "duration_s": 17.902,
+      "videoQa_ok": true,
+      "videoPath": "studio/runs/6ae1a8c61719dc0c8b1d830c/r1/master.mp4",
+      "workdir": "/Users/apple/CreatorStudio/timeline/6ae1a8c61719dc0c8b1d8306",
+      "master_bytes": 6817201,
+      "master_md5": "a39701c5cdb4ccffd19f01f4b539ce02",
+      "pulse_clips": 5
+    }
+  ],
+  "checks": {
+    "two_distinct_runs": "两条 runId 不同、videoPath 不同、master 字节不同（6,801,591 vs 6,817,201）→ 不是同一份文件的拷贝",
+    "titles": "标题带 1/2、2/2 序号，列表里能区分",
+    "keyframe_beat_carried": "两个 workdir 的 spec.json 均有 5 个 pulse clip，时长同为 17.902s（批量没有丢卡点推镜）",
+    "variant_seed": "worker 用 run_id 作变体种子，同稿两条母版画面/码率有差"
+  },
+  "found_and_fixed": {
+    "bug": "第一次批跑两条都 failed：reasonCode=render_failed no usable local material —— 调用方给的 spec 缺 engine，normalizeRunSpec 不反推，任务落到 MoneyPrinterTurbo",
+    "fix": "normalizeRunSpec 在缺 engine 时按 spec.mode 反推（vertical_short → timeline），并补 2 条单测",
+    "live_proof": "同形态 POST /runs（mode=vertical_short、无 engine）落库 spec.engine=timeline、job.kind=render_timeline；随后按业务校验报 timeline_failed（要点格式应为「标题::说明[::口播稿]」），确认走的是时间线通道而不是 MPT"
+  },
+  "how_to_reproduce": [
+    "tools/list 应含 createProductionBatch（共 15 个工具）",
+    "用带 music.pulse 的 vertical_short spec 调 createProductionBatch count=2，立即返回 2 个 runId",
+    "轮询 GET /api/production/runs/<id> 至 succeeded/done，检查 output.videoQa.ok 与 duration",
+    "在 ~/CreatorStudio/timeline/<workdir>/ 比 master.mp4 的字节数与 md5，并数 spec.json 里 pulse=true 的 clip"
+  ]
+}

@@ -13,9 +13,21 @@ export type RunSpecInput = {
   spec?: Record<string, unknown> | null
 }
 
+/**
+ * 友好模式只有对应渲染器认得。缺 engine 时按 mode 反推，否则任务会落到
+ * MoneyPrinterTurbo，报一句和真实原因无关的「缺素材」错误。
+ */
+const MODE_ENGINE: Record<string, string> = {
+  vertical_short: 'timeline',
+}
+
 export function normalizeRunSpec(input: RunSpecInput): Record<string, unknown> {
   const spec: Record<string, unknown> = { ...(input.spec ?? {}) }
   if (input.engine) spec['engine'] = input.engine
   if (input.template) spec['template'] = input.template
+  if (!spec['engine'] && typeof spec['mode'] === 'string') {
+    const inferred = MODE_ENGINE[spec['mode']]
+    if (inferred) spec['engine'] = inferred
+  }
   return spec
 }

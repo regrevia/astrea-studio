@@ -6,6 +6,7 @@
 | --- | --- |
 | `createProductionProject` / `listProductionProjects` | 建项目、列项目。项目绑定素材分组，任务默认落到该分组。 |
 | `createProductionRun` / `listProductionRuns` / `getProductionRun` | 建任务（立即返回 `runId`，不等渲染）、列任务、查任务详情。 |
+| `createProductionBatch` | 同一份稿子一次排 1–8 条，返回全部 `runId`。每条独立入队、标题带 `i/N` 序号，用于批量出母版；逐条轮询 `getProductionRun`。 |
 | `reviseProductionRun` | 在既有任务上出新版本，`revision` 递增。 |
 | `listProductionEvents` | 读任务事件流，按阶段回放。 |
 | `createJianyingDraft` | 把已完成任务的成片落成剪映工程，进用户素材库默认分组；同一任务重复调用复用同一工程。任务没有成片时直接报错，不会凭空造工程。 |
@@ -15,7 +16,8 @@
 
 两个约束是刻意保留的：
 
-- 建任务不等渲染。视频要跑几分钟，工具当场返回 `runId`，调用方用 `getProductionRun` 轮询。
+- 建任务不等渲染。视频要跑几分钟，工具当场返回 `runId`，调用方用 `getProductionRun` 轮询；批量同理，`createProductionBatch` 也不等待。
+- 缺 `engine` 时按 `spec.mode` 反推（`vertical_short` → `timeline`），不会静默落到 MoneyPrinterTurbo 报一句和真实原因无关的缺素材错。
 - 没有提交发布的工具。`planPublication` 只写台账，发布是不可逆动作，必须人确认。
 
 ## `startJianyingExport` 的契约
