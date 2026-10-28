@@ -77,11 +77,13 @@
       "cancel": "Abbrechen",
       "retry": "Erneut versuchen",
       "revise": "Überarbeiten",
-      "openVideo": "Video öffnen"
+      "openVideo": "Video öffnen",
+      "exportGui": "Auf diesem Mac exportieren"
     },
     "confirm": {
       "cancel": "Gerenderte Teile gehen verloren; du kannst später neu starten.",
-      "retry": "Erzeugt eine neue Version aus dem aktuellen Skript; das alte Video bleibt."
+      "retry": "Erzeugt eine neue Version aus dem aktuellen Skript; das alte Video bleibt.",
+      "exportGui": "Öffnet 剪映 auf diesem Mac und klickt Export; währenddessen die Maus nicht bewegen."
     },
     "revise": {
       "title": "Auftrag überarbeiten",
@@ -94,7 +96,8 @@
       "detail": "Details konnten nicht geladen werden; neuer Versuch folgt",
       "revise": "Überarbeitung nicht übermittelt; bitte erneut versuchen",
       "cancel": "Abbrechen fehlgeschlagen; bitte erneut versuchen",
-      "retry": "Erneut versuchen fehlgeschlagen; bitte erneut versuchen"
+      "retry": "Erneut versuchen fehlgeschlagen; bitte erneut versuchen",
+      "exportGui": "Export konnte nicht eingereiht werden; später erneut versuchen."
     },
     "detail": {
       "empty": "Wähle einen Auftrag für Fortschritt und Video",
@@ -111,7 +114,8 @@
       "openDraftBox": "Zu den Entwürfen",
       "platforms": "Videos je Plattform",
       "qa": "Rendern-Prüfungen",
-      "log": "Schrittprotokoll"
+      "log": "Schrittprotokoll",
+      "screenLocked": "Der Bildschirm ist gesperrt. Entsperren und erneut exportieren."
     },
     "queue": {
       "source": "Lokale Warteschlange",
@@ -124,6 +128,27 @@
         "jianying": "CapCut-Entwurf",
         "paper": "Langbild"
       }
+    },
+    "stage": {
+      "queued": "In Warteschlange",
+      "starting": "Startet",
+      "planned": "Plan bereit",
+      "draft": "Entwurf erstellt",
+      "revising": "Änderungen werden übernommen",
+      "preparingAssets": "Material wird vorbereitet",
+      "drafting": "Entwurf wird erstellt",
+      "draftReady": "Entwurf bereit",
+      "waitingForDesktop": "Wartet auf Desktop-Export",
+      "exportQueued": "Export eingereiht",
+      "exporting": "Export läuft",
+      "exported": "Exportiert",
+      "awaitingManualExport": "Export in JianYing",
+      "verifying": "Schnitt wird geprüft",
+      "readyForReview": "Bereit zur Prüfung",
+      "publishing": "Wird veröffentlicht",
+      "done": "Fertig",
+      "failed": "Abgebrochen",
+      "cancelled": "Storniert"
     }
   },
   "pub": {

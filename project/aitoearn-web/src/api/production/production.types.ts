@@ -53,6 +53,10 @@ export interface ProductionCanvas {
 export interface ProductionRunOutput {
   videoPath?: string
   videoUrl?: string
+  /** 需要人工在剪映点导出时为 true；此时没有 videoPath。 */
+  requiresManualExport?: boolean
+  /** 停下的原因码，例如 screen_locked / export_user_busy。 */
+  manualExportReason?: string
   duration?: number
   canvas?: ProductionCanvas
   platforms?: Record<string, ProductionPlatformVideo>

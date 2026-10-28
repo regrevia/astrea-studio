@@ -77,11 +77,13 @@
       "cancel": "キャンセル",
       "retry": "再実行",
       "revise": "修正する",
-      "openVideo": "動画を開く"
+      "openVideo": "動画を開く",
+      "exportGui": "この Mac で書き出す"
     },
     "confirm": {
       "cancel": "キャンセルすると描画済みの部分は破棄されます。後で再実行できます。",
-      "retry": "現在の原稿で新しい版を作ります。以前の動画は残ります。"
+      "retry": "現在の原稿で新しい版を作ります。以前の動画は残ります。",
+      "exportGui": "この Mac の 剪映 を開いて書き出しを押します。実行中はマウスを動かさないでください。"
     },
     "revise": {
       "title": "このタスクを修正",
@@ -94,7 +96,8 @@
       "detail": "詳細を取得できません。しばらくして再試行します",
       "revise": "修正を送信できませんでした。もう一度お試しください",
       "cancel": "キャンセルできませんでした。もう一度お試しください",
-      "retry": "再実行できませんでした。もう一度お試しください"
+      "retry": "再実行できませんでした。もう一度お試しください",
+      "exportGui": "書き出しを登録できませんでした。後でもう一度お試しください。"
     },
     "detail": {
       "empty": "タスクを選ぶと進捗と動画が表示されます",
@@ -111,7 +114,8 @@
       "openDraftBox": "下書き一覧へ",
       "platforms": "プラットフォーム別動画",
       "qa": "仕上がりチェック",
-      "log": "ステップログ"
+      "log": "ステップログ",
+      "screenLocked": "画面がロックされています。解除してから書き出してください。"
     },
     "queue": {
       "source": "ローカルキュー",
@@ -124,6 +128,27 @@
         "jianying": "CapCut 下書き",
         "paper": "長尺画像"
       }
+    },
+    "stage": {
+      "queued": "待機中",
+      "starting": "起動中",
+      "planned": "計画ができました",
+      "draft": "下書きを作成済み",
+      "revising": "修正を反映中",
+      "preparingAssets": "素材を準備中",
+      "drafting": "下書きを生成中",
+      "draftReady": "下書きができました",
+      "waitingForDesktop": "デスクトップでの書き出し待ち",
+      "exportQueued": "書き出し待ち",
+      "exporting": "書き出し中",
+      "exported": "書き出し済み",
+      "awaitingManualExport": "JianYing で書き出し中",
+      "verifying": "仕上がりを確認中",
+      "readyForReview": "確認待ち",
+      "publishing": "公開中",
+      "done": "完了",
+      "failed": "中断されました",
+      "cancelled": "キャンセル済み"
     }
   },
   "pub": {

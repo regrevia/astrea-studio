@@ -17,7 +17,7 @@ import { cn } from '@/utils/className'
 import { useRunDetail } from '../../hooks/useRunDetail'
 import { formatKib } from '../../studioConstants'
 import { deriveRunArtifacts } from '../../utils/runArtifacts'
-import { isRunBusy, runStatusMeta } from '../../utils/status'
+import { isRunBusy, runStageMeta, runStatusMeta } from '../../utils/status'
 import { RunActions } from '../RunActions'
 
 interface RunDetailPanelProps {
@@ -31,6 +31,9 @@ export function RunDetailPanel({ run, projectName, onChanged }: RunDetailPanelPr
   const meta = runStatusMeta(run.status)
   const artifacts = deriveRunArtifacts(run)
   const busy = isRunBusy(run.status)
+  // 阶段只在与状态不同时上屏，避免同一句话出现两次。
+  const stage = run.currentStage ? runStageMeta(run.currentStage, run.status) : null
+  const stageLabel = stage && stage.labelKey !== meta.labelKey ? stage : null
   // 列表 revision/status 一变就重新拉详情，改稿重跑后不会停在旧成片上。
   const { detail, error } = useRunDetail(run.id, `${run.revision ?? 0}:${run.status}`)
   const events = (detail?.events ?? []).slice(-12).reverse()
@@ -48,7 +51,7 @@ export function RunDetailPanel({ run, projectName, onChanged }: RunDetailPanelPr
             </span>
             {projectName && <span>{projectName}</span>}
             <span>{t('run.detail.revision', { n: run.revision ?? 0 })}</span>
-            {run.currentStage && <span>{run.currentStage}</span>}
+            {stageLabel && <span>{t(stageLabel.labelKey)}</span>}
           </div>
         </div>
         <RunActions run={run} onChanged={onChanged} />
@@ -65,7 +68,9 @@ export function RunDetailPanel({ run, projectName, onChanged }: RunDetailPanelPr
 
       {run.status === 'waiting_user' && (
         <p className="rounded-md bg-warning/15 px-3 py-2 text-xs text-foreground">
-          {run.lastError || t('run.detail.waitingHint')}
+          {run.lastError || (run.output?.manualExportReason === 'screen_locked'
+            ? t('run.detail.screenLocked')
+            : t('run.detail.waitingHint'))}
         </p>
       )}
 

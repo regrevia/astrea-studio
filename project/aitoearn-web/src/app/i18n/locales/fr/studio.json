@@ -77,11 +77,13 @@
       "cancel": "Annuler",
       "retry": "Relancer",
       "revise": "Demander une modification",
-      "openVideo": "Ouvrir la vidéo"
+      "openVideo": "Ouvrir la vidéo",
+      "exportGui": "Exporter sur ce Mac"
     },
     "confirm": {
       "cancel": "Les parties rendues sont perdues, tu pourras relancer plus tard.",
-      "retry": "Génère une nouvelle version depuis le script actuel ; l’ancienne vidéo est conservée."
+      "retry": "Génère une nouvelle version depuis le script actuel ; l’ancienne vidéo est conservée.",
+      "exportGui": "Ouvre 剪映 sur ce Mac et clique sur Exporter ; ne touchez pas à la souris pendant l’opération."
     },
     "revise": {
       "title": "Modifier cette tâche",
@@ -94,7 +96,8 @@
       "detail": "Détails indisponibles, nouvelle tentative bientôt",
       "revise": "Modification non envoyée, réessaie",
       "cancel": "Annulation échouée, réessaie",
-      "retry": "Relance échouée, réessaie"
+      "retry": "Relance échouée, réessaie",
+      "exportGui": "Export non planifié ; réessayez plus tard."
     },
     "detail": {
       "empty": "Choisis une tâche pour voir la progression",
@@ -111,7 +114,8 @@
       "openDraftBox": "Ouvrir les brouillons",
       "platforms": "Vidéos par plateforme",
       "qa": "Contrôles du rendu",
-      "log": "Journal des étapes"
+      "log": "Journal des étapes",
+      "screenLocked": "L'écran est verrouillé. Déverrouillez, puis exportez à nouveau."
     },
     "queue": {
       "source": "File locale",
@@ -124,6 +128,27 @@
         "jianying": "Brouillon CapCut",
         "paper": "Image longue"
       }
+    },
+    "stage": {
+      "queued": "En attente",
+      "starting": "Démarrage",
+      "planned": "Plan prêt",
+      "draft": "Brouillon créé",
+      "revising": "Modifications en cours",
+      "preparingAssets": "Préparation des éléments",
+      "drafting": "Création du brouillon",
+      "draftReady": "Brouillon prêt",
+      "waitingForDesktop": "Attente de l’export bureau",
+      "exportQueued": "Export en attente",
+      "exporting": "Export en cours",
+      "exported": "Exporté",
+      "awaitingManualExport": "Export dans JianYing",
+      "verifying": "Vérification du montage",
+      "readyForReview": "Prêt à valider",
+      "publishing": "Publication en cours",
+      "done": "Terminé",
+      "failed": "Interrompu",
+      "cancelled": "Annulé"
     }
   },
   "pub": {

@@ -155,11 +155,13 @@
       "cancel": "Cancel",
       "retry": "Retry",
       "revise": "Revise",
-      "openVideo": "Open video"
+      "openVideo": "Open video",
+      "exportGui": "Export on this Mac"
     },
     "confirm": {
       "cancel": "Rendered parts are dropped; you can start it again later.",
-      "retry": "Renders a new version from the current script; the old video stays."
+      "retry": "Renders a new version from the current script; the old video stays.",
+      "exportGui": "This opens 剪映 on this Mac and clicks Export; keep hands off the mouse meanwhile."
     },
     "revise": {
       "title": "Revise this run",
@@ -172,7 +174,8 @@
       "detail": "Could not load run details; retrying shortly",
       "revise": "Could not submit the revision; try again",
       "cancel": "Cancel failed; try again",
-      "retry": "Retry failed; try again"
+      "retry": "Retry failed; try again",
+      "exportGui": "Export could not be queued; try again later."
     },
     "detail": {
       "empty": "Pick a run to see progress and video",
@@ -189,7 +192,8 @@
       "openDraftBox": "Open drafts",
       "platforms": "Per-platform videos",
       "qa": "Render checks",
-      "log": "Step log"
+      "log": "Step log",
+      "screenLocked": "Screen is locked. Unlock, then export again."
     },
     "queue": {
       "source": "Local queue",
@@ -202,6 +206,27 @@
         "jianying": "CapCut draft",
         "paper": "Long image"
       }
+    },
+    "stage": {
+      "queued": "Queued",
+      "starting": "Starting",
+      "planned": "Plan ready",
+      "draft": "Draft created",
+      "revising": "Re-applying edits",
+      "preparingAssets": "Preparing assets",
+      "drafting": "Building draft",
+      "draftReady": "Draft ready",
+      "waitingForDesktop": "Waiting for desktop export",
+      "exportQueued": "Export queued",
+      "exporting": "Exporting",
+      "exported": "Exported",
+      "awaitingManualExport": "Export in JianYing",
+      "verifying": "Checking the cut",
+      "readyForReview": "Ready for your review",
+      "publishing": "Publishing",
+      "done": "Done",
+      "failed": "Interrupted",
+      "cancelled": "Cancelled"
     }
   },
   "pub": {

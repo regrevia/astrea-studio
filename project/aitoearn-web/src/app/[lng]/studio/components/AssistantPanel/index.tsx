@@ -29,7 +29,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/utils/className'
-import { isRunBusy, runStatusMeta } from '../../utils/status'
+import { isRunBusy, runStageMeta } from '../../utils/status'
 import { AssistantMessageItem } from './components/AssistantMessageItem'
 import { EndpointFields } from './components/EndpointFields'
 import {
@@ -289,7 +289,7 @@ export function AssistantPanel({ className, projectId, projectName, runs, select
               <span className="text-muted-foreground">
                 {t('assistant.context.stage')}
                 {' '}
-                {contextRun.currentStage || t(runStatusMeta(contextRun.status).labelKey)}
+                {t(runStageMeta(contextRun.currentStage, contextRun.status).labelKey)}
               </span>
               {okActionCount > 0 && (
                 <span className="text-muted-foreground">{t('assistant.context.steps', { n: okActionCount })}</span>

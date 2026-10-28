@@ -1,5 +1,5 @@
 /**
- * RunActions - 任务的取消 / 重试 / 改稿
+ * RunActions - 任务的取消 / 重试 / 改稿 / 收剪映导出
  *
  * 列表行和详情面板共用这一份动作，避免两处各写一遍取消语义。
  * 取消和重试会改变后端队列状态，先弹确认；改稿走弹窗写 brief。
@@ -7,9 +7,9 @@
 'use client'
 
 import type { ProductionRun } from '@/api/production/production.types'
-import { PencilLine, RotateCcw, XCircle } from 'lucide-react'
+import { Clapperboard, PencilLine, RotateCcw, XCircle } from 'lucide-react'
 import { useState } from 'react'
-import { cancelRun, retryRun } from '@/api/production/production.api'
+import { cancelRun, retryRun, startRunExport } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
 import { Button } from '@/components/ui/button'
 import { confirm } from '@/utils/ui/confirm'
@@ -26,7 +26,7 @@ interface RunActionsProps {
 
 export function RunActions({ run, onChanged, compact = false }: RunActionsProps) {
   const { t } = useTransClient('studio')
-  const [pending, setPending] = useState<'cancel' | 'retry' | null>(null)
+  const [pending, setPending] = useState<'cancel' | 'retry' | 'export' | null>(null)
   const [error, setError] = useState('')
   const [reviseOpen, setReviseOpen] = useState(false)
 
@@ -54,6 +54,29 @@ export function RunActions({ run, onChanged, compact = false }: RunActionsProps)
       },
     })
     return ok
+  }
+
+  /** 导出要在这台 Mac 上点剪映，交给后台任务去做。 */
+  const handleExport = async () => {
+    await confirm({
+      title: t('run.action.exportGui'),
+      content: t('run.confirm.exportGui'),
+      onOk: async () => {
+        setPending('export')
+        setError('')
+        try {
+          const res = await startRunExport(run.id, { allowGui: true })
+          if (!res || res.code !== 0) {
+            setError(res?.message || 'run.error.exportGui')
+            return
+          }
+          onChanged?.()
+        }
+        finally {
+          setPending(null)
+        }
+      },
+    })
   }
 
   const handleRetry = async () => {
@@ -102,6 +125,18 @@ export function RunActions({ run, onChanged, compact = false }: RunActionsProps)
         >
           {!pending && <RotateCcw className="h-4 w-4" />}
           {t('run.action.retry')}
+        </Button>
+      )}
+      {run.status === 'waiting_user' && (
+        <Button
+          size={size}
+          variant="outline"
+          className="cursor-pointer"
+          loading={pending === 'export'}
+          onClick={handleExport}
+        >
+          {!pending && <Clapperboard className="h-4 w-4" />}
+          {t('run.action.exportGui')}
         </Button>
       )}
       <Button size={size} variant="outline" className="cursor-pointer" onClick={() => setReviseOpen(true)}>

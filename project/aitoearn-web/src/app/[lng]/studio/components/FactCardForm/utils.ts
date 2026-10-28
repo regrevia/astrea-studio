@@ -1,4 +1,4 @@
-import type { FactCardSpec, FactCardVoice, CreateFactCardRunInput } from '@/api/production/production.types'
+import type { CreateFactCardRunInput, FactCardSpec, FactCardVoice } from '@/api/production/production.types'
 
 /** 剪映音色：BV405 甜美解说（女声，默认），BV411 解说小帅（男声）。 */
 export const FACT_CARD_VOICE_OPTIONS: Array<{ value: FactCardVoice, labelKey: string }> = [
@@ -15,7 +15,7 @@ export const DEFAULT_FACT_CARD_CTA = '记住这几条，面试能答到点上。
 export const MIN_FACT_CARD_POINTS = 2
 export const MAX_FACT_CARD_POINTS = 4
 export const DEFAULT_FACT_CARD_POINTS = 3
-/** 要点用英文双冒号分隔，与出片侧 `标题::说明` 的解析一致。 */
+/** 要点用英文双冒号分隔，与出片侧的解析保持一致。 */
 export const FACT_CARD_POINT_SEPARATOR = '::'
 
 export type FactCardOutput = 'mp4' | 'draft'
@@ -23,7 +23,7 @@ export type FactCardOutput = 'mp4' | 'draft'
 export interface FactCardFormValues {
   topic: string // ui-copy-ignore
   hook: string // ui-copy-ignore
-  /** 每条「标题::说明」，按出卡顺序排列。 */
+  /** 每条由标题和说明组成，按出卡顺序排列。 */
   points: string[] // ui-copy-ignore
   /** 口播稿：一行一屏。 */
   narration: string
@@ -42,13 +42,13 @@ export interface FactCardNarrationParts {
 }
 
 /** 校验/提交失败用到的翻译 key，文案由组件按当前语言渲染。 */
-export type FactCardErrorKey =
-  | 'factCard.error.topicRequired'
-  | 'factCard.error.minPoints'
-  | 'factCard.error.pointFormat'
-  | 'factCard.error.narrationLines'
-  | 'factCard.error.noProject'
-  | 'factCard.error.submitFailed'
+export type FactCardErrorKey
+  = | 'factCard.error.topicRequired'
+    | 'factCard.error.minPoints'
+    | 'factCard.error.pointFormat'
+    | 'factCard.error.narrationLines'
+    | 'factCard.error.noProject'
+    | 'factCard.error.submitFailed'
 
 export interface FactCardFormError {
   key: FactCardErrorKey
@@ -59,7 +59,7 @@ export function isFactCardVoice(value: string): value is FactCardVoice {
   return FACT_CARD_VOICE_OPTIONS.some(option => option.value === value)
 }
 
-/** 「标题::说明」→ 标题 + 说明；缺分隔符或一边为空都算格式不对。 */
+/** 拆成标题和说明两部分，缺分隔符或一边为空都算格式不对。 */
 export function parseFactCardPoint(text: string): { title: string, detail: string } | null {
   const raw = text.trim()
   const separatorAt = raw.indexOf(FACT_CARD_POINT_SEPARATOR)
@@ -96,7 +96,7 @@ export function factCardNarrationLineCounts(pointCount: number): { pointsOnly: n
   return { pointsOnly: pointCount, withIntroOutro: pointCount + 2 }
 }
 
-/** 丢掉空行，并把要点统一成「标题::说明」；有口播稿则补成第三段。 */
+/** 丢掉空行，并把要点统一成标题加说明；有口播稿则补成第三段。 */
 export function buildFactCardPoints(points: string[], narrationPoints?: string[]): string[] {
   let seen = 0
   return points.flatMap((text) => {

@@ -14,7 +14,7 @@ import { Progress } from '@/components/ui/progress'
 import { cn } from '@/utils/className'
 import { formatKib } from '../../studioConstants'
 import { deriveRunArtifacts } from '../../utils/runArtifacts'
-import { isRunBusy, runStatusMeta } from '../../utils/status'
+import { isRunBusy, runStageMeta, runStatusMeta } from '../../utils/status'
 import { RunActions } from '../RunActions'
 
 export interface RunRowProps {
@@ -31,6 +31,9 @@ export function RunRow({ run, projectName, selected = false, onSelect, onChanged
   const Icon = meta.icon
   const artifacts = deriveRunArtifacts(run)
   const busy = isRunBusy(run.status)
+  // 阶段只在与状态不同时上屏，避免同一句话出现两次。
+  const stage = run.currentStage ? runStageMeta(run.currentStage, run.status) : null
+  const stageLabel = stage && stage.labelKey !== meta.labelKey ? stage : null
   const platformCount = artifacts.platforms.length
   const bytes = artifacts.platforms.reduce((sum, item) => sum + (item.bytes ?? 0), 0)
 
@@ -60,7 +63,7 @@ export function RunRow({ run, projectName, selected = false, onSelect, onChanged
               {typeof run.revision === 'number' && run.revision > 0 && (
                 <span>{t('run.row.revision', { n: run.revision })}</span>
               )}
-              {run.currentStage && <span>{run.currentStage}</span>}
+              {stageLabel && <span>{t(stageLabel.labelKey)}</span>}
             </div>
           </div>
         </div>

@@ -91,6 +91,14 @@ export function reviseRun(id: string, data: { brief?: string, spec?: Record<stri
   return http.post<ProductionRun>(`production/runs/${id}/revise`, data)
 }
 
+/**
+ * 从剪映工程收导出产物。
+ * 默认只排队等人点导出；allowGui 让这台 Mac 的 worker 驱动剪映自己导出。
+ */
+export function startRunExport(id: string, data: { allowGui?: boolean, draftPath?: string } = {}) {
+  return http.post<{ jobId: string, attempt: number, draftPath: string }>(`production/runs/${id}/export`, data)
+}
+
 /** 重试失败的任务。返回的是新 attempt 序号，不是 run。 */
 export function retryRun(id: string) {
   return http.post<{ runId: string, attempt: number }>(`production/runs/${id}/retry`)

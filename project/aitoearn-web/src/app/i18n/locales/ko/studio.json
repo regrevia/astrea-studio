@@ -77,11 +77,13 @@
       "cancel": "취소",
       "retry": "다시 만들기",
       "revise": "수정 요청",
-      "openVideo": "영상 열기"
+      "openVideo": "영상 열기",
+      "exportGui": "이 Mac에서 내보내기"
     },
     "confirm": {
       "cancel": "취소하면 렌더링된 부분은 버려지며 나중에 다시 만들 수 있습니다.",
-      "retry": "현재 원고로 새 버전을 만듭니다. 이전 영상은 남습니다."
+      "retry": "현재 원고로 새 버전을 만듭니다. 이전 영상은 남습니다.",
+      "exportGui": "이 Mac의 剪映을 열고 내보내기를 누릅니다. 실행 중에는 마우스를 건드리지 마세요."
     },
     "revise": {
       "title": "이 작업 수정",
@@ -94,7 +96,8 @@
       "detail": "상세 정보를 불러오지 못했습니다. 잠시 후 다시 시도합니다",
       "revise": "수정 요청을 보내지 못했습니다. 다시 시도해 주세요",
       "cancel": "취소하지 못했습니다. 다시 시도해 주세요",
-      "retry": "다시 만들지 못했습니다. 다시 시도해 주세요"
+      "retry": "다시 만들지 못했습니다. 다시 시도해 주세요",
+      "exportGui": "내보내기를 예약하지 못했습니다. 잠시 후 다시 시도하세요."
     },
     "detail": {
       "empty": "작업을 선택하면 진행 상황과 영상이 표시됩니다",
@@ -111,7 +114,8 @@
       "openDraftBox": "초안함 열기",
       "platforms": "플랫폼별 영상",
       "qa": "결과 점검",
-      "log": "단계 로그"
+      "log": "단계 로그",
+      "screenLocked": "화면이 잠겨 있습니다. 잠금을 풀고 다시 내보내세요."
     },
     "queue": {
       "source": "로컬 큐",
@@ -124,6 +128,27 @@
         "jianying": "CapCut 초안",
         "paper": "긴 이미지"
       }
+    },
+    "stage": {
+      "queued": "대기 중",
+      "starting": "시작 중",
+      "planned": "계획 준비됨",
+      "draft": "초안 생성됨",
+      "revising": "수정 반영 중",
+      "preparingAssets": "소재 준비 중",
+      "drafting": "초안 생성 중",
+      "draftReady": "초안 준비됨",
+      "waitingForDesktop": "데스크톱 내보내기 대기",
+      "exportQueued": "내보내기 대기",
+      "exporting": "내보내는 중",
+      "exported": "내보냄",
+      "awaitingManualExport": "JianYing에서 내보내기",
+      "verifying": "결과 확인 중",
+      "readyForReview": "검토 대기",
+      "publishing": "게시 중",
+      "done": "완료",
+      "failed": "중단됨",
+      "cancelled": "취소됨"
     }
   },
   "pub": {

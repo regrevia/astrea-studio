@@ -101,3 +101,38 @@ export const PUBLICATION_STATUS_META: Record<PublicationStatus, StatusMeta> = {
 export function publicationStatusMeta(status?: string): StatusMeta {
   return (status && PUBLICATION_STATUS_META[status as PublicationStatus]) || UNKNOWN_STATUS
 }
+
+/** 流水线阶段 → 文案 key。键是后端 stage 的末段（`render:verifying` 取 verifying）。 */
+const STAGE_LABEL_KEYS: Record<string, string> = {
+  queued: 'run.stage.queued', // ui-copy-ignore
+  starting: 'run.stage.starting', // ui-copy-ignore
+  planned: 'run.stage.planned', // ui-copy-ignore
+  draft: 'run.stage.draft', // ui-copy-ignore
+  revise: 'run.stage.revising', // ui-copy-ignore
+  preparing_assets: 'run.stage.preparingAssets', // ui-copy-ignore
+  drafting: 'run.stage.drafting', // ui-copy-ignore
+  draft_ready: 'run.stage.draftReady', // ui-copy-ignore
+  waiting_for_desktop: 'run.stage.waitingForDesktop', // ui-copy-ignore
+  export_queued: 'run.stage.exportQueued', // ui-copy-ignore
+  exporting: 'run.stage.exporting', // ui-copy-ignore
+  exported: 'run.stage.exported', // ui-copy-ignore
+  awaiting_manual_export: 'run.stage.awaitingManualExport', // ui-copy-ignore
+  verifying: 'run.stage.verifying', // ui-copy-ignore
+  ready_for_review: 'run.stage.readyForReview', // ui-copy-ignore
+  publishing: 'run.stage.publishing', // ui-copy-ignore
+  done: 'run.stage.done', // ui-copy-ignore
+  failed: 'run.stage.failed', // ui-copy-ignore
+  cancelled: 'run.stage.cancelled', // ui-copy-ignore
+}
+
+/**
+ * 阶段文案。认不出的阶段退回任务状态文案，界面上永远不出现原始 token // ui-copy-ignore
+ * 只给末段的阶段（rendering、verifying）也按通用词处理。 // ui-copy-ignore
+ */
+export function runStageMeta(stage?: string, status?: ProductionRunStatus): { labelKey: string } {
+  const tail = (stage || '').trim().toLowerCase().split(':').pop() || ''
+  if (tail && STAGE_LABEL_KEYS[tail])
+    return { labelKey: STAGE_LABEL_KEYS[tail] }
+  const fallback = (status && RUN_STATUS_META[status]?.labelKey) || UNKNOWN_STATUS.labelKey
+  return { labelKey: fallback }
+}

@@ -155,11 +155,13 @@
       "cancel": "取消任务",
       "retry": "重新出片",
       "revise": "提修改",
-      "openVideo": "打开成片"
+      "openVideo": "打开成片",
+      "exportGui": "让这台 Mac 导出"
     },
     "confirm": {
       "cancel": "取消后已渲染的部分不再保留，可以稍后重新出片。",
-      "retry": "会用当前稿子重新出一版，旧成片保留。"
+      "retry": "会用当前稿子重新出一版，旧成片保留。",
+      "exportGui": "会打开这台 Mac 上的剪映并点导出，导出期间别抢鼠标。"
     },
     "revise": {
       "title": "提修改",
@@ -172,7 +174,8 @@
       "detail": "任务详情没取到，稍后自动重试",
       "revise": "修改没提交成功，稍后重试",
       "cancel": "取消失败，稍后重试",
-      "retry": "重新出片没成功，稍后重试"
+      "retry": "重新出片没成功，稍后重试",
+      "exportGui": "导出没排上，稍后再试"
     },
     "detail": {
       "empty": "选一条任务看进度和成片",
@@ -189,7 +192,8 @@
       "openDraftBox": "去草稿箱",
       "platforms": "分平台成片",
       "qa": "出片检查",
-      "log": "步骤日志"
+      "log": "步骤日志",
+      "screenLocked": "屏幕锁着，解锁后再点导出。"
     },
     "queue": {
       "source": "本机队列",
@@ -202,6 +206,27 @@
         "jianying": "剪映草稿",
         "paper": "长图"
       }
+    },
+    "stage": {
+      "queued": "排队中",
+      "starting": "启动中",
+      "planned": "计划已就绪",
+      "draft": "草稿已建",
+      "revising": "按修改重排",
+      "preparingAssets": "准备素材",
+      "drafting": "生成草稿",
+      "draftReady": "草稿已就绪",
+      "waitingForDesktop": "等待桌面端导出",
+      "exportQueued": "等待导出",
+      "exporting": "导出中",
+      "exported": "已导出",
+      "awaitingManualExport": "等你在剪映导出",
+      "verifying": "校验成片",
+      "readyForReview": "待你验收",
+      "publishing": "发布中",
+      "done": "已完成",
+      "failed": "生成中断",
+      "cancelled": "已取消"
     }
   },
   "pub": {
