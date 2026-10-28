@@ -121,6 +121,19 @@ JOB_JIANYING_DRAFT = "jianying_draft"
 JOB_JIANYING_EXPORT = "jianying_export"
 
 
+def _foreground_pid() -> int:
+    """当前前台 App 的 pid；拿不到就 0（导出结束后不还台，但也不算失败）。"""
+    try:
+        exe = Path(__file__).with_name("bin") / "ax_tool"
+        if not exe.exists():
+            exe = Path.home() / "CreatorStudio" / "bin" / "ax_tool"
+        out = subprocess.run([str(exe), "front"], capture_output=True, text=True, timeout=5)
+        first = (out.stdout or "").split()
+        return int(first[0]) if first and first[0].isdigit() else 0
+    except Exception:
+        return 0
+
+
 def screen_locked() -> bool:
     """屏锁着的时候别去点剪映：锁屏下 GUI 自动化拿不到窗口，只会空转。
 
@@ -548,6 +561,9 @@ class Worker:
         if not draft_path:
             raise JianyingError("jianying_export 需要 draftPath（草稿目录），不猜最新草稿")
 
+        # 记下「导出前用户正在用的 App」，点完导出立刻把前台还回去
+        fore_pid = _foreground_pid()
+
         progress(15, "jianying:open_draft")
         # 导出驱动只认「导出面板已经能开出来」，而面板只存在于已打开的草稿里；
         # 剪映没有「按路径打开草稿」的入口，草稿必须从首页草稿箱点进去。这一步以前靠人，
@@ -556,7 +572,8 @@ class Worker:
         draft_name = Path(draft_path).name
         opened = subprocess.run(
             [sys.executable, str(opener), "--name", draft_name,
-             "--wait-idle", str(float(payload.get("waitIdle") or 30.0))],
+             "--wait-idle", str(float(payload.get("waitIdle") or 30.0)),
+            "--return-pid", str(int(fore_pid or 0))],
             capture_output=True, text=True, timeout=600,
         )
         open_tail = ((opened.stdout or "") + (opened.stderr or "")).strip()[-600:]

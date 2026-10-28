@@ -624,3 +624,20 @@ def restore_front(pid: int) -> bool:
         return p.returncode == 0
     except Exception:
         return False
+
+
+def cursor_pos() -> tuple[int, int] | None:
+    """读当前光标位置，用于点完之后把光标放回原处（不产生点击）。"""
+    r = run([AX_TOOL, "cursor"], timeout=5)
+    parts = (r.stdout or "").split()
+    if r.returncode == 0 and len(parts) >= 2 and parts[0].lstrip("-").isdigit():
+        return int(parts[0]), int(parts[1])
+    return None
+
+
+def cursor_restore(pos: tuple[int, int] | None) -> bool:
+    """把光标挪回原位。CGWarpMouseCursorPosition 不发点击事件。"""
+    if not pos:
+        return False
+    r = run([AX_TOOL, "cursor", str(pos[0]), str(pos[1])], timeout=5)
+    return r.returncode == 0

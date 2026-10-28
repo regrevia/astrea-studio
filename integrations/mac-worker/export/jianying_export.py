@@ -447,7 +447,10 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true", help="选参数但不点导出")
     ap.add_argument("--abort-on-activity", action="store_true", default=True,
                     help="点导出前若用户刚有操作就放弃（默认开，挂后台时用）")
+    ap.add_argument("--release-after-click", action="store_true", default=True,
+                    help="点完导出立刻把前台交还给导出前的 App，编码在后台跑（默认开）")
     ap.add_argument("--outdir", default=str(DEFAULT_OUTDIR))
+    ap.add_argument("--return-pid", type=int, default=0, help="点完导出后把前台还给它")
     ap.add_argument("--job-id", default="",
                     help="任务 id（必填）：产物落到 outdir/<jobId>/r<rev>/；不接受按目录里最新文件认领")
     ap.add_argument("--revision", type=int, default=0,
@@ -478,6 +481,9 @@ def main(argv=None):
         return 2
     # G12：等不到用户空闲时，旧实现照样抢前台、抢光标。现在超时就直接放弃这一轮，
     # 把活留在队列里等下一次，而不是把人正在打字的鼠标挪走。
+    if not args.return_pid:
+        args.return_pid = P.foreground_pid()
+    args.return_cursor = P.cursor_pos()
     if not P.quiet_start(args.wait_idle, restore=not args.no_restore_focus, strict=True):
         print("排队：用户未空闲，这次不动鼠标、不导出", file=sys.stderr)
         return 9
@@ -593,6 +599,12 @@ def main(argv=None):
     if not click_export(rect, prefer_ax=args.try_axpress):
         print("找不到导出按钮", file=sys.stderr)
         return 4
+    # 点完立刻还台：实测剪映的出片编码不要求窗口在前台，只有「点导出」这一下要。
+    # 不还台的话整段编码（几十秒到几分钟）都压在用户脸上，这才是真正的抢前台。
+    P.cursor_restore(getattr(args, "return_cursor", None))
+    if args.release_after_click and args.return_pid:
+        ok = P.restore_front(args.return_pid)
+        print("已点导出，前台交还 pid=%s（%s）" % (args.return_pid, "ok" if ok else "失败"))
     print("\n已投递导出（先 AXPress），轮询产物 …")
     # 剪映只会往自己的导出目录写，所以这里只能看目录；但归属由 jobId 判定，
     # 一旦出现多个新文件就说明有并发导出在抢目录，直接失败而不是挑一个。
