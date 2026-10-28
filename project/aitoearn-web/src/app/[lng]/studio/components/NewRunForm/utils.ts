@@ -81,6 +81,7 @@ export type NarrationFormError
     | { kind: 'script_empty' }
     | { kind: 'line_shape', line: number }
     | { kind: 'material', line: number }
+    | { kind: 'material_overflow', count: number, scenes: number, line: number }
     | { kind: 'too_long', estimated: number, limit: number, worstLine: number }
 
 /** 多行文本 → 去空白后的行数组。空行丢弃。 */
@@ -161,6 +162,15 @@ export function validateNarrationForm(
   const badMaterial = materials.findIndex(item => !isMaterialRef(item))
   if (badMaterial >= 0)
     return { kind: 'material', line: badMaterial + 1 }
+  // 第几条素材进第几屏：比屏数多的那几行渲染时会被静默丢掉，提交前就得拦住。
+  if (materials.length > parsed.lines.length) {
+    return {
+      kind: 'material_overflow',
+      count: materials.length,
+      scenes: parsed.lines.length,
+      line: parsed.lines.length + 1,
+    }
+  }
 
   const limit = values.maxSeconds ?? DEFAULT_MAX_SECONDS
   const estimated = estimateSeconds(lines, values.voice)
@@ -191,6 +201,8 @@ export function describeFormError(error: NarrationFormError): string {
       return `第 ${error.line} 行格式不对，一行要写成 标题 :: 镜头注解 :: 口播句`
     case 'material':
       return `第 ${error.line} 行素材要用绝对路径，或用 pack 前缀指向素材包`
+    case 'material_overflow':
+      return `素材 ${error.count} 行、稿子 ${error.scenes} 屏：第 ${error.line} 行起不会进片，删掉或补一屏`
     case 'too_long':
       return `预计 ${error.estimated} 秒，上限 ${error.limit} 秒，建议删掉第 ${error.worstLine} 屏或压缩口播`
   }

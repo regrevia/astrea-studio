@@ -137,6 +137,30 @@ describe('buildTimelineSpec', () => {
     expect(buildTimelineSpec(vertical)).toBe(vertical)
   })
 
+  it('竖屏 factcard 素材比屏数多时直接报错，不静默丢行', () => {
+    const vertical = {
+      engine: 'timeline',
+      mode: 'vertical_short',
+      topic: 'KV Cache',
+      points: ['一::甲', '二::乙'],
+      materials: ['pack:demo/a.png', 'pack:demo/b.png', 'pack:demo/c.png'],
+    }
+
+    expect(() => buildTimelineSpec(vertical)).toThrow('素材 3 行多于 2 屏，第 3 行起不会进片')
+  })
+
+  it('竖屏 factcard 素材与屏数相等时正常透传', () => {
+    const vertical = {
+      engine: 'timeline',
+      mode: 'vertical_short',
+      topic: 'KV Cache',
+      points: ['一::甲', '二::乙'],
+      materials: ['pack:demo/a.png', 'pack:demo/b.png'],
+    }
+
+    expect(buildTimelineSpec(vertical)).toBe(vertical)
+  })
+
   it('非 timeline 引擎原样透传', () => {
     const slides = { engine: 'slides', theme: 'dark' }
 

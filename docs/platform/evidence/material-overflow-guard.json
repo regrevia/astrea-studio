@@ -1,0 +1,26 @@
+{
+  "at": "2026-10-28T13:12:04+08:00",
+  "case": "素材行数多于屏数",
+  "api": "POST /api/production/runs",
+  "overflowRequest": {
+    "materials": 3,
+    "points": 2
+  },
+  "overflowResponse": {
+    "code": 12853,
+    "message": "素材 3 行多于 2 屏，第 3 行起不会进片",
+    "requestId": "97p9wc318yrj4yjk4cuyj"
+  },
+  "equalRequest": {
+    "materials": 2,
+    "points": 2
+  },
+  "equalResponse": {
+    "code": 0,
+    "runId": "6ae183eda03792d15062f80e",
+    "status": "queued",
+    "revision": 1
+  },
+  "unitTests": "timeline-spec.spec.ts 18 passed（新增 2：多余素材报错、相等透传）",
+  "verdict": "第 3 行素材不会再被静默丢掉：提交即 400 并指到具体行号；行数与屏数相等时正常建任务"
+}

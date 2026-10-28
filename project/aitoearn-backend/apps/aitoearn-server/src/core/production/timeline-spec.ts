@@ -49,6 +49,15 @@ export function buildTimelineSpec(spec: Record<string, unknown>): Record<string,
   // 竖屏 factcard：素材是 worker 现场生成的卡面与配音，脚本本身就是渲染输入，
   // 这里按「素材 + 文案 + 切片」那套友好输入去要求它必然缺料。
   if (spec['mode'] === 'vertical_short') {
+    // 竖屏通道里第 N 行素材只进第 N 屏，比屏数多的行渲染时会静默丢掉，提交时就拦。
+    const scenes = Array.isArray(spec['points']) ? spec['points'].length : stringList(spec['script']).length
+    const extra = stringList(spec['materials'])
+    if (scenes > 0 && extra.length > scenes) {
+      throw new AppException(
+        ResponseCode.ProductionInvalidState,
+        `素材 ${extra.length} 行多于 ${scenes} 屏，第 ${scenes + 1} 行起不会进片`,
+      )
+    }
     return spec
   }
 
