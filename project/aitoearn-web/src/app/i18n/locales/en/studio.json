@@ -309,6 +309,10 @@
     "deleteConfirmTitle": "Delete this project?",
     "deleteConfirmHint": "A project with tasks cannot be deleted.",
     "deleteSubmit": "Delete",
-    "deleteFailed": "Could not delete it"
+    "deleteFailed": "Could not delete it",
+    "rename": "Rename",
+    "renamePlaceholder": "Project name",
+    "renameSubmit": "Save",
+    "renameFailed": "Rename failed. Try again."
   }
 }

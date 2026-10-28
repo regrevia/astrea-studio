@@ -434,6 +434,11 @@ export default function StudioOverview() {
     void refresh()
   }, [refresh, syncUrl])
 
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [renameName, setRenameName] = useState('')
+  const [renaming, setRenaming] = useState(false)
+  const [renameError, setRenameError] = useState('')
+
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
@@ -467,6 +472,26 @@ export default function StudioOverview() {
       setCreating(false)
     }
   }, [creating, newName, syncUrl, t])
+
+  /** 改名只改台账上的名字，任务的归属和素材落点都不动。 */
+  const submitRename = useCallback(async () => {
+    const name = renameName.trim()
+    if (!name || renaming || !projectId)
+      return
+    setRenaming(true)
+    setRenameError('')
+    try {
+      await updateProject(projectId, { name })
+      setProjects(map => ({ ...map, [projectId]: name }))
+      setRenameOpen(false)
+    }
+    catch {
+      setRenameError(t('project.renameFailed'))
+    }
+    finally {
+      setRenaming(false)
+    }
+  }, [projectId, renameName, renaming, t])
 
   const projectOptions = useMemo(() => Object.entries(projects), [projects])
   const { lng } = useParams<{ lng: string }>()
@@ -518,6 +543,20 @@ export default function StudioOverview() {
           {projectId && (
             <Button asChild variant="outline" size="sm" className="h-8 text-xs">
               <Link href={`/${lng ?? 'zh-CN'}/studio/projects/${projectId}`}>{t('project.title')}</Link>
+            </Button>
+          )}
+          {projectId && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => {
+                setRenameName(projects[projectId] ?? '')
+                setRenameError('')
+                setRenameOpen(true)
+              }}
+            >
+              {t('project.rename')}
             </Button>
           )}
           {projectId && (
@@ -683,6 +722,35 @@ export default function StudioOverview() {
           <span className="text-warning">{t('overview.workerAllOffline')}</span>
         )}
       </div>
+
+      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('project.rename')}</DialogTitle>
+          </DialogHeader>
+          <form
+            className="space-y-3"
+            onSubmit={(event) => { event.preventDefault(); submitRename().catch(() => {}) }}
+          >
+            <Input
+              value={renameName}
+              maxLength={40}
+              autoFocus
+              placeholder={t('project.renamePlaceholder')}
+              onChange={event => setRenameName(event.target.value)}
+            />
+            {renameError && <p role="alert" className="text-xs text-destructive">{renameError}</p>}
+            <DialogFooter>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setRenameOpen(false)}>
+                {t('project.cancel')}
+              </Button>
+              <Button type="submit" size="sm" disabled={renaming || !renameName.trim()}>
+                {t('project.renameSubmit')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-sm">

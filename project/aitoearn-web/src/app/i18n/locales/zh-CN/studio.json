@@ -309,6 +309,10 @@
     "deleteConfirmTitle": "删除这个项目？",
     "deleteConfirmHint": "项目里还有任务就删不了。",
     "deleteSubmit": "删除",
-    "deleteFailed": "没删掉，稍后再试"
+    "deleteFailed": "没删掉，稍后再试",
+    "rename": "重命名",
+    "renamePlaceholder": "项目名",
+    "renameSubmit": "保存",
+    "renameFailed": "没改名成功，请再试一次"
   }
 }

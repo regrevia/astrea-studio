@@ -1,0 +1,13 @@
+{
+  "project": "6ae2115b99092e973cd66699",
+  "ui": {
+    "before": "改名验收-前",
+    "after": "改名验收-后",
+    "dropdown_after_reload": "改名验收-后"
+  },
+  "rest": {
+    "get_projects_name": "改名验收-后",
+    "cleanup_delete": "200"
+  },
+  "note": "改名只动台账名字；验收用临时项目，跑完已删除。"
+}
