@@ -90,6 +90,50 @@ launchctl bootstrap gui/501 ~/Library/LaunchAgents/local.creatorstudio.worker.pl
 
 ## 9. 还没验收的
 
-- 真机解锁后走 `allowGui: true` 的成功导出（面板代点 → `exported` + 真实 `videoPath`）。当前屏幕是锁的，属于人工前置条件。
-- GUI 自动化的辅助功能授权（编译出的辅助工具尚未被授予 Accessibility）。
+### 9.1 真剪映 allowGui 导出（唯一没闭环的一项）
 
+**探到哪一步**：`allowGui:true` 的导出 job `6ae1ab69ed8f33a90f5c77a5`（run `6ae009d498849e9680314e0b`，
+revision 2）在未锁屏状态下失败，`reasonCode=export_invalid_profile`，原文：
+
+```
+rc=2: 等待用户空闲 ≥30s 再操作（最多等 300s）…
+用户已空闲 30.1s，开始
+打不开导出面板（需要剪映在前台且草稿已打开）
+```
+
+**根因不是锁屏，是「草稿没打开」**：导出面板只存在于已打开的草稿里，而剪映没有「按路径打开草稿」的入口
+（实测 `open -a VideoFusion-macOS.app <草稿目录>` 无效，仍停在首页），面板只能在首页草稿箱点进去。
+所以整条链一直卡在等人工点草稿，而不是等人工点导出。
+
+**本轮补上的三件事**
+1. `export/open_draft.py`：读首页 AX 树，按「标题文字矩形落在卡片矩形内」定位缩略图卡（文字矩形是 98x21，
+   点在文字上 Qt 只选中不打开），双击卡片进编辑器，再轮询导出按钮出现。
+2. worker 导出分支前置调用它，失败带 `reasonCode=export_draft_not_open`（已加入原因码表），不再让人从
+   `export_invalid_profile` 里猜。
+3. **盲点保护**：AX 树能读到别的 Space 的窗口且坐标正常，无守卫时真实鼠标点会落在当前 Space 的**别的 App** 上
+   （实测前台是 DeepSeek Harness）。现在先用 `ax_tool wins <pid>` 数当前桌面可见窗口，为 0 就拒绝点击。
+
+**复测结果（未闭环，阻塞在桌面而非代码）**：
+
+```
+剪映窗口不在当前桌面（可见窗口数=0），拒绝盲点坐标
+```
+
+剪映窗口（`696,301 1168x780`）在另一个 Space；当前桌面有人在用（`ax_tool idle` = 0.68s），不抢前台不切 Space。
+**收尾所需动作**：把剪映窗口拖到当前桌面（或切到它所在桌面）后执行
+
+```
+PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib \
+  /Users/apple/CreatorStudio/runtime/integrations/mac-worker/.python3 \
+  integrations/mac-worker/export/open_draft.py --name studio_6ae13f0f791bd5bc23ed991a__r2
+```
+
+返回 0 即草稿已开，再对 job `6ae1ab69ed8f33a90f5c77a5` 重发 `startJianyingExport{allowGui:true}`，
+验收项是 `~/CreatorStudio/out/6ae1ab69ed8f33a90f5c77a5/r2/` 出现 mp4 且 `videoQa.ok=true`。
+
+### 9.2 已顺带闭环的两项
+
+- **辅助功能授权**：已具备 —— `ax_tool tree 1842` 能读到剪映 40 个控件（原来记的「尚未授予」已过期）。
+- **`patch-backend-container.sh` 第 4 步假阴性**：已修。旧逻辑 30×2s 窗口太短且只认 nginx 200，
+  容器刚重启时必判死。现为 180s 窗口 + `docker inspect` health 与 `/healthz` 双信号，实测
+  `健康检查通过（healthy / nginx 200，6s）` EXIT=0。
