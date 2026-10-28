@@ -1,0 +1,49 @@
+{
+  "ui": {
+    "run": "6ae1fddeebffbe9556faab31",
+    "project": "6adc2161656a13996166bbfc",
+    "bars": 8,
+    "clicked": [
+      {
+        "bar": 1,
+        "aria_pressed": true,
+        "summary": "第 2 句 | 问题：素材和成片散在各处 | 5.2–9.8 秒"
+      },
+      {
+        "bar": 3,
+        "aria_pressed": true,
+        "summary": "第 4 句 | 关键帧：镜头对准重点 | 15.2–19.8 秒"
+      }
+    ]
+  },
+  "beat_mapping_check": {
+    "spec": "synthetic 30s 2 shots + 10 beats + 3 lines",
+    "duration": 30,
+    "keyframes": [
+      0,
+      15
+    ],
+    "bpm": 103.36,
+    "lines": [
+      {
+        "line": 1,
+        "start": 0.2,
+        "beat": 1,
+        "beat_at": 0.36
+      },
+      {
+        "line": 2,
+        "start": 5.2,
+        "beat": 7,
+        "beat_at": 5.2
+      },
+      {
+        "line": 3,
+        "start": 15.2,
+        "beat": 10,
+        "beat_at": 15.2
+      }
+    ],
+    "note": "第二镜 keyframes 缩放没变，不计入关键帧；每句取开口时踩到的那一拍。"
+  }
+}

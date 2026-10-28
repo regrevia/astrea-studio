@@ -219,7 +219,10 @@
       "timelineDuration": "{{n}} s",
       "timelineBpm": "{{n}} BPM",
       "timelineBeats": "{{n}} beats",
-      "timelineKeyframes": "{{n}} keyframes"
+      "timelineKeyframes": "{{n}} keyframes",
+      "lineNo": "Line {{n}}",
+      "lineSpan": "{{start}}–{{end}} s",
+      "lineBeat": "Beat {{n}}"
     },
     "queue": {
       "source": "Local queue",

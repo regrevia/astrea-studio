@@ -9,6 +9,7 @@
 
 import type { ProductionRun } from '@/api/production/production.types'
 import { Clapperboard, ExternalLink, FileText } from 'lucide-react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useTransClient } from '@/app/i18n/client'
 import { Badge } from '@/components/ui/badge'
@@ -42,6 +43,8 @@ export function RunDetailPanel({ run, projectName, onChanged }: RunDetailPanelPr
   // 列表 revision/status 一变就重新拉详情，改稿重跑后不会停在旧成片上。
   const { detail, error } = useRunDetail(run.id, `${run.revision ?? 0}:${run.status}`)
   const timelineMarks = deriveTimelineMarks(run.spec)
+  const [selectedLine, setSelectedLine] = useState<number | undefined>(undefined)
+  const pickedLine = timelineMarks?.lines.find(line => line.index === selectedLine)
   const events = (detail?.events ?? []).slice(-12).reverse()
   const jobs = detail?.jobs ?? []
 
@@ -108,7 +111,19 @@ export function RunDetailPanel({ run, projectName, onChanged }: RunDetailPanelPr
             <p className="text-xs text-muted-foreground">{t('run.detail.noVideo')}</p>
           )}
 
-      {timelineMarks && <TimelineRuler marks={timelineMarks} />}
+      {timelineMarks && (
+        <div className="flex flex-col gap-1">
+          <TimelineRuler marks={timelineMarks} selectedLine={selectedLine} onSelectLine={setSelectedLine} />
+          {pickedLine && (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span className="text-foreground">{t('run.detail.lineNo', { n: pickedLine.index })}</span>
+              <span className="truncate">{pickedLine.text}</span>
+              <span>{t('run.detail.lineSpan', { start: pickedLine.start.toFixed(1), end: pickedLine.end.toFixed(1) })}</span>
+              {pickedLine.beatIndex != null && <span>{t('run.detail.lineBeat', { n: pickedLine.beatIndex })}</span>}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 入库落点：素材库按项目/月分目录 */}
       {artifacts.libraryPath && (

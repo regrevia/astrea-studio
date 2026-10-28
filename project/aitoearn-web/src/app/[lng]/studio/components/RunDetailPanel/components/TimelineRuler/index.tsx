@@ -1,8 +1,8 @@
 /**
  * TimelineRuler - 时间轴标尺
  *
- * 把一条任务的时间轴摊平成一根尺子：镜头分段、音乐卡点、关键帧各自落在哪。
- * 只画位置不播动画，用来核对「卡点踩没踩上、关键帧在不在重点上」。
+ * 上半根画镜头分段、音乐卡点和关键帧，下半根是字幕占的时间段。
+ * 点某一句就能看到它从几秒到几秒、开口时踩在第几拍。
  */
 'use client'
 
@@ -12,6 +12,8 @@ import { cn } from '@/utils/className'
 
 interface TimelineRulerProps {
   marks: TimelineMarks
+  selectedLine?: number
+  onSelectLine?: (index: number) => void
 }
 
 /** 按占比定位；越界的收进 0–100，避免标点跑到尺子外面。 */
@@ -20,7 +22,12 @@ function position(seconds: number, duration: number): string {
   return `${Math.max(0, Math.min(100, ratio * 100))}%`
 }
 
-export function TimelineRuler({ marks }: TimelineRulerProps) {
+function width(from: number, to: number, duration: number): string {
+  const ratio = duration > 0 ? (to - from) / duration : 0
+  return `${Math.max(0.6, Math.min(100, ratio * 100))}%`
+}
+
+export function TimelineRuler({ marks, selectedLine, onSelectLine }: TimelineRulerProps) {
   const { t } = useTransClient('studio')
   // 卡点很密时抽稀，尺子上看得清比一根一根都画重要。
   const beats = marks.beats.length > 60
@@ -49,7 +56,7 @@ export function TimelineRuler({ marks }: TimelineRulerProps) {
         {marks.keyframes.map((at, index) => (
           <span
             key={`kf-${index}`}
-            className={cn('absolute top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-cyan')}
+            className="absolute top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand-cyan"
             style={{ left: position(at, marks.duration) }}
           />
         ))}
@@ -61,6 +68,24 @@ export function TimelineRuler({ marks }: TimelineRulerProps) {
           />
         ))}
       </div>
+      {marks.lines.length > 0 && (
+        <div className="relative h-2 w-full">
+          {marks.lines.map(line => (
+            <button
+              key={`line-${line.index}`}
+              type="button"
+              aria-label={t('run.detail.lineNo', { n: line.index })}
+              aria-pressed={selectedLine === line.index}
+              onClick={() => onSelectLine?.(line.index)}
+              className={cn(
+                'absolute top-0 h-full rounded-sm transition-colors',
+                selectedLine === line.index ? 'bg-primary' : 'bg-primary/25 hover:bg-primary/40',
+              )}
+              style={{ left: position(line.start, marks.duration), width: width(line.start, line.end, marks.duration) }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

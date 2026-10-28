@@ -219,7 +219,10 @@
       "timelineDuration": "{{n}} 秒",
       "timelineBpm": "{{n}} BPM",
       "timelineBeats": "{{n}} 个卡点",
-      "timelineKeyframes": "{{n}} 个关键帧"
+      "timelineKeyframes": "{{n}} 个关键帧",
+      "lineNo": "第 {{n}} 句",
+      "lineSpan": "{{start}}–{{end}} 秒",
+      "lineBeat": "第 {{n}} 拍"
     },
     "queue": {
       "source": "本机队列",

@@ -16,8 +16,20 @@ export interface TimelineMarks {
   keyframes: number[]
   /** 音乐速度，没有音乐时为 0 */
   bpm: number
-  /** 字幕行数 */
-  textLines: number
+  /** 字幕行，按出现顺序排 */
+  lines: TimelineTextLine[]
+}
+
+export interface TimelineTextLine {
+  /** 第几句，从 1 开始 */
+  index: number
+  /** 这一句的文本 */
+  text: string
+  start: number
+  end: number
+  /** 这句开口时踩的是第几拍，稿子里没有音乐时为空 */
+  beatIndex?: number
+  beatAt?: number
 }
 
 function asRows(value: unknown): Array<Record<string, unknown>> {
@@ -65,12 +77,26 @@ export function deriveTimelineMarks(spec: unknown): TimelineMarks | null {
   const beats = (Array.isArray(music['beats']) ? music['beats'] : [])
     .map(beat => asNumber(beat))
     .filter((beat): beat is number => beat != null && beat >= 0 && beat <= cursor)
+  const lines: TimelineTextLine[] = asRows((timeline as Record<string, unknown>)['text'])
+    .map((row, index) => {
+      const start = asNumber(row['start']) ?? 0
+      const end = asNumber(row['end']) ?? start
+      const hit = beats.findIndex(beat => beat >= start - 0.05)
+      return {
+        index: index + 1,
+        text: typeof row['text'] === 'string' ? row['text'] : '',
+        start,
+        end,
+        ...(hit >= 0 ? { beatIndex: hit + 1, beatAt: beats[hit] } : {}),
+      }
+    })
+    .filter(line => line.end > line.start)
   return {
     duration: Number(cursor.toFixed(3)),
     shotEnds,
     beats,
     keyframes,
     bpm: asNumber(music['bpm']) ?? 0,
-    textLines: asRows((timeline as Record<string, unknown>)['text']).length,
+    lines,
   }
 }
