@@ -9,6 +9,7 @@ export enum AssistantToolName {
   LIST_PROJECTS = 'list_projects',
   CREATE_PROJECT = 'create_project',
   CREATE_RUN = 'create_run',
+  CREATE_RUN_BATCH = 'create_run_batch',
   GET_RUN = 'get_run',
   LIST_RUNS = 'list_runs',
   REVISE_RUN = 'revise_run',
@@ -59,6 +60,11 @@ export const createRunArgsSchema = z.object({
     }).optional().describe('卡点脉冲：给了才在拍点上推镜头'),
   }).optional().describe('背景音乐与卡点；src 为音频文件绝对路径'),
   clipSeconds: z.number().min(1).max(15).optional().describe('每个镜头的秒数，默认 3'),
+})
+
+/** 一次出多条：同一套文案/素材，标题自动带 1/N 后缀，用来做同题多版 A/B。 */
+export const createRunBatchArgsSchema = createRunArgsSchema.extend({
+  count: z.number().int().min(2).max(10).describe('一次出几条，2~10'),
 })
 
 export const getRunArgsSchema = z.object({
@@ -212,6 +218,49 @@ export const ASSISTANT_TOOLS: AssistantToolDefinition[] = [
           clipSeconds: { type: 'number', description: '每个镜头秒数，默认 3' },
         },
         required: ['title', 'script', 'materials'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: AssistantToolName.CREATE_RUN_BATCH,
+      description: '同一条文案/素材一次排 N 条任务，标题自动加 1/N 后缀，用来做同题多版挑更好的那条。参数和 create_run 一致，只多一个 count。',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: '任务标题，会带上 1/N 后缀' },
+          script: { type: 'array', items: { type: 'string' }, description: '分句文案，一句一条' },
+          materials: { type: 'array', items: { type: 'string' }, description: '素材路径或 URL' },
+          assetBase: { type: 'string', description: '素材是相对路径时的根目录' },
+          canvas: { type: 'string', enum: ['portrait', 'landscape', 'square'], description: '画幅朝向，默认竖屏' },
+          platforms: { type: 'array', items: { type: 'string' }, description: '目标平台标识' },
+          bgm: {
+            type: 'object',
+            properties: {
+              src: { type: 'string', description: '音频文件绝对路径' },
+              volume: { type: 'number', description: '0~1，默认 0.35' },
+              bpm: { type: 'number', description: '心率；给了就按 60/bpm 排拍点' },
+              offset: { type: 'number', description: '第一拍在音频里的秒数' },
+              beats: { type: 'array', items: { type: 'number' }, description: '手动拍点秒数，严格递增' },
+              pulse: {
+                type: 'object',
+                properties: {
+                  amount: { type: 'number', description: '拍点推镜头幅度，默认 0.045' },
+                  decay: { type: 'number', description: '拍点回落秒数，默认 0.16' },
+                },
+                additionalProperties: false,
+              },
+            },
+            required: ['src'],
+            additionalProperties: false,
+            description: '背景音乐与卡点；bpm/beats 决定拍点，pulse 决定拍点上是否推镜头',
+          },
+          clipSeconds: { type: 'number', description: '每个镜头秒数，默认 3' },
+          count: { type: 'number', description: '一次出几条，2~10' },
+        },
+        required: ['title', 'script', 'materials', 'count'],
         additionalProperties: false,
       },
     },

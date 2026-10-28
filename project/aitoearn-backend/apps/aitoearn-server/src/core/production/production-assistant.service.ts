@@ -21,6 +21,7 @@ import {
   createJianyingDraftArgsSchema,
   createProjectArgsSchema,
   createRunArgsSchema,
+  createRunBatchArgsSchema,
   getRenderJobArgsSchema,
   getRunArgsSchema,
   listEventsArgsSchema,
@@ -370,6 +371,12 @@ export class ProductionAssistantService {
             return this.invalidArgs(name, args.error)
           return await this.createRun(userId, args.data)
         }
+        case AssistantToolName.CREATE_RUN_BATCH: {
+          const args = createRunBatchArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.createRunBatch(userId, args.data)
+        }
         case AssistantToolName.GET_RUN: {
           const args = getRunArgsSchema.safeParse(raw)
           if (!args.success)
@@ -561,32 +568,10 @@ export class ProductionAssistantService {
   }
 
   private async createRun(userId: string, args: z.infer<typeof createRunArgsSchema>): Promise<ToolResult> {
-    const projects = await this.production.listProjects(userId)
-    const project = projects[0]
-    if (!project) {
+    const input = await this.runInput(userId, args.title, args)
+    if (!input)
       return this.fail('找不到可用项目，先在面板创建一个项目。', '没有可用项目')
-    }
-    // 没给素材就是「凭空出片」：走竖屏脚本通道，卡面/配音/立绘由 worker 现场生成。
-    // 有素材才交给 buildTimelineSpec 展开成时间轴。
-    const materials = args.materials ?? []
-    const spec = materials.length
-      ? compact({
-          engine: 'timeline',
-          script: args.script,
-          materials,
-          canvas: args.canvas,
-          platforms: args.platforms,
-          bgm: args.bgm,
-          assetBase: args.assetBase,
-          clipSeconds: args.clipSeconds,
-        })
-      : this.scriptSpec(args)
-    const run = await this.production.createRun(userId, {
-      projectId: project.id,
-      title: args.title,
-      brief: args.title,
-      spec,
-    })
+    const run = await this.production.createRun(userId, input)
     return {
       text: `已创建任务：${run.id}，状态 ${RUN_STATUS_TEXT[run.status] ?? run.status}，画幅 ${CANVAS_TEXT[args.canvas] ?? args.canvas}。`,
       actions: [action({
@@ -597,6 +582,58 @@ export class ProductionAssistantService {
         link: '/studio',
       })],
     }
+  }
+
+  /** 同题多版：一条文案排 N 次，标题自动带 1/N 后缀，渲染完再挑。 */
+  private async createRunBatch(userId: string, args: z.infer<typeof createRunBatchArgsSchema>): Promise<ToolResult> {
+    const input = await this.runInput(userId, args.title, args)
+    if (!input)
+      return this.fail('找不到可用项目，先在面板创建一个项目。', '没有可用项目')
+    const runs = await this.production.createRunBatch(userId, input, args.count)
+    return {
+      text: `已排 ${runs.length} 条任务：${runs.map(item => `${item.id}（${item.title}）`).join('；')}。`,
+      actions: [action({
+        type: ProductionAssistantActionType.RUN,
+        status: ProductionAssistantActionStatus.RUNNING,
+        label: `已排 ${runs.length} 条：${args.title}`,
+        detail: `${CANVAS_TEXT[args.canvas] ?? args.canvas} · ${runs.length} 条排队中`,
+        link: '/studio',
+      })],
+    }
+  }
+
+  /** 任务都挂第一个项目：现在一个工作台只服务一个项目，库里也按项目分目录。 */
+  private async runInput(userId: string, title: string, args: z.infer<typeof createRunArgsSchema>) {
+    const projects = await this.production.listProjects(userId)
+    const project = projects[0]
+    if (!project)
+      return null
+    return {
+      projectId: project.id,
+      title,
+      brief: args.title,
+      spec: this.runSpec(args),
+    }
+  }
+
+  /**
+   * 友好输入展开成时间轴：没给素材就是「凭空出片」，走竖屏脚本通道，
+   * 卡面/配音/立绘由 worker 现场生成；有素材才交给 buildTimelineSpec 展开。
+   */
+  private runSpec(args: z.infer<typeof createRunArgsSchema>): Record<string, unknown> {
+    const materials = args.materials ?? []
+    if (!materials.length)
+      return this.scriptSpec(args)
+    return compact({
+      engine: 'timeline',
+      script: args.script,
+      materials,
+      canvas: args.canvas,
+      platforms: args.platforms,
+      bgm: args.bgm,
+      assetBase: args.assetBase,
+      clipSeconds: args.clipSeconds,
+    })
   }
 
   private async getRun(userId: string, runId: string): Promise<ToolResult> {

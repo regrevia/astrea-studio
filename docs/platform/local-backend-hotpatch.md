@@ -29,3 +29,18 @@ scripts/dev/patch-backend-container.sh <容器名> <应用名>
 - 热补丁是**运行态**修改：`docker compose down` 或重建容器后回到镜像里的旧代码。
 - 补完建议立刻验一条真实链路（例如让 AI 指挥台下一条 timeline 渲染单），确认新代码真的在跑。
 - 脚本不写死任何机器路径，容器名/应用名都可用参数覆盖。
+
+# 本机改前端界面怎么看到
+
+前端在容器里也是构建产物（`next build` 的 standalone），没有源码挂载，重建镜像同样要拉基础镜像。
+所以 `nginx/nginx.conf` 把前端上游指到宿主机 `host.docker.internal:3001`：本机起一份 standalone，
+刷新 8080 就能看到界面改动，容器里的 web 镜像保持不动。
+
+```bash
+scripts/dev/serve-web-local.sh              # next build 后在 :3001 后台起 standalone
+scripts/dev/serve-web-local.sh --no-build   # 已经构建过，只重启进程
+```
+
+- 登录态靠 `AUTO_LOGIN_TOKEN`，脚本从 `STUDIO_TOKEN_FILE`（默认 `/tmp/auto_token.txt`）读；web 只在启动时读一次。
+- 改完界面刷新 `http://127.0.0.1:8080/zh-CN/studio` 即可，不需要 `docker compose up`。
+- 这条只服务于本机联调：镜像里的 web 还是旧构建，正式发布要走镜像重建。
