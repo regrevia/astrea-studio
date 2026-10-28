@@ -69,6 +69,8 @@ export default function ProjectWorkspace() {
   const [runs, setRuns] = useState<ProductionRun[]>([])
   const [inventory, setInventory] = useState<Inventory | null>(null)
   const [selectedRunId, setSelectedRunId] = useState('')
+  // 一次出多版时记住这批 id，面板顶上直接切版本，不用回任务列表里翻。
+  const [batchIds, setBatchIds] = useState<string[]>([])
   /** 素材选中结果按项目记住：下次进这个项目还在，不用重新点。 */
   const materialsKey = `studio:workspace:materials:${projectId}`
   const [materialsText, setMaterialsText] = useState('')
@@ -322,6 +324,37 @@ export default function ProjectWorkspace() {
             </CardContent>
           </Card>
 
+          {batchIds.length > 1 && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">{t('project.batch')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-1.5">
+                  {batchIds.map((id, index) => {
+                    const run = runs.find(item => item.id === id)
+                    return (
+                      <Button
+                        key={id}
+                        type="button"
+                        size="sm"
+                        variant={id === selectedRunId ? 'default' : 'outline'}
+                        className="h-8 text-xs"
+                        disabled={!run}
+                        onClick={() => setSelectedRunId(id)}
+                      >
+                        {t('project.batchVersion', { n: index + 1 })}
+                        {run && run.status !== 'succeeded'
+                          ? ` · ${t(`project.status_${RUN_FILTERS.includes(run.status as RunFilter) ? run.status : 'running'}`)}`
+                          : ''}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {selectedRun && (
             <Card>
               <CardContent className="pt-4">
@@ -380,6 +413,7 @@ export default function ProjectWorkspace() {
             projectId={projectId}
             projectName={project?.name ?? ''}
             onCreated={(ids) => {
+              setBatchIds(ids.length > 1 ? ids : [])
               if (ids[0])
                 setSelectedRunId(ids[0])
               refresh().catch(() => {})
