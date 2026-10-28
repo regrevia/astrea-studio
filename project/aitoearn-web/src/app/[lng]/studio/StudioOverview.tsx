@@ -39,6 +39,8 @@ import { groupRuns, publicationStatusMeta } from './utils/status'
 
 /** 每 3 秒刷新一次；渲染本身就是分钟级，再快只是浪费请求。 */
 const POLL_MS = 3000
+/** 任务列表一页 30 条；项目用久了单项目也能攒出几百条，得能往下翻。 */
+const RUN_PAGE_SIZE = 30
 
 /** 扫码登录坞：独立小服务，只做登录、不发布。 */
 const LOGIN_DOCK = 'http://127.0.0.1:8898/'
@@ -269,6 +271,10 @@ function VoicePanel({ inventory }: { inventory: Inventory | null }) {
 export default function StudioOverview() {
   const { t } = useTransClient('studio')
   const [runs, setRuns] = useState<ProductionRun[]>([])
+  const [runTotal, setRunTotal] = useState(0)
+  /** 已经拉过几页：轮询刷新按这个量一次拉回来，翻过的页不会被刷回去。 */
+  const [runPages, setRunPages] = useState(1)
+  const [loadingMoreRuns, setLoadingMoreRuns] = useState(false)
   const [publications, setPublications] = useState<PublicationAttempt[]>([])
   const [workers, setWorkers] = useState<ProductionWorker[]>([])
   const [renderJobs, setRenderJobs] = useState<RenderJob[]>([])
@@ -323,7 +329,11 @@ export default function StudioOverview() {
       // payload — the project convention is `res?.data?.list`. Reading `.list`
       // straight off the envelope is undefined and silently renders empty cards.
       const [runsRes, pubsRes, healthRes, inv, chars, queue] = await Promise.all([
-        getRuns({ pageNo: 1, pageSize: 30 }),
+        getRuns({
+          projectId: projectId || undefined,
+          pageNo: 1,
+          pageSize: RUN_PAGE_SIZE * runPages,
+        }),
         getPublications(),
         getHealth(),
         getInventory(),
@@ -331,6 +341,7 @@ export default function StudioOverview() {
         getRenderJobs(),
       ])
       setRuns(runsRes?.data?.list ?? [])
+      setRunTotal(runsRes?.data?.total ?? 0)
       setPublications(pubsRes?.data ?? [])
       setWorkers(healthRes?.data?.workers ?? [])
       setInventory(inv)
@@ -344,7 +355,7 @@ export default function StudioOverview() {
     finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t, projectId, runPages])
 
   useEffect(() => {
     // Projects are static per session; fetch once and keep a name lookup.
@@ -378,7 +389,14 @@ export default function StudioOverview() {
     return () => clearInterval(timer)
   }, [refresh])
 
-  /** 项目范围：后端列表不按项目过滤，这里按 run.projectId 收窄。 */
+  /** 换项目等于换一份清单：页码与已加载的条目都从头开始。 */
+  useEffect(() => {
+    setRunPages(1)
+    setRuns([])
+    setRunTotal(0)
+  }, [projectId])
+
+  /** 项目范围：后端已按项目过滤，这里只挡一次整表兜底。 */
   const visibleRuns = useMemo(
     () => (projectId ? runs.filter(run => run.projectId === projectId) : runs),
     [runs, projectId],
@@ -388,6 +406,30 @@ export default function StudioOverview() {
     () => visibleRuns.find(run => run.id === selectedRunId) ?? null,
     [visibleRuns, selectedRunId],
   )
+
+  const loadMoreRuns = useCallback(async () => {
+    setLoadingMoreRuns(true)
+    try {
+      const res = await getRuns({
+        projectId: projectId || undefined,
+        pageNo: runPages + 1,
+        pageSize: RUN_PAGE_SIZE,
+      })
+      const list = res?.data?.list ?? []
+      setRuns((prev) => {
+        const seen = new Set(prev.map(run => run.id))
+        return [...prev, ...list.filter(run => !seen.has(run.id))]
+      })
+      setRunTotal(res?.data?.total ?? 0)
+      setRunPages(page => page + 1)
+    }
+    catch (e) {
+      setError(e instanceof Error ? e.message : t('overview.loadFailed'))
+    }
+    finally {
+      setLoadingMoreRuns(false)
+    }
+  }, [projectId, runPages, t])
 
   const selectRun = useCallback((runId: string) => {
     setSelectedRunId(runId)
@@ -634,6 +676,18 @@ export default function StudioOverview() {
               </CardContent>
             </Card>
           ))}
+          {runs.length < runTotal && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full cursor-pointer"
+              disabled={loadingMoreRuns}
+              onClick={() => void loadMoreRuns()}
+            >
+              {t('project.loadMore', { count: runTotal - runs.length })}
+            </Button>
+          )}
         </div>
 
         <div className="lg:sticky lg:top-4">
