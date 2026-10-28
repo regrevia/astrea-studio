@@ -179,6 +179,13 @@ export class ProductionController {
     private readonly assistant: ProductionAssistantService,
   ) {}
 
+  @ApiDoc({ summary: '素材抽帧（视频缩略图用）' })
+  @Get('materials/frame')
+  async materialFrame(@Query('path') path: string, @Query('t') t?: string) {
+    const file = await this.assistant.capabilityMaterialFrame(path ?? '', Number(t ?? 0))
+    return new StreamableFile(file.body, { type: file.contentType })
+  }
+
   @ApiDoc({ summary: '素材原图（缩略图用）' })
   @Get('materials/file')
   async materialFile(@Query('path') path: string) {

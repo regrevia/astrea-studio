@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -139,6 +140,46 @@ def material_file(rel: str) -> tuple[bytes, str]:
     return target.read_bytes(), ctype
 
 
+_frame_cache: dict[tuple[str, float], bytes] = {}
+
+
+def material_frame(rel: str, at: float = 0.0) -> tuple[bytes, str]:
+    """视频素材的首帧/指定秒帧，给素材面板当缩略图。
+
+    图片直接透传；视频按秒抽一帧、缩到 480 宽的 JPEG。路径同样只允许
+    materials 根目录内的相对路径，越界一律 404。
+    """
+    import mimetypes
+
+    root = jobs.MATERIALS_DIR.resolve()
+    target = (root / rel).resolve()
+    if not str(target).startswith(str(root) + os.sep) or not target.is_file():
+        raise KeyError(rel)
+    ctype = mimetypes.guess_type(str(target))[0] or ""
+    if ctype.startswith("image/"):
+        return target.read_bytes(), ctype
+    if ctype not in ("video/mp4", "video/quicktime", "video/webm", "video/x-matroska"):
+        raise KeyError(rel)
+    key = (rel, round(at, 2))
+    cached = _frame_cache.get(key)
+    if cached is not None:
+        return cached, "image/jpeg"
+    proc = subprocess.run(
+        [
+            "ffmpeg", "-v", "error", "-ss", f"{max(at, 0):.2f}", "-i", str(target),
+            "-frames:v", "1", "-vf", "scale=480:-2", "-f", "mjpeg", "pipe:1",
+        ],
+        capture_output=True,
+        timeout=20,
+    )
+    if proc.returncode != 0 or not proc.stdout:
+        raise KeyError(rel)
+    if len(_frame_cache) > 256:
+        _frame_cache.clear()
+    _frame_cache[key] = proc.stdout
+    return proc.stdout, "image/jpeg"
+
+
 def snapshot(force: bool = False) -> dict:
     with _lock:
         now = time.time()
@@ -218,6 +259,14 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/materials/file":
                 q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
                 data, ctype = material_file((q.get("path") or [""])[0])
+                self._send(200, data, ctype)
+            elif path == "/materials/frame":
+                q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+                try:
+                    at = float((q.get("t") or ["0"])[0])
+                except ValueError:
+                    at = 0.0
+                data, ctype = material_frame((q.get("path") or [""])[0], at)
                 self._send(200, data, ctype)
             elif path == "/assets":
                 self._send(200, json.dumps(jobs.assets(), ensure_ascii=False).encode())

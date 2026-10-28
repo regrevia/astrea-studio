@@ -1,0 +1,53 @@
+{
+  "round": 23,
+  "feature": "素材面板显示真实缩略图（图片直读 + 视频抽帧通道）",
+  "why": "以前素材只能按「第 N 张」文字挑，看不出是哪张图；视频素材更是完全没有通道",
+  "channels": [
+    {
+      "path": "GET /materials/file?path=<rel>",
+      "owner": "mac worker :8899",
+      "returns": "原始图片字节",
+      "verified": "nginx 200"
+    },
+    {
+      "path": "GET /materials/frame?path=<rel>&t=<sec>",
+      "owner": "mac worker :8899",
+      "returns": "ffmpeg 抽帧 JPEG（480 宽，带 256 条上限的内存缓存）",
+      "verified": {
+        "http": 200,
+        "contentType": "image/jpeg",
+        "bytes": 10536,
+        "sample": "shots/promo2/seg-a.mp4 t=1"
+      }
+    },
+    {
+      "path": "GET /api/production/materials/frame?path=&t=",
+      "owner": "aitoearn-server",
+      "returns": "StreamableFile 透传，鉴权走 Bearer",
+      "verified": {
+        "http": 200,
+        "contentType": "image/jpeg",
+        "bytes": 10536
+      }
+    }
+  ],
+  "ui": {
+    "file": "project/aitoearn-web/src/app/[lng]/studio/components/NewRunForm/index.tsx",
+    "before": "pack 素材只有「第 1 张 / 第 2 张」文字按钮",
+    "after": "按钮内嵌 36×48 竖版缩略图，点一下仍然按原逻辑把 pack: 引用写进素材行",
+    "shared": "src/app/[lng]/studio/utils/materials.ts 抽出 packShotPath / useMaterialThumbs，项目工作区与表单共用一套取图逻辑"
+  },
+  "measured": {
+    "thumbnailsLoaded": 2,
+    "naturalSize": "1080×1920",
+    "source": "blob: URL，由 Bearer 换取后 revoke"
+  },
+  "checks": {
+    "webTsc": "exit 0",
+    "uiCopyLint": "0 error / 96 warning",
+    "zhLint": "0 error / 7 warning",
+    "styleLint": "无 error",
+    "backendTsc": "exit 0"
+  },
+  "screenshot": "docs/platform/evidence/material-thumbs.png"
+}

@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label'
 import { NumberInput } from '@/components/ui/number-input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { packShotPath, useMaterialThumbs } from '../../utils/materials'
 import { DEFAULT_PLATFORMS, PLATFORM_LABELS, PLATFORM_OPTIONS } from '../../studioConstants'
 import NarrationRunResult from './components/NarrationRunResult'
 import {
@@ -91,6 +92,8 @@ export default function NewRunForm({
   const [variants, setVariants] = useState<RunBatchVariant[]>(['mirror', 'opening', 'hook'])
   const [voices, setVoices] = useState<VoiceOption[]>(() => buildVoiceOptions())
   const [packs, setPacks] = useState<MaterialPack[]>([])
+  const packRefs = useMemo(() => packs.flatMap(pack => pack.refs), [packs])
+  const thumbs = useMaterialThumbs(packRefs)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState('')
   const [runId, setRunId] = useState('')
@@ -296,11 +299,10 @@ export default function NewRunForm({
                         variant={materialsText.split('\n').map(line => line.trim()).includes(ref) ? 'default' : 'outline'}
                         onClick={() => togglePackShot(ref)}
                       >
-                        第
-                        {' '}
-                        {index + 1}
-                        {' '}
-                        张
+                        {thumbs[ref]
+                          ? <img src={thumbs[ref]} alt="" className="h-12 w-9 rounded-sm object-cover" />
+                          : null}
+                        {`第 ${index + 1} 张`}
                       </Button>
                     ))}
                   </div>

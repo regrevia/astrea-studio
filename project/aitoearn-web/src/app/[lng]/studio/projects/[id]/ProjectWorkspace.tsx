@@ -16,6 +16,7 @@ import { createProject, fetchMaterialBlobUrl, getInventory, getProjects, getRuns
 import { useTransClient } from '@/app/i18n/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { packShotPath, useMaterialThumbs } from '@/app/[lng]/studio/utils/materials'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
@@ -38,45 +39,6 @@ const PAGE_SIZE = 12
 /** 任务区能筛的几档状态；all 表示不加条件。 */
 type RunFilter = 'all' | 'succeeded' | 'running' | 'failed'
 const RUN_FILTERS: RunFilter[] = ['all', 'succeeded', 'running', 'failed']
-
-/** `pack:slug/name` 对应的素材原图相对路径，和后端只读图片通道约定一致。 */
-function packShotPath(ref: string): string | null {
-  if (!ref.startsWith('pack:'))
-    return null
-  const [slug, name] = ref.slice(5).split('/')
-  if (!slug || !name)
-    return null
-  return `packs/${slug}/shots/${name}.png`
-}
-
-/** 材质原图要带登录头，图片标签带不上，所以取回 blob URL 再用。 */
-function useMaterialThumbs(refs: string[]) {
-  const [thumbs, setThumbs] = useState<Record<string, string>>({})
-
-  useEffect(() => {
-    let alive = true
-    const created: string[] = []
-    refs.forEach((ref) => {
-      const rel = packShotPath(ref)
-      if (!rel)
-        return
-      fetchMaterialBlobUrl(rel)
-        .then((url) => {
-          if (!url || !alive)
-            return
-          created.push(url)
-          setThumbs(current => ({ ...current, [ref]: url }))
-        })
-        .catch(() => {})
-    })
-    return () => {
-      alive = false
-      created.forEach(url => URL.revokeObjectURL(url))
-    }
-  }, [refs])
-
-  return thumbs
-}
 
 export default function ProjectWorkspace() {
   const { t } = useTransClient('studio')

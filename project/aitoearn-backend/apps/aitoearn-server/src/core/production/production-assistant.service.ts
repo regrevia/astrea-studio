@@ -189,6 +189,33 @@ export class ProductionAssistantService {
     return await this.readCapabilityJson('/assets')
   }
 
+  /** 面板要视频缩略图：让宿主机在指定秒抽一帧，省得把整个视频传过来。 */
+  async capabilityMaterialFrame(rel: string, at = 0): Promise<{ body: Buffer, contentType: string }> {
+    const clean = rel.replace(/^\/+/, '')
+    if (!clean || clean.includes('..')) {
+      throw new AppException(ResponseCode.ProductionRenderQueueUnavailable, '素材路径不合法')
+    }
+    const seconds = Number.isFinite(at) && at > 0 ? Math.min(at, 600) : 0
+    const url = `${config.studioAssistant.inventoryUrl.replace(/\/+$/, '')}/materials/frame?path=${encodeURIComponent(clean)}&t=${seconds}`
+    let response: Response
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(INVENTORY_TIMEOUT_MS) })
+    }
+    catch (error) {
+      throw new AppException(
+        ResponseCode.ProductionRenderQueueUnavailable,
+        `宿主机能力服务连不上：${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+    if (!response.ok) {
+      throw new AppException(ResponseCode.ProductionRenderQueueUnavailable, '没有这张素材')
+    }
+    return {
+      body: Buffer.from(await response.arrayBuffer()),
+      contentType: response.headers.get('content-type') || 'image/jpeg',
+    }
+  }
+
   /** 面板要缩略图：读宿主机素材原图，只允许 materials 根目录内的图片相对路径。 */
   async capabilityMaterialFile(rel: string): Promise<{ body: Buffer, contentType: string }> {
     const clean = rel.replace(/^\/+/, '')
