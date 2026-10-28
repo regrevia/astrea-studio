@@ -104,5 +104,40 @@
     "unassigned": 6,
     "verify": "干净（lib.verify 无缺文件/大小不符/缺 sidecar）",
     "tests": "31 条 worker 单测全过（新增 migrate 三条：纯 id 目录、studio 按 runId、找不到归属保留）"
+  },
+  "finalCheck": {
+    "projectId": "6ae237a72a5e71e140145c45",
+    "runs": [
+      {
+        "title": "端到端验收 · 30 秒 · 3/3",
+        "status": "succeeded",
+        "libraryPath": "/Users/apple/CreatorStudio/library/端到端验收-一体化宣发工作台__6ae237a7/2026-10/20261029-015821__端到端验收-一体化宣发工作台__6ae237a7__001__端到端验收-30-秒-3-3__douyin__r1.mp4",
+        "width": 1080,
+        "height": 1920,
+        "fps": "30/1",
+        "duration": 30.0,
+        "bytes": 4411827
+      },
+      {
+        "title": "端到端验收 · 30 秒 · 2/3",
+        "status": "succeeded",
+        "libraryPath": "/Users/apple/CreatorStudio/library/端到端验收-一体化宣发工作台__6ae237a7/2026-10/20261029-015813__端到端验收-一体化宣发工作台__6ae237a7__001__端到端验收-30-秒-2-3__douyin__r1.mp4",
+        "width": 1080,
+        "height": 1920,
+        "fps": "30/1",
+        "duration": 30.0,
+        "bytes": 4353350
+      },
+      {
+        "title": "端到端验收 · 30 秒 · 1/3",
+        "status": "succeeded",
+        "libraryPath": "/Users/apple/CreatorStudio/library/端到端验收-一体化宣发工作台__6ae237a7/2026-10/20261029-015807__端到端验收-一体化宣发工作台__6ae237a7__001__端到端验收-30-秒-1-3__douyin__r1.mp4",
+        "width": 1080,
+        "height": 1920,
+        "fps": "30/1",
+        "duration": 30.0,
+        "bytes": 4417648
+      }
+    ]
   }
 }

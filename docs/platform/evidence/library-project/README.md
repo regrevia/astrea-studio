@@ -53,3 +53,7 @@
 | `6ae235e6aa561aad282987e0/` | `端到端验收-一体化宣发工作台__6ae235e6/` | 10 |
 
 搬迁同时改文件名里的项目段、sidecar 的 `path/project/projectId/projectDir`，并回写台账路径；`library.py verify` 对账干净。库根现在只有 15 个项目目录 + `未归属` + `index.jsonl`。
+
+## 迁移后复跑
+
+迁移完成、worker 重启后新建项目再跑一批 3 版，全部 succeeded，落点都在新目录（`端到端验收-一体化宣发工作台__6ae237a7/`），ffprobe 均为 1080×1920 / 30 fps / 30.0 s。工作区截图见 `e2e-workspace.png`。
