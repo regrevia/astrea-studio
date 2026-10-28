@@ -23,7 +23,7 @@ import {
 } from '@yikart/mongodb'
 import { MaterialGroupService } from '../content/material-group.service'
 import { MaterialService } from '../content/material.service'
-import { buildTimelineSpec, mirrorKeyframes } from './timeline-spec'
+import { buildTimelineSpec, mirrorKeyframes, rotateOpening } from './timeline-spec'
 
 export const LEASE_MS = 60_000
 export const RENDER_LANE = 'render'
@@ -279,10 +279,15 @@ export class ProductionService {
   async createRunBatch(userId: string, input: CreateRunInput, count: number): Promise<ProductionRun[]> {
     const runs: ProductionRun[] = []
     for (let i = 0; i < count; i += 1) {
-      // 第 1 条按原稿，后面的把推拉方向镜像，批出来的几条才有得挑
-      const spec = i > 0 && input.spec?.['timeline']
-        ? { ...input.spec, timeline: mirrorKeyframes(input.spec['timeline'] as Record<string, unknown>) }
-        : input.spec
+      // 第 1 条按原稿；第 2 条只镜像推拉；第 3 条起再换开场镜头，
+      // 三条两两不同才叫多版，否则批到第三条又撞回第一条。
+      let spec = input.spec
+      const timeline = input.spec?.['timeline']
+      if (i > 0 && timeline) {
+        let variant = mirrorKeyframes(timeline as Record<string, unknown>)
+        if (i > 1) variant = rotateOpening(variant)
+        spec = { ...input.spec, timeline: variant }
+      }
       runs.push(await this.createRun(userId, {
         ...input,
         spec,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildTimelineSpec, mirrorKeyframes, TimelineCanvasPreset } from './timeline-spec'
+import { buildTimelineSpec, mirrorKeyframes, rotateOpening, TimelineCanvasPreset } from './timeline-spec'
 
 const FRIENDLY_INPUT = {
   engine: 'timeline',
@@ -268,5 +268,22 @@ describe('mirrorKeyframes 同题多版的运镜镜像', () => {
 
     expect(mirrored['video']).toEqual(spec.video)
     expect(mirrored['music']).toEqual(spec.music)
+  })
+})
+
+describe('rotateOpening 同题多版的换开场', () => {
+  it('首段挪到最后，镜头数与总时长不变', () => {
+    const spec = { video: [{ src: 'a.mp4' }, { src: 'b.mp4' }, { src: 'c.mp4' }] }
+
+    const rotated = rotateOpening(spec as Record<string, unknown>) as typeof spec
+
+    expect(rotated.video.map(v => v.src)).toEqual(['b.mp4', 'c.mp4', 'a.mp4'])
+    expect(spec.video[0].src).toBe('a.mp4')
+  })
+
+  it('单段素材不动：换开场没有意义', () => {
+    const spec = { video: [{ src: 'only.mp4' }] }
+
+    expect(rotateOpening(spec as Record<string, unknown>)['video']).toEqual(spec.video)
   })
 })

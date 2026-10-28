@@ -263,3 +263,17 @@ export function mirrorKeyframes(spec: Record<string, unknown>): Record<string, u
   })
   return { ...spec, video: flipped }
 }
+
+/**
+ * 同题多版的第二维差异：换开场镜头。
+ *
+ * 只倒运镜（mirrorKeyframes）时前两条已经能挑，第三条起还会和第一条撞。这里把
+ * 首段素材挪到最后、原第二段顶上开场——镜头清单不变、总时长不变，但开头三秒
+ * 是另一个画面，信息流里第一眼就不一样。只动 video 顺序，不碰 keyframes/音频。
+ */
+export function rotateOpening(spec: Record<string, unknown>): Record<string, unknown> {
+  const video = spec['video']
+  if (!Array.isArray(video) || video.length < 2) return spec
+  const [first, ...rest] = video
+  return { ...spec, video: [...rest, first] }
+}

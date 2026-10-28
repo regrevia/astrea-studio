@@ -171,6 +171,39 @@ describe('createRunBatch', () => {
     expect(runs.map(r => r.title)).toEqual(['咖啡机 · 1/3', '咖啡机 · 2/3', '咖啡机 · 3/3'])
     expect(runRepo.create.mock.calls.map(c => c[0].status)).toEqual(['queued', 'queued', 'queued'])
   })
+
+  it('timeline 稿按条错开：原稿、镜像推拉、换开场，engine 一直保留', async () => {
+    const { service, projectRepo, runRepo } = createService()
+    projectRepo.getByIdForUser.mockResolvedValue({ id: '6adc2161656a13996166bbfc' })
+    runRepo.create.mockImplementation(async (data: Record<string, unknown>) => ({ id: `run-${runRepo.create.mock.calls.length}`, ...data }))
+    const timeline = {
+      canvas: { width: 1080, height: 1920, fps: 30 },
+      video: [
+        { src: 'a.mp4', in: 0, out: 3, keyframes: [{ at: 0, zoom: 1 }, { at: 3, zoom: 1.12 }] },
+        { src: 'b.mp4', in: 0, out: 4, keyframes: [{ at: 0, zoom: 1.1 }, { at: 4, zoom: 1 }] },
+      ],
+    }
+
+    await service.createRunBatch('user-1', {
+      projectId: '6adc2161656a13996166bbfc',
+      title: '咖啡机',
+      brief: '三秒一句',
+      spec: { engine: 'timeline', timeline },
+    }, 3)
+
+    const specs = runRepo.create.mock.calls.map(c => c[0].spec as Record<string, unknown>)
+    const first = specs[0]['timeline'] as Record<string, unknown>
+    const second = specs[1]['timeline'] as Record<string, unknown>
+    const third = specs[2]['timeline'] as Record<string, unknown>
+    expect(specs.map(s => s.engine)).toEqual(['timeline', 'timeline', 'timeline'])
+    // 第 1 条原稿逐字不动
+    expect(first.video).toEqual(timeline.video)
+    // 第 2 条只把 zoom 值倒过来，时间点和镜头顺序都不变
+    expect((second.video as typeof timeline.video)[0].keyframes).toEqual([{ at: 0, zoom: 1.12 }, { at: 3, zoom: 1 }])
+    expect((second.video as typeof timeline.video).map(v => v.src)).toEqual(['a.mp4', 'b.mp4'])
+    // 第 3 条再换开场
+    expect((third.video as typeof timeline.video).map(v => v.src)).toEqual(['b.mp4', 'a.mp4'])
+  })
 })
 
 describe('reviseRun', () => {
