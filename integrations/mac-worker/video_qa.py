@@ -32,6 +32,8 @@ FREEZE_WINDOW = 4
 CHAR_STATIC_DIFF = 0.3
 CHAR_STATIC_WINDOW = 8
 # 文字区、人物区：判断这两块有没有东西，比整帧更容易抓住「字没贴上」
+# 卡面版式的字压在画面中段，字幕版式的字贴在最下方，两者取同一个框必然有一边落空，
+# 所以字幕版式按规格里的行位置现算取样带（见 _text_band）。
 TEXT_BOX = (124, 470, 1004, 1000)
 CHAR_BOX = (280, 900, 1040, 1700)
 
@@ -54,6 +56,41 @@ def _refine_cut(video: Path, around: float, span: float = 0.6, fps: float = 25.0
         return around
     diff = np.abs(np.diff(frames.astype(np.int16), axis=0)).mean(axis=(1, 2))
     return round(start + float(np.argmax(diff) + 1) / fps, 2)
+
+
+def _text_rows(meta: dict) -> list[dict]:
+    return [r for r in (meta.get("text") or []) if isinstance(r, dict)]
+
+
+def _text_band(meta: dict) -> tuple[int, int, int, int] | None:
+    """字幕版式的取样带：按字幕行的 y 与字号现算，返回设计分辨率（1080×1920）下的框。
+    没有显式字幕行时返回 None，调用方退回卡面版式的固定框。"""
+    rows = _text_rows(meta)
+    ys = [float(r["y"]) for r in rows if isinstance(r.get("y"), (int, float))]
+    if not ys:
+        return None
+    sizes = [float(r["size"]) for r in rows if isinstance(r.get("size"), (int, float))]
+    size = sum(sizes) / len(sizes) if sizes else 0.052
+    y = max(0.0, min(1.0, sum(ys) / len(ys)))
+    half = max(0.045, min(0.10, size * 0.9))
+    return (int(0.04 * 1080), int(max(0.0, y - half) * 1920),
+            int(0.96 * 1080), int(min(1.0, y + half) * 1920))
+
+
+def _covered_by_text(meta: dict, count: int) -> np.ndarray | None:
+    """哪些采样点本该有字幕。字幕本来就是一句一句出现的，按整条片子算「没字」会把
+    句与句之间那零点几秒也算成缺陷，只有落在某句时间里的空格才该报。"""
+    rows = _text_rows(meta)
+    spans = [(float(r["start"]), float(r["end"])) for r in rows
+             if isinstance(r.get("start"), (int, float)) and isinstance(r.get("end"), (int, float))]
+    if not spans:
+        return None
+    out = np.zeros(count, dtype=bool)
+    for i in range(count):
+        at = i * STEP
+        if any(a - STEP / 2 <= at <= b + STEP / 2 for a, b in spans):
+            out[i] = True
+    return out
 
 
 def _box_std(frames: np.ndarray, box: tuple[int, int, int, int]) -> np.ndarray:
@@ -146,6 +183,24 @@ def _layer_findings(meta: dict, findings: list) -> None:
                          "detail": f"人物忽大忽小：身高 {int(live.min())}→{int(live.max())}"})
 
 
+def _gap_findings(code: str, series: np.ndarray, covered: np.ndarray | None) -> list[dict]:
+    """某一块内容有没有在该有的时候缺席。给了 covered 就只算该有的那段时间。"""
+    if not len(series):
+        return []
+    miss = series < FLAT_STD
+    label = "卡面没字"
+    if covered is not None:
+        if not covered.any():
+            return []
+        miss = miss & covered
+        label = "字幕没贴上"
+    if not miss.any() or miss.mean() <= 0.03:
+        return []
+    at = float(np.flatnonzero(miss)[0]) * STEP
+    return [{"code": code, "level": "warn", "at": round(at, 2),
+             "detail": f"{at:.1f}s 起{label}（{(miss.mean() * 100):.0f}% 的帧）"}]
+
+
 def check(video: Path, spec: Path) -> dict:
     meta = json.loads(spec.read_text(encoding="utf-8"))
     want = meta.get("meta", {}).get("duration") if isinstance(meta, dict) else None
@@ -155,7 +210,9 @@ def check(video: Path, spec: Path) -> dict:
         capture_output=True, text=True, check=True).stdout.strip())
     frames = _frames(video, 0, got, 1 / STEP)
     whole = frames.reshape(len(frames), -1).std(axis=1)
-    text = _box_std(frames, TEXT_BOX)
+    band = _text_band(meta)
+    text = _box_std(frames, band or TEXT_BOX)
+    covered = _covered_by_text(meta, len(frames)) if band else None
     char = _box_std(frames, CHAR_BOX)
     findings = []
     # 收尾是主动压黑收的（最后一屏连人带卡一起淡出）。末尾这段不算缺陷，
@@ -178,17 +235,8 @@ def check(video: Path, spec: Path) -> dict:
         findings.append({"code": "blank_frame", "level": "error",
                          "at": round(at, 2),
                          "detail": f"{at:.2f}s 整帧发黑"})
-    # 卡面上有字的时间段，应该占满整条片子（叠化时也不该两块同时消失）
-    for code, series, label in (("text_gap", text, "卡面没字"),
-                                ("character_gap", char, "画面里没人")):
-        if not len(series):
-            continue
-        miss = series < FLAT_STD
-        if miss.mean() <= 0.03:
-            continue
-        at = float(np.flatnonzero(miss)[0]) * STEP
-        findings.append({"code": code, "level": "warn", "at": round(at, 2),
-                         "detail": f"{at:.1f}s 起{label}（{(miss.mean() * 100):.0f}% 的帧）"})
+    findings.extend(_gap_findings("text_gap", text, covered))
+    findings.extend(_gap_findings("character_gap", char, None))
     # 转场与节奏：该叠化的地方硬切、该动的画面定格，屏幕上就是 PPT 翻页感
     if len(frames) > 1:
         diff = np.abs(np.diff(frames.astype(np.int16), axis=0)).mean(axis=(1, 2))

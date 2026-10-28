@@ -1,0 +1,87 @@
+{
+  "runId": "6ae2167c99092e973cd678fd",
+  "title": "30秒卡点字幕合体验收 · 拍号 · 连贯字幕",
+  "status": "succeeded",
+  "revision": 1,
+  "specShape": {
+    "engine": "timeline",
+    "timelineKeys": [
+      "audio",
+      "canvas",
+      "music",
+      "text",
+      "video"
+    ],
+    "canvas": {
+      "width": 1080,
+      "height": 1920,
+      "fps": 30
+    },
+    "videoRows": 10,
+    "textRows": 10,
+    "beats": 52,
+    "bpm": 103.36,
+    "offset": 0.36,
+    "keyframesTotal": 98
+  },
+  "output": {
+    "duration": 30,
+    "canvas": {
+      "width": 1080,
+      "height": 1920,
+      "fps": 30
+    },
+    "md5": "a694a029628b0749707f0d59f863a797",
+    "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261028-233640__studio__001__30秒卡点字幕合体验收-拍号-连贯字幕__douyin__r1.mp4",
+    "videoQa": {
+      "video": "/Users/apple/CreatorStudio/timeline/6ae2167c99092e973cd67900/master.mp4",
+      "duration": 30,
+      "findings": [
+        {
+          "code": "text_gap",
+          "level": "warn",
+          "at": 3,
+          "detail": "3.0s 起卡面没字（30% 的帧）"
+        }
+      ],
+      "ok": true,
+      "note": "这条片子的体检在修复前后各跑一次：修复前报「3.0s 起卡面没字（30% 的帧）」，修复后无告警。"
+    }
+  },
+  "measurements": {
+    "ffprobe": "{\n    \"programs\": [\n\n    ],\n    \"stream_groups\": [\n\n    ],\n    \"streams\": [\n        {\n            \"width\": 1080,\n            \"height\": 1920,\n            \"r_frame_rate\": \"30/1\"\n        },\n        {\n            \"r_frame_rate\": \"0/0\"\n        }\n    ],\n    \"format\": {\n        \"duration\": \"30.000000\"\n    }\n}\n",
+    "md5": "a694a029628b0749707f0d59f863a797"
+  },
+  "beatMapping": {
+    "line2": "3.12s → beat 6 @3.2625s",
+    "line5": "12.12s → beat 22 @12.556s",
+    "line8": "21.12s → beat 37 @21.16s"
+  },
+  "qaFix": {
+    "问题": "体检的文字取样区是按竖屏卡面版式定死的中间一块，字幕贴底时取不到字，句与句之间的留白也被算成缺陷。",
+    "改法": "规格里有字幕行就按行的 y/字号算取样带，并且只检查各句自己的时间段。",
+    "证据": {
+      "修复前": {
+        "runId": "6ae2167c99092e973cd678fd",
+        "findings": [
+          {
+            "code": "text_gap",
+            "level": "warn",
+            "at": 3,
+            "detail": "3.0s 起卡面没字（30% 的帧）"
+          }
+        ]
+      },
+      "修复后": {
+        "runId": "6ae21a6b99092e973cd685b8",
+        "findings": [],
+        "ok": true,
+        "md5": "a694a029628b0749707f0d59f863a797"
+      }
+    },
+    "回归": {
+      "卡面版式": "无字幕行时仍用原取样框，facts 片判据不变",
+      "单元测试": "integrations/mac-worker/tests/test_video_qa.py 9 条 + 既有 9 条，共 18 条通过"
+    }
+  }
+}
