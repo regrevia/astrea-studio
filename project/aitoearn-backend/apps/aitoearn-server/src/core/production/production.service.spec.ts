@@ -174,11 +174,10 @@ describe('createRunBatch', () => {
     expect(runRepo.create).toHaveBeenCalledTimes(3)
     expect(runs.map(r => r.title)).toEqual(['咖啡机 · 1/3', '咖啡机 · 2/3', '咖啡机 · 3/3'])
     expect(runRepo.create.mock.calls.map(c => c[0].status)).toEqual(['queued', 'queued', 'queued'])
-    // 这一批记到项目上，工作区刷新后还能把版本按钮摆出来。
-    expect(projectRepo.updateById).toHaveBeenCalledWith(
-      '6adc2161656a13996166bbfc',
-      { lastBatchRunIds: ['run-1', 'run-2', 'run-3'] },
-    )
+    // 这一批记到项目上，工作区刷新后还能把并排版本卡摆出来；只留最近两批。
+    const update = projectRepo.updateById.mock.calls[0][1] as { recentBatches: Array<{ runIds: string[] }> }
+    expect(update.recentBatches).toHaveLength(1)
+    expect(update.recentBatches[0].runIds).toEqual(['run-1', 'run-2', 'run-3'])
   })
 
   it('timeline 稿按条错开：原稿、镜像推拉、换开场，engine 一直保留', async () => {

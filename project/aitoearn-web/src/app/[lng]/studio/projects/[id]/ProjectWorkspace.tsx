@@ -190,15 +190,23 @@ export default function ProjectWorkspace() {
     () => runs.find(item => item.id === selectedRunId) ?? null,
     [runs, selectedRunId],
   )
-  // 刚出的这批优先，刷新后回落到项目上记的那批。
-  const batchIds = useMemo(
-    () => (freshBatchIds.length > 1 ? freshBatchIds : project?.lastBatchRunIds ?? []),
-    [freshBatchIds, project?.lastBatchRunIds],
-  )
+  // 刚出的这批优先，刷新后回落到项目上记的最近两批（新的在前）。
+  const batchGroups = useMemo(() => {
+    const spent = freshBatchIds.filter(id => id !== '')
+    const latest = spent.length > 1 ? [{ runIds: spent, at: Date.now() }] : []
+    const older = (project?.recentBatches ?? []).filter(
+      batch => latest.length === 0 || batch.runIds.join() !== spent.join(),
+    )
+    return [...latest, ...older].slice(0, 2)
+  }, [freshBatchIds, project?.recentBatches])
   // 只并排还挂在列表里的那几条；翻页翻走的版本不回填，避免半截缩略图。
-  const batchRuns = useMemo(
-    () => batchIds.map(id => runs.find(item => item.id === id)).filter((run): run is ProductionRun => Boolean(run)),
-    [batchIds, runs],
+  const batchCards = useMemo(
+    () => batchGroups
+      .map(batch => batch.runIds
+        .map(id => runs.find(item => item.id === id))
+        .filter((run): run is ProductionRun => Boolean(run)))
+      .filter(batch => batch.length > 1),
+    [batchGroups, runs],
   )
   const packs = inventory?.materials?.packs ?? []
   const packRefs = useMemo(() => packs.flatMap(pack => pack.refs), [packs])
@@ -336,20 +344,22 @@ export default function ProjectWorkspace() {
             </CardContent>
           </Card>
 
-          {batchRuns.length > 1 && (
-            <Card>
+          {batchCards.map((batch, index) => (
+            <Card key={batch[0].id}>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">{t('project.batch')}</CardTitle>
+                <CardTitle className="text-sm">
+                  {index === 0 ? t('project.batch') : t('project.batchPrev')}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <BatchCompare
-                  runs={batchRuns}
+                  runs={batch}
                   selectedId={selectedRunId}
                   onSelect={setSelectedRunId}
                 />
               </CardContent>
             </Card>
-          )}
+          ))}
 
           {selectedRun && (
             <Card>

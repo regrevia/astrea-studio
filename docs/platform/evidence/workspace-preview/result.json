@@ -92,5 +92,34 @@
     "detailBefore": "/oss/studio/runs/6ae231ce38be775d59714096/r1/master.mp4",
     "detailAfterClickFirst": "/oss/studio/runs/6ae231ce38be775d59714084/r1/master.mp4",
     "screenshot": "batch-compare.png"
+  },
+  "twoBatches": {
+    "project": "刷新留存验收（两批并排验收）",
+    "batches": [
+      {
+        "label": "第 1 批",
+        "runIds": [
+          "6ae233a10e7ac5971aa43c62",
+          "6ae233a10e7ac5971aa43c6b",
+          "6ae233a20e7ac5971aa43c75"
+        ]
+      },
+      {
+        "label": "第 2 批（最新，排在上面）",
+        "runIds": [
+          "6ae233a20e7ac5971aa43c81",
+          "6ae233a20e7ac5971aa43c8a",
+          "6ae233a20e7ac5971aa43c93"
+        ]
+      }
+    ],
+    "checks": "项目 recentBatches 留最近两批；工作区出两张卡「批量结果」「上一批」，共 6 个可播首帧；点上一批第 1 版详情面板切到 6ae233a1…3c62",
+    "cardTitles": [
+      "批量结果",
+      "上一批"
+    ],
+    "thumbCount": 6,
+    "detailAfterClickOlderFirst": "/oss/studio/runs/6ae233a10e7ac5971aa43c62/r1/master.mp4",
+    "screenshot": "two-batches.png"
   }
 }

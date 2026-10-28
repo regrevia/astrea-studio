@@ -84,12 +84,13 @@ export class ProductionProject extends WithTimestampSchema {
   brand: Record<string, unknown>
 
   /**
-   * 最近一次「一次出多版」的任务 id。
+   * 最近两批「一次出多版」：{ runIds, at }，新的在前。
    *
-   * 工作区靠它把版本按钮留住：刷新页面后不用再回任务列表里猜哪几条是同一批。
+   * 工作区靠它把并排版本卡留住：刷新页面后不用再回任务列表里猜哪几条是同一批，
+   * 连出两批时上一批也还能对照。只留两批，更早的批次去任务列表里翻。
    */
-  @Prop({ type: [String], default: [] })
-  lastBatchRunIds: string[]
+  @Prop({ type: [Object], default: [] })
+  recentBatches: Array<{ runIds: string[], at: number }>
 
   /** Bound accounts: { platform, accountId, dispatcher, alias } */
   @Prop({ type: [Object], default: [] })

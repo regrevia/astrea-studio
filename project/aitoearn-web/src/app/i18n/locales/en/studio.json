@@ -365,6 +365,7 @@
     "clipBeat": "Cut on beat",
     "clipBeatsFailed": "No beat detected for this track, cutting by clip length",
     "batch": "Batch results",
-    "batchVersion": "Version {{n}}"
+    "batchVersion": "Version {{n}}",
+    "batchPrev": "Previous batch"
   }
 }

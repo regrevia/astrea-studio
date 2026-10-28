@@ -53,3 +53,15 @@
 | 第 3 版 | `…714096/r1/master.mp4` | 点击前是 `…714096` |
 
 截图：[batch-compare.png](/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/workspace-preview/batch-compare.png)
+
+## 最近两批都留
+
+`lastBatchRunIds` 换成 `recentBatches: [{ runIds, at }]`，新的在前，只留两批。工作区一次最多出两张并排卡：「批量结果」是刚出的这批，「上一批」是上一次的。
+
+实测项目「刷新留存验收」连出两批（各 3 版、全 succeeded / 30 s）：
+
+- 两张卡标题分别是 `批量结果`、`上一批`；
+- 两卡共 6 个可播首帧，src 分别指向两批的 master；
+- 点「上一批」第 1 版后详情面板 src 切到 `…a43c62/r1/master.mp4`。
+
+截图：[two-batches.png](/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/workspace-preview/two-batches.png)

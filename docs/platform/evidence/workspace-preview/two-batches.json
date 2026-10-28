@@ -1,0 +1,15 @@
+{
+ "titles": [
+  "批量结果",
+  "上一批"
+ ],
+ "thumbs": [
+  "/oss/studio/runs/6ae233a20e7ac5971aa43c81/r1/master.mp4",
+  "/oss/studio/runs/6ae233a20e7ac5971aa43c8a/r1/master.mp4",
+  "/oss/studio/runs/6ae233a20e7ac5971aa43c93/r1/master.mp4",
+  "/oss/studio/runs/6ae233a10e7ac5971aa43c62/r1/master.mp4",
+  "/oss/studio/runs/6ae233a10e7ac5971aa43c6b/r1/master.mp4",
+  "/oss/studio/runs/6ae233a20e7ac5971aa43c75/r1/master.mp4"
+ ],
+ "detailAfterClickOlderFirst": "/oss/studio/runs/6ae233a10e7ac5971aa43c62/r1/master.mp4"
+}
