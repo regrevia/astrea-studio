@@ -70,6 +70,25 @@ describe('宿主机能力读取（MCP 工具用）', () => {
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe('http://host.docker.internal:8899/materials/file?path=packs%2Fdemo%2Fshots%2Fa.png')
   })
 
+  it('视频缩略图按秒抽帧，空路径和越界都不去请求宿主机', async () => {
+    await expect(service().capabilityMaterialFrame('')).rejects.toThrow('素材路径不合法')
+    await expect(service().capabilityMaterialFrame('../a.mp4')).rejects.toThrow('素材路径不合法')
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled()
+
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      headers: new Headers({ 'content-type': 'image/jpeg' }),
+      arrayBuffer: async () => new Uint8Array([9, 9]).buffer,
+    } as never)
+    const frame = await service().capabilityMaterialFrame('/shots/a.mp4', 1.5)
+    expect(frame.contentType).toBe('image/jpeg')
+    expect(frame.body.length).toBe(2)
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe('http://host.docker.internal:8899/materials/frame?path=shots%2Fa.mp4&t=1.5')
+
+    vi.mocked(fetch).mockResolvedValue({ ok: false, status: 404 } as never)
+    await expect(service().capabilityMaterialFrame('shots/a.mp4')).rejects.toThrow('没有这张素材')
+  })
+
   it('返回体里没有 files 时给空清单，不抛在工具里', async () => {
     vi.mocked(fetch).mockResolvedValue(jsonResponse({}) as never)
     await expect(service().capabilityDeliverables(5)).resolves.toEqual([])
