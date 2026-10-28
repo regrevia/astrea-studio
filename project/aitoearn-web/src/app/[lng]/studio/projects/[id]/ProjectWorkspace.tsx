@@ -53,13 +53,10 @@ type RunFilter = 'all' | 'succeeded' | 'running' | 'failed'
 const RUN_FILTERS: RunFilter[] = ['all', 'succeeded', 'running', 'failed']
 
 /** 批次时间到秒：同一分钟连出两批时，靠秒数才分得清哪张卡更新。 */
-function formatBatchTime(at: number, lng: string): string {
-  return new Date(at).toLocaleTimeString(lng === 'en' ? 'en-US' : 'zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  })
+function formatBatchTime(at: number): string {
+  const at_date = new Date(at)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${pad(at_date.getHours())}:${pad(at_date.getMinutes())}:${pad(at_date.getSeconds())}`
 }
 
 export default function ProjectWorkspace() {
@@ -359,7 +356,7 @@ export default function ProjectWorkspace() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">
                   {index === 0 ? t('project.batch') : t('project.batchPrev')}
-                  {batchGroups[index]?.at ? ` · ${formatBatchTime(batchGroups[index].at as number, lng)}` : ''}
+                  {batchGroups[index]?.at ? ` · ${formatBatchTime(batchGroups[index].at as number)}` : ''}
                 </CardTitle>
               </CardHeader>
               <CardContent>
