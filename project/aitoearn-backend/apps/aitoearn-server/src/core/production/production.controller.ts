@@ -216,14 +216,11 @@ export class ProductionController {
   @Post('runs/batch')
   async createRunBatch(@GetToken() token: TokenInfo, @Body() body: BatchRunDto) {
     const { count, ...one } = body
-    const runs = []
-    for (let i = 0; i < count; i += 1) {
-      // 串行入队：worker 本来就按队列一条条渲，并发提交只会白等
-      runs.push(await this.production.createRun(token.id, {
-        ...one,
-        spec: normalizeRunSpec(one),
-      }))
-    }
+    // 串行入队：worker 本来就按队列一条条渲，并发提交只会白等
+    const runs = await this.production.createRunBatch(token.id, {
+      ...one,
+      spec: normalizeRunSpec(one),
+    }, count)
     return {
       runIds: runs.map(run => run.id),
       count: runs.length,

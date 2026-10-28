@@ -263,6 +263,21 @@ export class ProductionService {
   }
 
   /**
+   * 批量出片：同一份稿子排 count 条。每条仍是独立的 run/job，worker 按队列逐条
+   * 渲，互不覆盖；标题带序号，列表里能直接分清是哪一条。
+   */
+  async createRunBatch(userId: string, input: CreateRunInput, count: number): Promise<ProductionRun[]> {
+    const runs: ProductionRun[] = []
+    for (let i = 0; i < count; i += 1) {
+      runs.push(await this.createRun(userId, {
+        ...input,
+        title: count > 1 ? `${input.title} · ${i + 1}/${count}` : input.title,
+      }))
+    }
+    return runs
+  }
+
+  /**
    * Create a new revision and a render job for it. Prior publication approvals
    * do not carry over: any attempt bound to an older revision stays as-is and a
    * fresh intent must be created before publishing again.

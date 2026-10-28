@@ -47,6 +47,10 @@ const CreateRunSchema = z.object({
   facts: z.record(z.string(), z.unknown()).optional().describe('项目事实：产品名、卖点、禁止出现的说法'),
 })
 
+const BatchRunSchema = CreateRunSchema.extend({
+  count: z.number().int().min(1).max(8).default(2).describe('排几条：同一份稿子出多个母版，每条独立入队'),
+})
+
 const RunIdSchema = z.object({
   runId: z.string().describe('任务 ID'),
 })
@@ -142,6 +146,27 @@ export class ProductionMcpController {
       `Run queued: ${run.id} (status=${run.status}). `
       + `Do not block waiting for the video; poll getProductionRun with runId=${run.id}. `
       + 'The draft appears in the bound draft box once the worker finishes.',
+    )
+  }
+
+  @Tool({
+    name: 'createProductionBatch',
+    description: 'Queue the same script N times (1-8) and return every runId at once — use this for batch generation of short videos, not N createProductionRun calls. Each run renders independently and its title carries an index. Poll each runId with getProductionRun.',
+    parameters: BatchRunSchema,
+  })
+  async createProductionBatch(params: z.infer<typeof BatchRunSchema>) {
+    const user = getUser()
+    const { count, ...one } = params
+    const runs = await this.production.createRunBatch(user.id, {
+      projectId: one.projectId,
+      title: one.title,
+      brief: one.brief ?? '',
+      spec: normalizeRunSpec(one),
+      facts: one.facts,
+    }, count)
+    return toTextResult(
+      `Queued ${runs.length} run(s): ${runs.map(r => r.id).join(', ')}. `
+      + 'Do not block; poll getProductionRun per runId.',
     )
   }
 

@@ -79,5 +79,29 @@
   "how_to_reproduce": [
     "PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib /Users/apple/CreatorStudio/runtime/integrations/mac-worker/.python3 /tmp/ab_pulse.py <workdir>  # 开/关两份渲染",
     "/Users/apple/CreatorStudio/runtime/integrations/mac-worker/.python3 /tmp/motion_profile.py  # 逐帧运动曲线"
-  ]
+  ],
+  "audio_mix": {
+    "streams": [
+      [
+        "video",
+        "h264"
+      ],
+      [
+        "audio",
+        "aac",
+        2
+      ]
+    ],
+    "method": "master.mp4 音频解 16k 单声道，0.08s 窗做 FFT，取 840~920Hz 峰值",
+    "beat_windows": {
+      "0.47": 2116137.0,
+      "0.97": 1947477.8,
+      "1.47": 1941555.5
+    },
+    "gap_windows": {
+      "0.72": 6537.5,
+      "1.22": 29.9
+    },
+    "verdict": "片头 BGM（120bpm click，880Hz）在拍点处的能量比拍间高 3 个数量级，说明 audio 里 bgm 与 TTS 真的混进了同一路音轨，而不是丢轨"
+  }
 }

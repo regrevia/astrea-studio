@@ -153,6 +153,26 @@ describe('createRun', () => {
   })
 })
 
+describe('createRunBatch', () => {
+  it('同一份稿子排 N 条：每条独立 run，标题带序号', async () => {
+    const { service, projectRepo, runRepo } = createService()
+    projectRepo.getByIdForUser.mockResolvedValue({ id: '6adc2161656a13996166bbfc' })
+    runRepo.create.mockImplementation(async (data: Record<string, unknown>) => ({ id: `run-${runRepo.create.mock.calls.length}`, ...data }))
+
+    const runs = await service.createRunBatch('user-1', {
+      projectId: '6adc2161656a13996166bbfc',
+      title: '咖啡机',
+      brief: '三秒一句',
+      spec: { ...FRIENDLY_INPUT },
+    }, 3)
+
+    expect(runs).toHaveLength(3)
+    expect(runRepo.create).toHaveBeenCalledTimes(3)
+    expect(runs.map(r => r.title)).toEqual(['咖啡机 · 1/3', '咖啡机 · 2/3', '咖啡机 · 3/3'])
+    expect(runRepo.create.mock.calls.map(c => c[0].status)).toEqual(['queued', 'queued', 'queued'])
+  })
+})
+
 describe('reviseRun', () => {
   it('以审计底稿为基线重新展开，不对已展开规格二次展开', async () => {
     const { service, runRepo } = createService()
