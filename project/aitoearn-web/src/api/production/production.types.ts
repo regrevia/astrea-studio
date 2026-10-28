@@ -435,11 +435,20 @@ export interface AvatarModel {
   root?: string
 }
 
+/** 素材包：本地目录里按主题收好的一批图，spec 里用 pack:<slug>/<名字> 引用。 */
+export interface MaterialPack {
+  slug: string
+  shots: number
+  refs: string[]
+}
+
 /** 能力快照。 */
 export interface Inventory {
   platforms: PlatformInfo[]
   summary: { total: number, ready: number, accounts: number }
   voices: { jianying: VoiceInfo[], edge: VoiceInfo[] }
+  /** 素材包清单；老版本能力服务没有这一段。 */
+  materials?: { root: string, packs: MaterialPack[] }
   tools: Record<string, { available: boolean, version: string }>
   generatedAt?: string
 }

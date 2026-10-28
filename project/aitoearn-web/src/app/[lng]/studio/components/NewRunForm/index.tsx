@@ -12,6 +12,7 @@ import type { VoiceOption } from './utils'
 import { Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { RunBatchVariant } from '@/api/production/production.api'
+import type { MaterialPack } from '@/api/production/production.types'
 import { createRunBatch, createRun, getInventory } from '@/api/production/production.api'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -75,6 +76,7 @@ export default function NewRunForm({ projects, projectId: selectedProjectId, onC
   /** 多条时哪几维逐条错开；默认全选，取消勾选就固定该维。 */
   const [variants, setVariants] = useState<RunBatchVariant[]>(['mirror', 'opening', 'hook'])
   const [voices, setVoices] = useState<VoiceOption[]>(() => buildVoiceOptions())
+  const [packs, setPacks] = useState<MaterialPack[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState('')
   const [runId, setRunId] = useState('')
@@ -83,8 +85,12 @@ export default function NewRunForm({ projects, projectId: selectedProjectId, onC
   useEffect(() => {
     let alive = true
     getInventory().then((inventory) => {
-      if (alive && inventory?.voices)
+      if (!alive)
+        return
+      if (inventory?.voices)
         setVoices(buildVoiceOptions(inventory))
+      if (inventory?.materials?.packs?.length)
+        setPacks(inventory.materials.packs)
     })
     return () => {
       alive = false
@@ -105,6 +111,16 @@ export default function NewRunForm({ projects, projectId: selectedProjectId, onC
     setPlatforms(prev =>
       checked ? [...prev, platform] : prev.filter(item => item !== platform),
     )
+  }
+
+  /** 点素材包里的图：已写进文本框就撤掉，否则追加一行引用。 */
+  const togglePackShot = (ref: string) => {
+    setMaterialsText((prev) => {
+      const lines = prev.split('\n').map(line => line.trim()).filter(Boolean)
+      return lines.includes(ref)
+        ? lines.filter(line => line !== ref).join('\n')
+        : [...lines, ref].join('\n')
+    })
   }
 
   const toggleVariant = (value: RunBatchVariant, checked: boolean) => {
@@ -248,6 +264,36 @@ export default function NewRunForm({ projects, projectId: selectedProjectId, onC
             onChange={event => setMaterialsText(event.target.value)}
           />
           <span className={hintClass}>每行一个，第几条进第几屏，图插在卡面收尾前。</span>
+          {packs.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              {packs.map(pack => (
+                  <div key={pack.slug} className="flex flex-wrap items-center gap-2">
+                    <span className={hintClass}>
+                      {pack.slug}
+                      {' · '}
+                      {pack.shots}
+                      {' 张'}
+                    </span>
+                    {pack.refs.map((ref, index) => (
+                      <Button
+                        key={ref}
+                        type="button"
+                        size="sm"
+                        title={ref}
+                        variant={materialsText.split('\n').map(line => line.trim()).includes(ref) ? 'default' : 'outline'}
+                        onClick={() => togglePackShot(ref)}
+                      >
+                        第
+                        {' '}
+                        {index + 1}
+                        {' '}
+                        张
+                      </Button>
+                    ))}
+                  </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-1.5 sm:col-span-2">

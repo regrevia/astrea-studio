@@ -1,0 +1,18 @@
+{
+  "capturedAt": "2026-10-28T20:20:00+08:00",
+  "why": "表单里原本只能手敲 pack 引用，容易写错包名/张名；现在能力服务报的素材包直接渲染成按钮，点一下追加一行。",
+  "page": "http://127.0.0.1:8080/zh-CN/studio（手动出片 → 口播表单）",
+  "observedBlock": "素材（可选） | 每行一个，第几条进第几屏，图插在卡面收尾前。 | envoy-demo · 2 张 | 第 1 张 | 第 2 张",
+  "afterClick": [
+    "pack:envoy-demo/github-com-regrevia-envoy-1",
+    "pack:envoy-demo/github-com-regrevia-envoy-2"
+  ],
+  "source": "宿主能力服务 /inventory 的 materials.packs（浏览器直连 127.0.0.1:8899）",
+  "screenshot": "docs/platform/evidence/studio-material-picker.png",
+  "checks": {
+    "webTsc": "cd project/aitoearn-web && npx tsc --noEmit → 0",
+    "copyLint": "ui-copy-lint → 0 error",
+    "zhLint": "zh-lint → 0 error",
+    "styleLint": "style-lint → 0 颜色/字号字面值"
+  }
+}
