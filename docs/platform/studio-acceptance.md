@@ -137,3 +137,19 @@ PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib \
 - **`patch-backend-container.sh` 第 4 步假阴性**：已修。旧逻辑 30×2s 窗口太短且只认 nginx 200，
   容器刚重启时必判死。现为 180s 窗口 + `docker inspect` health 与 `/healthz` 双信号，实测
   `健康检查通过（healthy / nginx 200，6s）` EXIT=0。
+
+### 9.3 导出不再抢前台（本轮新增约束）
+
+剪映的 Qt/CEF 控件实测只认真实光标点击，且必须点在前台窗口上（`AXPress` 返回 err=0 但不生效、
+`CGEvent.postToPid` 被忽略），所以「点导出」这一步没法做成纯后台。改成**低干扰**：
+
+- `quiet_start(strict=True)`：只有连续空闲 ≥ `--wait-idle`（默认 30s）才开始，等不到就回 `rc=9`
+  `export_user_busy`，不动鼠标、不激活剪映；
+- 点导出前再查一次 `idle()<1.0` 就放弃这一轮（人刚回来敲键盘时不替人点）；
+- 导出前记录前台 App pid，结束 `restore_front()` 把焦点还回去；
+- `/scripts/dev/sync-mac-worker.sh`：仓库改动同步到 `~/CreatorStudio/runtime/integrations/mac-worker`
+  并 `launchctl kickstart -k` 重启 worker —— 之前没有这一步，改完代码线上仍跑旧 worker
+  （job `6ae1aece` 就是旧代码跑出来的同一句 rc=2）。
+
+**真·无人值守**：`--wait-idle 3600` 挂后台等一个小时的连续空闲（夜间），或直接走不碰 GUI 的
+`timeline` / `ffmpeg` 渲染通道出片；剪映导出只在人空着的窗口期做。
