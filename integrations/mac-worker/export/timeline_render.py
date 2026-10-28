@@ -374,7 +374,7 @@ def load_spec(path, base: Path | None = None) -> dict:
             cursor = 0.0
             for clip in clips:
                 dur = clip["dur"] / (clip["speed"] or 1.0)
-                if clip["still"] and clip["pulse"] and not clip["explicit_keys"] and beats:
+                if clip["pulse"] and not clip["explicit_keys"] and beats:
                     local = [b - cursor for b in beats
                              if cursor - 1e-6 <= b < cursor + dur - 1e-6]
                     if local:
@@ -666,6 +666,17 @@ class RenderPlan:
                     chain = f"{scale},crop={W}:{H},fps={FPS:g}"
                 else:
                     chain = f"{scale},pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black,fps={FPS:g}"
+            if not clip.get("still"):
+                keys = clip.get("keys") or []
+                moving = len(keys) > 1 and any(abs(z - keys[0][1]) > 1e-3 for _, z in keys[1:])
+                if moving:
+                    # 活动素材的推拉：d=1 让 zoompan 一帧进一帧出，on 就等于帧序号，
+                    # 和静卡那条分支共用同一套 _zoom_expr 折线表达式；时长不变，
+                    # 所以后面的 concat/xfade 起点一个都不用改。
+                    frames = max(1, int(round(dur * FPS)))
+                    chain += (f",zoompan=z='{_zoom_expr(keys, frames, FPS)}':"
+                              f"d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+                              f"s={W}x{H}:fps={FPS:g}")
             fi, fo = clip.get("fade_in") or 0.0, clip.get("fade_out") or 0.0
             if fi > 0:
                 chain += f",fade=t=in:st=0:d={fi:g}"
