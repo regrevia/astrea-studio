@@ -11,13 +11,16 @@
 library/
   index.jsonl                       # 追加式台账，一行一条，永不改写
   .index.lock                       # 台账写入锁
-  <project>/                        # 项目（作品集）slug
+  <项目名slug>__<id8>/              # 项目目录：人看得懂的名字 + 稳定短 id
     <YYYY-MM>/                      # 入库月
       <YYYYMMDD-HHMMSS>__<project>__<seq3>__<slug>__<platform>__r<rev>.mp4
       <同名>.json                   # sidecar：来源与体检结论
 ```
 
-- `project`：项目 id 或项目名，字符集见 §2。
+- 项目目录：`<项目名slug>__<id8>`，例如 `端到端验收-一体化宣发工作台__6ae235e6`。
+  只写 id 认不出是哪个项目，只写名字在改名/重名时会撞到别人的作品，两个都要。
+  晚于 2026-10-29 之前入库的旧目录（纯 id、或早期一律落 `studio/`）保持原样，
+  台账里照旧可查，新入库一律走新命名。
 - `YYYY-MM` 用**入库时间**，不是拍摄/生成时间；按时间找片子只看这一个维度。
 - 同一次任务的不同修订版是不同文件（`r1`、`r2`…），旧版永久保留，回滚就是找旧文件。
 
@@ -30,7 +33,7 @@ library/
 | 段 | 含义 | 规则 |
 | --- | --- | --- |
 | `YYYYMMDD-HHMMSS` | 入库时间 | 本地时区，秒级；`ls` 天然按时间排序 |
-| `project` | 项目 | 小写，保留中英文数字，其余折成 `-`，≤24 字符 |
+| `project` | 项目目录名 | `<项目名slug>__<id8>`；名字部分小写、保留中英文数字，其余折成 `-`，≤24 字符 |
 | `seq3` | 同秒防撞序号 | 三位补零，从 `001` 起；同一项目同标题同秒才有机会 >001 |
 | `slug` | 片子标题 | 同上字符集，≤32 字符；重复时后缀 `-02`、`-03` |
 | `platform` | 目标平台 | `douyin` / `xiaohongshu` / `bilibili` / `generic` |
@@ -45,7 +48,7 @@ library/
 与视频同名的 `.json`，字段固定：
 
 ```
-assetId path project title slug platform revision
+assetId path project projectId projectDir title slug platform revision
 runId jobId draft draftPath duration bytes md5 container
 landedAt meta{checks, profile, panel}
 ```

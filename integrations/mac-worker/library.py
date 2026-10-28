@@ -53,6 +53,17 @@ def project_slug(name: str) -> str:
     return slugify(name or "studio", limit=24)
 
 
+def project_dir_name(project: str, project_id: str = "") -> str:
+    """库目录名：人看得懂的项目名 + 稳定的短 id。
+
+    只用 ObjectId 时一眼看不出是哪个项目；只用项目名又会在改名/重名时
+    撞到别的项目，两个都要。
+    """
+    slug = project_slug(project)
+    pid = re.sub(r"[^0-9a-zA-Z]", "", str(project_id or ""))[:8]
+    return "%s__%s" % (slug, pid) if pid else slug
+
+
 def md5_of(path: Path, chunk: int = 1 << 20) -> str:
     h = hashlib.md5()
     with open(path, "rb") as fh:
@@ -98,12 +109,12 @@ def _slug_taken(root: Path, project: str, slug: str) -> bool:
 
 def plan_name(root: Path, project: str, title: str, platform: str,
               revision: int, when: float | None = None,
-              ext: str = ".mp4") -> tuple[Path, Path, str]:
+              ext: str = ".mp4", project_id: str = "") -> tuple[Path, Path, str]:
     """算死落点：同一天同一项目同标题的片子按 seq 往后排，重跑不会覆盖。"""
     ts = time.localtime(when if when is not None else time.time())
     stamp = time.strftime("%Y%m%d-%H%M%S", ts)
     month = time.strftime("%Y-%m", ts)
-    proj = project_slug(project)
+    proj = project_dir_name(project, project_id)
     base = slugify(title)
     day_dir = root_dir(root) / proj / month
     seq = 1
@@ -121,7 +132,7 @@ def plan_name(root: Path, project: str, title: str, platform: str,
 
 
 def land(video, *, project: str, title: str, platform: str = "douyin",
-         revision: int = 1, run_id: str = "", job_id: str = "",
+         revision: int = 1, run_id: str = "", job_id: str = "", project_id: str = "",
          draft: str = "", draft_path: str = "", duration: float | None = None,
          meta: dict | None = None, root=None, move: bool = True,
          when: float | None = None) -> dict:
@@ -133,7 +144,8 @@ def land(video, *, project: str, title: str, platform: str = "douyin",
         raise ValueError("不认识的容器：%s" % src.suffix)
     r = root_dir(root)
     final, sidecar, slug = plan_name(r, project, title, platform, revision,
-                                     when=when, ext=src.suffix.lower())
+                                     when=when, ext=src.suffix.lower(),
+                                     project_id=project_id)
     final.parent.mkdir(parents=True, exist_ok=True)
     if final.exists():
         raise FileExistsError("库里已有同名成片，不覆盖：%s" % final)
@@ -147,6 +159,8 @@ def land(video, *, project: str, title: str, platform: str = "douyin",
         "assetId": final.stem,
         "path": str(final),
         "project": project_slug(project),
+        "projectId": project_id or None,
+        "projectDir": project_dir_name(project, project_id),
         "title": title,
         "slug": slug,
         "platform": slugify(platform or "video"),

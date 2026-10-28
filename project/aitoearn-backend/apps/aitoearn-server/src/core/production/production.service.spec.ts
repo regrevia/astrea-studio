@@ -139,7 +139,7 @@ function createService() {
 describe('createRun', () => {
   it('入库前把友好输入展开成时间轴规格', async () => {
     const { service, projectRepo, runRepo, jobRepo } = createService()
-    projectRepo.getByIdForUser.mockResolvedValue({ id: '6adc2161656a13996166bbfc' })
+    projectRepo.getByIdForUser.mockResolvedValue({ id: '6adc2161656a13996166bbfc', name: '演示项目' })
 
     await service.createRun('user-1', {
       projectId: '6adc2161656a13996166bbfc',
@@ -157,6 +157,8 @@ describe('createRun', () => {
     // 渲染任务带上项目 id：不带的话 worker 一律入库到 studio/，所有项目混在一起。
     const payload = jobRepo.create.mock.calls[0][0].payload as Record<string, unknown>
     expect(payload.libraryProject).toBe('6adc2161656a13996166bbfc')
+    // 目录名要项目名：只有 id 的话库里全是十六进制，人看不出是哪个项目。
+    expect(payload.libraryProjectName).toBe('演示项目')
   })
 })
 

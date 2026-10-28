@@ -40,6 +40,17 @@ class LibraryTest(unittest.TestCase):
         self.assertEqual(json.loads(rows[0])["md5"], row["md5"])
         self.assertEqual(row["bytes"], len(FAKE_MP4))
 
+    def test_project_dir_has_readable_slug_and_id(self):
+        row = lib.land(self.src, project="账号诊断", project_id="6ae235e6aa561aad282987e0",
+                       title="三屏版", root=self.root)
+        p = Path(row["path"])
+        self.assertEqual(p.parent.parent.name, "账号诊断__6ae235e6")
+        self.assertIn("__账号诊断__6ae235e6__", p.name)
+        self.assertEqual(row["projectId"], "6ae235e6aa561aad282987e0")
+        self.assertEqual(row["projectDir"], "账号诊断__6ae235e6")
+        self.assertEqual(row["project"], "账号诊断")
+        self.assertEqual(lib.project_dir_name("账号诊断"), "账号诊断")
+
     def test_no_overwrite(self):
         a = lib.land(self.src, project="p", title="同一条", platform="douyin",
                      revision=1, root=self.root)

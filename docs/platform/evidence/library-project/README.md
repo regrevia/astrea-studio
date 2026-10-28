@@ -27,3 +27,16 @@
 工作区截图：两张批次卡（`批量结果 · 01:51:32`、`上一批 · 01:50:30`）与左栏任务列表同屏。
 
 ![工作区](/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/library-project/e2e-workspace.png)
+
+## 目录名加项目名
+
+只写 ObjectId 时 `ls` 出来是一串十六进制，认不出是哪个项目。现在目录与文件名都走 `<项目名slug>__<id8>`：
+
+```
+/Users/apple/CreatorStudio/library/端到端验收-一体化宣发工作台__6ae235e6/2026-10/
+  20261029-015444__端到端验收-一体化宣发工作台__6ae235e6__001__入库目录验收__douyin__r1.mp4
+```
+
+后端把 `libraryProjectName` 一起交给 worker（渲染任务与剪映导出认领任务都带），读不到名字就退回只用 id。台账 `index.jsonl` 新增 `projectId`、`projectDir` 两个字段，旧行照旧可查；早期落在 `studio/` 或纯 id 目录下的文件不动。
+
+实测：新跑一条 succeeded，落点如上，台账最后一行 `projectDir=端到端验收-一体化宣发工作台__6ae235e6`。后端 spec EXIT=0，worker 单测 28 条全过。

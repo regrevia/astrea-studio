@@ -134,7 +134,9 @@ def _land_export(video: str, payload: dict, job_id: str, revision: int,
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import library as lib  # noqa: WPS433
-        project = str(payload.get("libraryProject") or payload.get("project") or "studio")
+        project = str(payload.get("libraryProjectName") or payload.get("libraryProject")
+                      or payload.get("project") or "studio")
+        project_id = str(payload.get("libraryProject") or "")
         title = str(payload.get("libraryTitle") or payload.get("title")
                     or payload.get("runId") or job_id)
         revision_meta = {}
@@ -157,7 +159,7 @@ def _land_export(video: str, payload: dict, job_id: str, revision: int,
             except Exception:
                 revision_meta = {}
             break
-        row = lib.land(video, project=project, title=title,
+        row = lib.land(video, project=project, title=title, project_id=project_id,
                        platform=str(payload.get("platform") or "douyin"),
                        revision=revision, run_id=str(payload.get("runId") or ""),
                        job_id=job_id,
@@ -183,10 +185,12 @@ def _land_timeline(video: str, payload: dict, job_id: str, revision: int, *,
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import library as lib  # noqa: WPS433
-        project = str(payload.get("libraryProject") or payload.get("project") or "studio")
+        project = str(payload.get("libraryProjectName") or payload.get("libraryProject")
+                      or payload.get("project") or "studio")
+        project_id = str(payload.get("libraryProject") or "")
         title = str(payload.get("libraryTitle") or payload.get("title")
                     or payload.get("runId") or job_id)
-        return lib.land(video, project=project, title=title,
+        return lib.land(video, project=project, title=title, project_id=project_id,
                         platform=platform or str(payload.get("platform") or "douyin"),
                         revision=revision, run_id=str(payload.get("runId") or ""),
                         job_id=job_id, duration=duration,

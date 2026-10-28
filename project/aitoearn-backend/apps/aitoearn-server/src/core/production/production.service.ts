@@ -620,6 +620,7 @@ export class ProductionService {
         allowGui: input.allowGui === true,
         ...(claimPath ? { claimPath } : {}),
         libraryProject: run.projectId,
+        libraryProjectName: await this.projectNameOf(userId, run.projectId),
         libraryTitle: run.title,
         ...(typeof input.waitIdle === 'number' ? { waitIdle: input.waitIdle } : {}),
         platform: 'douyin',
@@ -673,7 +674,9 @@ export class ProductionService {
         // 入库命名要用人看得懂的标题，worker 回退到 runId 只会得到一串十六进制
         libraryTitle: run.title,
         // 库里按项目分目录：不带项目时 worker 一律落到 studio/，所有项目的成片会混在一起。
+        // 目录名用「项目名 slug__id8」，人看得懂也认得住。
         libraryProject: run.projectId,
+        libraryProjectName: await this.projectNameOf(userId, run.projectId),
       },
     } as unknown as Partial<ProductionJob>)
     return job
@@ -1345,6 +1348,21 @@ export class ProductionService {
     }
     await this.appendEvent(job.runId, { jobId, ...event })
     return { ok: true }
+  }
+
+  /** 入库目录要项目名：拿不到就用空串，worker 只按 id 命名。 */
+  private async projectNameOf(userId: string, projectId?: string): Promise<string> {
+    if (!projectId) {
+      return ''
+    }
+    try {
+      const project = await this.projectRepo.getByIdForUser(projectId, userId)
+      return String(project?.name ?? '')
+    }
+    catch {
+      // 项目名只影响目录可读性，读失败不能让渲染排不上。
+      return ''
+    }
   }
 
   // ----------------------------------------------------------------- events

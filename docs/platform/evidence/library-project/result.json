@@ -46,5 +46,27 @@
     "before": "/Users/apple/CreatorStudio/library/studio/2026-10/…（所有项目混在 studio/）",
     "after": "/Users/apple/CreatorStudio/library/<projectId>/<YYYY-MM>/<ts>__<projectId>__<NNN>__<slug>__<platform>__r<rev>.mp4"
   },
-  "titleDedupe": "标题已带 · n/N 时先摘掉再补，实测「冲标题检查 · 2/2」「· 1/2」各只出现一次"
+  "titleDedupe": "标题已带 · n/N 时先摘掉再补，实测「冲标题检查 · 2/2」「· 1/2」各只出现一次",
+  "slugDir": {
+    "dir": "端到端验收-一体化宣发工作台__6ae235e6",
+    "path": "/Users/apple/CreatorStudio/library/端到端验收-一体化宣发工作台__6ae235e6/2026-10/20261029-015444__端到端验收-一体化宣发工作台__6ae235e6__001__入库目录验收__douyin__r1.mp4",
+    "run": "6ae236de2a5e71e140145659",
+    "indexRow": {
+      "project": "端到端验收-一体化宣发工作台",
+      "projectId": "6ae235e6aa561aad282987e0",
+      "projectDir": "端到端验收-一体化宣发工作台__6ae235e6",
+      "slug": "入库目录验收",
+      "platform": "douyin",
+      "revision": 1
+    },
+    "legacyDirs": [
+      "studio",
+      "6adc2161656a13996166bbfc",
+      "6ae235e6aa561aad282987e0"
+    ],
+    "tests": {
+      "backendSpec": "EXIT=0",
+      "workerTests": "28 tests OK"
+    }
+  }
 }
