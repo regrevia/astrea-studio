@@ -159,6 +159,7 @@
       "retry": "Retry",
       "revise": "Revise",
       "openVideo": "Open video",
+      "openDraft": "Open in 剪映",
       "exportGui": "Export on this Mac",
       "claimExport": "Claim exported video",
       "variants": "More variants"
@@ -196,6 +197,7 @@
       "retry": "Retry failed; try again",
       "exportGui": "Export could not be queued; try again later.",
       "claimExport": "Claim could not be queued; try again later.",
+      "openDraft": "Could not queue opening; try again later.",
       "variants": "Not queued, try again"
     },
     "detail": {

@@ -182,6 +182,8 @@ strings -a /Applications/VideoFusion-macOS.app/Contents/Frameworks/libvideoedito
   本机 `CFBundleShortVersionString`/`CFBundleVersion`、草稿密文头指纹；发现 >11.6.0 再走「独立用户/VM 打开候选版本 → AX 树 diff」。
 - 新旧共存不建议改 bundleId 重签（破坏公证、更新互相覆盖）；用新建 macOS 用户或 VM，HOME/容器/草稿天然隔离。
 
+版本机制、决策顺序与升级后怎么验，见 [jianying-version-support.md](jianying-version-support.md)（本机 11.6 实测 + `resolve_schema`）。
+
 ## 8. 谁在驱动剪映：TCC 归属（关键，2026-10-28 实测）
 
 worker 由 launchd 拉起，**没有辅助功能（Accessibility）授权**，而我的终端 shell 有。同一条命令两种结果：

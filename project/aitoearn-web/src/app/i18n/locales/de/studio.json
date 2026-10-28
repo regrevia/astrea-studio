@@ -78,6 +78,7 @@
       "retry": "Erneut versuchen",
       "revise": "Überarbeiten",
       "openVideo": "Video öffnen",
+      "openDraft": "In 剪映 öffnen",
       "exportGui": "Auf diesem Mac exportieren"
     },
     "confirm": {
@@ -97,7 +98,8 @@
       "revise": "Überarbeitung nicht übermittelt; bitte erneut versuchen",
       "cancel": "Abbrechen fehlgeschlagen; bitte erneut versuchen",
       "retry": "Erneut versuchen fehlgeschlagen; bitte erneut versuchen",
-      "exportGui": "Export konnte nicht eingereiht werden; später erneut versuchen."
+      "exportGui": "Export konnte nicht eingereiht werden; später erneut versuchen.",
+      "openDraft": "Öffnen konnte nicht eingereiht werden; später erneut versuchen."
     },
     "detail": {
       "empty": "Wähle einen Auftrag für Fortschritt und Video",

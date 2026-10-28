@@ -22,6 +22,7 @@ vi.mock('@yikart/mongodb', () => ({
     TIMELINE_RENDER: 'render_timeline',
     JIANYING_DRAFT: 'jianying_draft',
     JIANYING_EXPORT: 'jianying_export',
+    JIANYING_OPEN: 'jianying_open',
     PUBLISH_SAU: 'publish_sau',
     PROBE: 'probe',
   },
@@ -813,6 +814,42 @@ describe('startJianyingExport', () => {
       draftPath: '/Users/apple/Movies/JianyingPro/demo',
       allowGui: false,
     })
+  })
+
+  it('打开剪映草稿只排一条 open 任务，不动 run 状态', async () => {
+    const { service, runRepo, jobRepo } = createService()
+    runRepo.getByIdForUser.mockResolvedValue({
+      id: 'run-2',
+      revision: 4,
+      status: 'waiting_user',
+      output: { draftPath: '/Users/apple/Movies/JianyingPro/demo' },
+    })
+
+    const result = await service.openDraft('user-1', 'run-2', {})
+
+    expect(result.draftPath).toBe('/Users/apple/Movies/JianyingPro/demo')
+    const created = jobRepo.create.mock.calls[0][0] as Record<string, unknown>
+    expect(created['kind']).toBe('jianying_open')
+    expect(created['revision']).toBe(4)
+    expect(created['payload']).toMatchObject({
+      runId: 'run-2',
+      revision: 4,
+      draftPath: '/Users/apple/Movies/JianyingPro/demo',
+    })
+    expect(runRepo.updateByRevision).not.toHaveBeenCalled()
+  })
+
+  it('没有草稿时不猜，直接拒绝打开', async () => {
+    const { service, runRepo, jobRepo } = createService()
+    runRepo.getByIdForUser.mockResolvedValue({
+      id: 'run-4',
+      revision: 1,
+      status: 'succeeded',
+      output: {},
+    })
+
+    await expect(service.openDraft('user-1', 'run-4', {})).rejects.toThrow()
+    expect(jobRepo.create).not.toHaveBeenCalled()
   })
 
   it('人工导出后认领成片：只排任务、不驱动面板', async () => {

@@ -87,6 +87,13 @@ const JianyingExportSchema = z.object({
 })
 class JianyingExportDto extends createZodDto(JianyingExportSchema, 'ExportProductionDraftDto') {}
 
+const OpenDraftSchema = z.object({
+  draftPath: z.string().optional().describe('草稿目录；省略就用任务里记下的剪映工程'),
+  waitIdle: z.number().min(0).max(600).optional()
+    .describe('等用户空闲多少秒再打开；0 表示立刻就开'),
+})
+class OpenDraftDto extends createZodDto(OpenDraftSchema, 'OpenProductionDraftDto') {}
+
 const AttachMaterialSchema = z.object({
   groupId: z.string().describe('草稿箱 ID'),
   title: z.string().describe('草稿标题'),
@@ -358,6 +365,16 @@ export class ProductionController {
     @Body() body: JianyingExportDto,
   ) {
     return await this.production.startJianyingExport(token.id, id, body)
+  }
+
+  @ApiDoc({ summary: '在剪映里打开草稿（只打开，不导出、不点面板）', body: OpenDraftDto.schema })
+  @Post('runs/:id/open-draft')
+  async openDraft(
+    @GetToken() token: TokenInfo,
+    @Param('id') id: string,
+    @Body() body: OpenDraftDto,
+  ) {
+    return await this.production.openDraft(token.id, id, body)
   }
 
   @ApiDoc({ summary: '把成片写入草稿箱', body: AttachMaterialDto.schema })

@@ -68,6 +68,8 @@ REASON_CODES = (
     "export_panel_unavailable",
     "export_draft_not_open",
     "export_probe_failed",
+    "draft_not_found",
+    "jianying_open_failed",
 )
 
 
@@ -120,6 +122,8 @@ def load_s3_creds() -> dict[str, str]:
 # jianying_draft 出草稿（中间态），jianying_export 收导出产物，两步分开记。
 JOB_JIANYING_DRAFT = "jianying_draft"
 JOB_JIANYING_EXPORT = "jianying_export"
+# 只把草稿在剪映里打开给人改，不导出、不点任何面板。
+JOB_JIANYING_OPEN = "jianying_open"
 
 
 def _wait_idle(payload: dict) -> float:
@@ -433,6 +437,10 @@ class Worker:
                             fh.write(f"DRAFT_PATH={draft_path}\n")
                     except OSError as exc:
                         log.warning("job %s could not record draft path: %s", job_id, exc)
+            elif kind == JOB_JIANYING_OPEN:
+                result = self.do_jianying_open(job_id, payload, progress)
+                self.client.complete(job_id, lease, result)
+                log.info("job %s jianying open: stage=%s", job_id, result.get("stage"))
             elif kind == JOB_JIANYING_EXPORT:
                 # 剪映在 macOS 上没有无头导出：这一步要么等人工点完导出后归位产物，
                 # 要么在 payload 显式 allowGui=true 时驱动导出面板（仍要求用户空闲）。
@@ -597,6 +605,66 @@ class Worker:
             result["degraded"] = True
             result["degradedReason"] = "部分原生效果未写入草稿，明细见 report"
         return result
+
+    def do_jianying_open(self, job_id: str, payload: dict[str, Any],
+                         progress: Any) -> dict[str, Any]:
+        """在剪映里打开一条草稿，交给人继续改。
+
+        只做「打开」：不点导出、不动时间线、不保存。剪映必须前台才能操作，
+        所以这一步会把它带到前台——只在人明确点「在剪映中打开」时才走。
+        """
+        draft_path = str(payload.get("draftPath") or payload.get("draft_path") or "")
+        if not draft_path:
+            raise JianyingError("jianying_open 需要 draftPath（草稿目录），不猜最新草稿")
+        draft = Path(draft_path)
+        if not draft.is_dir():
+            raise JianyingError(reason_text("draft_not_found",
+                                            f"草稿目录不存在：{draft_path}"))
+        base = {"jobId": job_id, "draftPath": draft_path,
+                "draftName": draft.name,
+                "runId": payload.get("runId") or "",
+                "revision": int(payload.get("revision") or 1)}
+        if screen_locked():
+            return dict(base, **{
+                "stage": "blocked",
+                "reasonCode": "screen_locked",
+                "output": {"opened": False},
+                "note": "屏幕锁着，这轮没动剪映；解锁后再点一次。",
+            })
+        progress(20, "jianying:open_draft")
+        opener = Path(__file__).with_name("export") / "open_draft.py"
+        try:
+            opened = subprocess.run(
+                [sys.executable, str(opener), "--name", draft.name,
+                 "--wait-idle", str(float(_wait_idle(payload)))],
+                capture_output=True, text=True, timeout=600,
+            )
+        except subprocess.TimeoutExpired:
+            raise JianyingError(reason_text("jianying_open_failed",
+                                            f"打开草稿 600s 没结束（{draft.name}）"))
+        tail = ((opened.stdout or "") + (opened.stderr or "")).strip()[-600:]
+        if opened.returncode != 0:
+            reason = {9: "export_user_busy", 2: "export_draft_not_open"}.get(
+                opened.returncode, "jianying_open_failed")
+            message = {
+                9: "你正在用这台 Mac，这轮没抢鼠标；空下来再点一次。",
+                2: "剪映首页没找到这条草稿；先刷新草稿箱再试。",
+            }.get(opened.returncode, "打开草稿失败（rc=%d）" % opened.returncode)
+            if opened.returncode in (2, 9):
+                return dict(base, **{
+                    "stage": "blocked",
+                    "reasonCode": reason,
+                    "output": {"opened": False},
+                    "note": message,
+                    "log": tail,
+                })
+            raise JianyingError(reason_text(reason, "%s：%s" % (message, tail or "无输出")))
+        return dict(base, **{
+            "stage": "draft_opened",
+            "output": {"opened": True},
+            "note": "草稿已在剪映里打开，改完自己点导出，再回平台认领成片。",
+            "log": tail,
+        })
 
     def do_jianying_export(self, job_id: str, payload: dict[str, Any],
                            progress: Any) -> dict[str, Any]:

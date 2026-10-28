@@ -32,6 +32,7 @@ import {
   planPublicationArgsSchema,
   researchWebArgsSchema,
   reviseRunArgsSchema,
+  openJianyingDraftArgsSchema,
   startJianyingExportArgsSchema,
   submitRenderArgsSchema,
 } from './production-assistant.tools'
@@ -611,6 +612,12 @@ export class ProductionAssistantService {
             return this.invalidArgs(name, args.error)
           return await this.startJianyingExport(userId, args.data.runId, args.data.allowGui, args.data.claimPath)
         }
+        case AssistantToolName.OPEN_JIANYING_DRAFT: {
+          const args = openJianyingDraftArgsSchema.safeParse(raw)
+          if (!args.success)
+            return this.invalidArgs(name, args.error)
+          return await this.openJianyingDraft(userId, args.data.runId, args.data.draftPath)
+        }
         default:
           return this.fail(`没有名为 ${name} 的工具，请只用给定的工具。`, '未知工具')
       }
@@ -1129,6 +1136,22 @@ export class ProductionAssistantService {
    * 收导出产物：草稿落好了不等于成片存在。这一步单独记账，并如实说明这一轮
    * 在等人的动作，不假装已经出了视频。
    */
+  private async openJianyingDraft(
+    userId: string, runId: string, draftPath?: string,
+  ): Promise<ToolResult> {
+    const opened = await this.production.openDraft(userId, runId, draftPath ? { draftPath } : {})
+    return {
+      text: `已排队在剪映里打开任务 ${runId} 的草稿（${opened.jobId}）：${opened.draftPath}。剪映会到前台，只打开不导出，改完要你自己导出或存盘。`,
+      actions: [action({
+        type: ProductionAssistantActionType.RENDER,
+        status: ProductionAssistantActionStatus.OK,
+        label: '剪映打开已排队',
+        detail: opened.jobId,
+        link: '/studio',
+      })],
+    }
+  }
+
   private async startJianyingExport(
     userId: string, runId: string, allowGui?: boolean, claimPath?: string,
   ): Promise<ToolResult> {

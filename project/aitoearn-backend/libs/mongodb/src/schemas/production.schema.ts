@@ -19,6 +19,8 @@ export enum ProductionJobKind {
   JIANYING_DRAFT = 'jianying_draft',
   /** 从剪映工程收导出产物：出草稿成功不等于成片存在，两步分开记账 */
   JIANYING_EXPORT = 'jianying_export',
+  /** 只把草稿在剪映里打开给人改，不导出 */
+  JIANYING_OPEN = 'jianying_open',
   PUBLISH_SAU = 'publish_sau',
   PROBE = 'probe',
 }

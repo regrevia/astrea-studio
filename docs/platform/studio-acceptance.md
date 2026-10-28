@@ -215,3 +215,27 @@ cd project/aitoearn-web && npx tsc --noEmit
 ```
 
 最后一次全绿：spec 45/45、worker 31/31、两个 tsc 退出 0、`web=200 api=200`。已分批推 `astrea/studio/integration`，最新提交见 `git log --oneline -5`。
+
+## 10. 剪映打开工程 + 版本适配层（2026-10-29）
+
+「在剪映中打开」与「导出」分成两条任务记：`jianying_open` 只把工程开到剪映里，job 落 `stage=draft_opened`，
+任务的 `status` / `output` 不变；`jianying_export` 才碰成片。屏幕锁定判 `screen_locked`，剪映被占用判 `export_user_busy`，
+都不硬点面板。入口三处同源：界面「在剪映中打开」→ REST `POST /production/runs/:id/open-draft`；
+MCP `openJianyingDraft`；worker `do_jianying_open`。省 `draftPath` 时用任务记录里的工程，没有就拒绝，不猜最新目录。
+
+版本适配层同时落地：从 `.app` 读版本（本机 11.6.0 / build 490）→ `resolve_schema` 决定 `reference-same-major` 还是
+`keep-template` → 草稿里写 `draft_version.json`（`stamp.action ∈ {applied, kept}`）并在导出侧车带同一份 `schema`
+（`source` 必须与 stamp 一致）。没有同主版本实证时保持模板不动，不猜 schema。详见
+[jianying-version-support.md](../shorts/jianying-version-support.md)。
+
+复核（本轮全绿）：
+
+```
+python integrations/mac-worker/tools/check_jianying.py --draft <草稿目录>     # 7/7 通过
+cd integrations/mac-worker && ... -m unittest discover -s tests -p 'test_*.py'  # 42 tests OK
+cd project/aitoearn-backend && pnpm exec vitest run apps/aitoearn-server/src/core/production/production.service.spec.ts   # 47 passed
+                                              ... production-assistant.service.spec.ts   # 21 passed
+curl -s -X POST :8080/api/production/mcp -d '{"method":"tools/call","params":{"name":"openJianyingDraft",...}}'  # 工具已注册
+```
+
+未做：12.x 无安装包、无同主版本实证，所以自动采纳路径只有单测覆盖（`test_jianying_versions.py`），没有真机样本。

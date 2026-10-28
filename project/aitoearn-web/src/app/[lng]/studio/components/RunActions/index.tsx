@@ -7,9 +7,9 @@
 'use client'
 
 import type { ProductionRun } from '@/api/production/production.types'
-import { Clapperboard, CopyPlus, FolderInput, PencilLine, RotateCcw, XCircle } from 'lucide-react'
+import { Clapperboard, CopyPlus, ExternalLink, FolderInput, PencilLine, RotateCcw, XCircle } from 'lucide-react'
 import { useState } from 'react'
-import { cancelRun, retryRun, startRunExport } from '@/api/production/production.api'
+import { cancelRun, openRunDraft, retryRun, startRunExport } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
 import { Button } from '@/components/ui/button'
 import { confirm } from '@/utils/ui/confirm'
@@ -28,7 +28,7 @@ interface RunActionsProps {
 
 export function RunActions({ run, onChanged, compact = false }: RunActionsProps) {
   const { t } = useTransClient('studio')
-  const [pending, setPending] = useState<'cancel' | 'retry' | 'export' | null>(null)
+  const [pending, setPending] = useState<'cancel' | 'retry' | 'export' | 'open' | null>(null)
   const [error, setError] = useState('')
   const [reviseOpen, setReviseOpen] = useState(false)
   const [claimOpen, setClaimOpen] = useState(false)
@@ -60,6 +60,23 @@ export function RunActions({ run, onChanged, compact = false }: RunActionsProps)
       },
     })
     return ok
+  }
+
+  /** 把草稿在剪映里打开，让人接着改；不开导出面板。 */
+  const handleOpenDraft = async () => {
+    setPending('open')
+    setError('')
+    try {
+      const res = await openRunDraft(run.id)
+      if (!res || res.code !== 0) {
+        setError(res?.message || 'run.error.openDraft')
+        return
+      }
+      onChanged?.()
+    }
+    finally {
+      setPending(null)
+    }
   }
 
   /** 导出要在这台 Mac 上点剪映，交给后台任务去做。 */
@@ -143,6 +160,18 @@ export function RunActions({ run, onChanged, compact = false }: RunActionsProps)
         >
           {!pending && <Clapperboard className="h-4 w-4" />}
           {t('run.action.exportGui')}
+        </Button>
+      )}
+      {draftPath && (
+        <Button
+          size={size}
+          variant="outline"
+          className="cursor-pointer"
+          loading={pending === 'open'}
+          onClick={handleOpenDraft}
+        >
+          {!pending && <ExternalLink className="h-4 w-4" />}
+          {t('run.action.openDraft')}
         </Button>
       )}
       {draftPath && run.output?.claimed !== true

@@ -8,6 +8,8 @@
      滤镜必须诚实报 unsupported + fallback=manual（VectCutAPI 没有 /add_filter）
   4. sidecar：runId/revision/draftId/sourceSpecHash/appBuild/adapterVersion/
      expectedCanvas/expectedDuration 八项齐全；同 project_name 的第二次部署另起目录
+  5. 版本适配：读 App 版本、同主版本参考草稿才盖章、没实证就沿用模板；
+     部署目录里留下 draft_version.json 供导出端追溯
 
 跑法：python3 tools/check_jianying.py   （退出码 0=全过，1=有失败）
 """
@@ -27,6 +29,7 @@ sys.path.insert(0, str(MW / "export"))
 
 import jianying_engine as E  # noqa: E402
 import jianying_export as X  # noqa: E402
+import jianying_versions as V  # noqa: E402
 
 FFMPEG = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
 FFPROBE = shutil.which("ffprobe") or "/opt/homebrew/bin/ffprobe"
@@ -280,6 +283,17 @@ def t_sidecar(tmp: Path, media: dict[str, Path]) -> str:
     require(side1.get("tracks") == 1 and side1.get("materials") == {"videos": 1},
             "tracks/materials 没落盘: %r" % {k: side1.get(k) for k in ("tracks", "materials")})
 
+    version_file = first / "draft_version.json"
+    require(version_file.is_file(), "草稿少了 draft_version.json：版本适配层没落盘")
+    version_info = json.loads(version_file.read_text(encoding="utf-8"))
+    stamp = version_info.get("stamp") or {}
+    require(stamp.get("action") in ("applied", "kept"),
+            "draft_version.json 的 stamp.action 不合法: %r" % stamp)
+    require(side1.get("schema") is not None,
+            "sidecar 没带上 schema 版本块: %r" % side1.get("schema"))
+    require((side1.get("schema") or {}).get("source") == stamp.get("source"),
+            "schema 来源与 stamp 不一致: %r / %r" % (side1.get("schema"), stamp))
+
     loaded = X.load_sidecar(first)
     require(loaded.get("runId") == "run-selfcheck-001", "导出端读不到 runId: %r" % loaded)
     require(int(loaded.get("revision")) == 1, "导出端读到的 revision 不对")
@@ -294,6 +308,56 @@ def t_sidecar(tmp: Path, media: dict[str, Path]) -> str:
     else:
         raise AssertionError("sidecar 缺 sourceSpecHash 竟然写成功了")
     return "两版目录 %s / %s；8 字段齐全，导出端可读" % (first.name, second.name)
+
+
+def t_version_layer(tmp):
+    """版本适配：没有同主版本实证时不许改版本块，有实证时必须采纳。"""
+    import plistlib
+
+    app = tmp / "version" / "VideoFusion-macOS.app" / "Contents"
+    app.mkdir(parents=True)
+    with (app / "Info.plist").open("wb") as fh:
+        plistlib.dump({"CFBundleIdentifier": "com.lemon.lvpro",
+                       "CFBundleShortVersionString": "12.1.0",
+                       "CFBundleVersion": "900"}, fh)
+    info = V.read_app_info(app.parent)
+    require(info.get("version") == "12.1.0" and info.get("build") == "900",
+            "读不到 App 版本: %r" % info)
+
+    drafts = tmp / "version" / "drafts"
+    drafts.mkdir()
+    content = {"version": 360000, "new_version": "110.0.0",
+               "platform": {"app_id": 3704, "app_version": "10.2.0", "os": "windows"}}
+    old_draft = drafts / "old"
+    old_draft.mkdir()
+    (old_draft / "draft_content.json").write_text(json.dumps(content), encoding="utf-8")
+
+    kept = V.resolve_schema(app_version="12.1.0", app_path=app.parent,
+                            references=V.scan_reference_drafts(drafts))
+    require(not kept["apply"] and kept["source"] == "keep-template",
+            "没有 12.x 实证却打算改版本块: %r" % kept["source"])
+
+    new_draft = drafts / "new"
+    new_draft.mkdir()
+    (new_draft / "draft_content.json").write_text(json.dumps({
+        "version": 360000, "new_version": "121.0.0",
+        "platform": {"app_id": 3704, "app_version": "12.1.0", "os": "mac"},
+        "last_modified_platform": {"app_version": "12.1.0", "os": "mac"},
+    }), encoding="utf-8")
+    adopted = V.resolve_schema(app_version="12.1.0", app_path=app.parent,
+                               references=V.scan_reference_drafts(drafts))
+    require(adopted["apply"] and adopted["source"] == "reference-same-major",
+            "有 12.1 实证却没采纳: %r" % adopted["source"])
+    versioned = dict(content)
+    versioned["platform"] = dict(content["platform"])
+    V.stamp(versioned, adopted, os_name="mac")
+    require(versioned["new_version"] == "121.0.0" and
+            versioned["platform"]["os"] == "mac",
+            "盖章没写到 platform: %r" % versioned["platform"])
+
+    require(E.ADAPTER_VERSION == "jianying-engine/3",
+            "适配器版本没随 schema 写入语义升级: %r" % E.ADAPTER_VERSION)
+    return "12.x 无实证=keep-template，有实证=reference-same-major；adapter=%s" % E.ADAPTER_VERSION
 
 
 def main() -> int:
@@ -312,6 +376,8 @@ def main() -> int:
         check("视频片段/独立音轨/字幕/滤镜账本", lambda: t_build_timeline(tmp, media))
         print("-- 4 草稿 sidecar 与修订版隔离")
         check("8 个身份字段 + 第二次部署另起目录", lambda: t_sidecar(tmp, media))
+        print("-- 5 剪映版本适配（新版本不靠猜）")
+        check("无实证沿用模板 / 有实证采纳 schema", lambda: t_version_layer(tmp))
 
     failed = [r for r in _results if not r[0]]
     print("\n结果: %d/%d 通过" % (len(_results) - len(failed), len(_results)))

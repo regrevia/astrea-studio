@@ -35,6 +35,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
+import jianying_versions as VERSIONING
+
 class JianyingError(RuntimeError):
     pass
 
@@ -48,7 +50,7 @@ VCUT_BASE = f"http://127.0.0.1:{VCUT_PORT}"
 DRAFT_ROOT = HOME / "Movies" / "JianyingPro" / "User Data" / "Projects" / "com.lveditor.draft"
 
 # 出片侧靠这个版本号判断「草稿是哪个适配器写的」，语义变了必须加一
-ADAPTER_VERSION = "jianying-engine/2"
+ADAPTER_VERSION = "jianying-engine/3"
 
 
 # ---------------------------------------------------------------- HTTP 层
@@ -282,6 +284,12 @@ def _write_export_sidecar(dest: Path, project_name: str,
     side["tracks"] = len(data.get("tracks") or [])
     side["materials"] = {k: len(v) for k, v in (data.get("materials") or {}).items()
                          if isinstance(v, list) and v}
+    version_file = dest / "draft_version.json"
+    if version_file.exists():
+        try:
+            side["schema"] = json.loads(version_file.read_text(encoding="utf-8")).get("schema")
+        except Exception:  # noqa: BLE001 - 版本记录坏了不能挡住导出
+            side["schema"] = None
     if extra:
         missing = [k for k in SIDECAR_REQUIRED if extra.get(k) in (None, "", {})]
         # runId/appBuild 允许为空（本地复跑没有这些），但键必须存在：
@@ -336,11 +344,29 @@ def _normalize_draft(dest: Path, project_name: str) -> dict[str, Any]:
     new_id = str(uuid.uuid4()).upper()
     duration = int(content.get("duration") or 0)
 
+    # 0.5) schema 版本对齐本机装的剪映：VectCutAPI 模板写的是 10.2/windows，
+    # 11.6 能容忍旧版本号，但没有理由继续替新版本赌。这里抄本机草稿的
+    # version/new_version/platform 块，只在拿不到参考时退回内置表。
+    schema = VERSIONING.resolve_schema()
+    if schema.get("apply"):
+        schema_info = VERSIONING.stamp(content, schema, os_name="mac")
+        schema_info["action"] = "applied"
+    else:
+        # 没有同主版本参考就不动版本块：模板的 10.2/windows 在 11.6 上实测能开，
+        # 「推测新版本号」比「沿用旧版本号」风险大得多。
+        schema_info = {"action": "kept", "source": schema.get("source")}
+
     # 1) content 本体 + draft_info.json（11.6 真正读取的文件）
     content["id"] = new_id
     payload = json.dumps(content, ensure_ascii=False, indent=2)
     content_path.write_text(payload, encoding="utf-8")
     wrote_info = _write_plain_json(dest / "draft_info.json", payload)
+    (dest / "draft_version.json").write_text(
+        json.dumps({"app": schema.get("app"), "schema": {
+            "version": schema.get("version"), "new_version": schema.get("new_version"),
+            "source": schema.get("source"),
+            "referenceDraft": schema.get("referenceDraft")},
+            "stamp": schema_info}, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # 2) Timelines/<id> 目录改名 + 里头的 content 副本
     timelines = dest / "Timelines"

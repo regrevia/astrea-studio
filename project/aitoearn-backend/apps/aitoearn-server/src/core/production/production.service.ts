@@ -641,6 +641,53 @@ export class ProductionService {
     return { jobId: job.id, attempt: job.attempt, draftPath }
   }
 
+  /**
+   * 把已有草稿在剪映里打开，交给人继续改。
+   *
+   * 这不是渲染，也不改 run 状态：只排一条 jianying_open 任务。剪映必须前台
+   * 才能操作，所以只在人明确点「在剪映中打开」时才排；打开后不点导出、不保存。
+   */
+  async openDraft(
+    userId: string,
+    runId: string,
+    input: { draftPath?: string, waitIdle?: number },
+  ) {
+    const run = await this.getRun(userId, runId)
+    if (run.status === ProductionRunStatus.CANCELLED) {
+      throw new AppException(ResponseCode.ProductionInvalidState, 'Run is cancelled; cannot open draft')
+    }
+    const draftPath = (input.draftPath || (run.output?.['draftPath'] as string | undefined) || '').trim()
+    if (!draftPath) {
+      throw new AppException(
+        ResponseCode.ProductionInvalidState,
+        '这条任务还没有剪映草稿，先跑一遍草稿任务',
+      )
+    }
+    const attempt = await this.jobRepo.nextAttempt(run.id, ProductionJobKind.JIANYING_OPEN)
+    const job = await this.jobRepo.create({
+      userId,
+      runId: run.id,
+      revision: run.revision,
+      kind: ProductionJobKind.JIANYING_OPEN,
+      attempt,
+      status: ProductionJobStatus.QUEUED,
+      lane: RENDER_LANE,
+      payload: {
+        runId: run.id,
+        revision: run.revision,
+        draftPath,
+        ...(typeof input.waitIdle === 'number' ? { waitIdle: input.waitIdle } : {}),
+      },
+    } as unknown as Partial<ProductionJob>)
+    await this.appendEvent(run.id, {
+      kind: 'job.queued',
+      jobId: job.id,
+      stage: 'draft_opening',
+      message: `jianying open attempt ${job.attempt}`,
+    })
+    return { jobId: job.id, attempt: job.attempt, draftPath }
+  }
+
   private async enqueueRender(
     userId: string,
     run: ProductionRun,

@@ -11,6 +11,7 @@
 | `listProductionEvents` | 读任务事件流，按阶段回放。 |
 | `createJianyingDraft` | 把已完成任务的成片落成剪映工程，进用户素材库默认分组；同一任务重复调用复用同一工程。任务没有成片时直接报错，不会凭空造工程。 |
 | `startJianyingExport` | 给已有剪映工程的任务排一条独立导出任务。默认只排队：macOS 上剪映要人点导出，任务停到 `awaiting_manual_export`、任务状态转 `waiting_user`，不写假成片；带 `allowGui: true` 时本机驱动导出面板，机器被占用则退避。 |
+| `openJianyingDraft` | 把任务已落的剪映工程在这台 Mac 的剪映里打开，让人接着改。只打开：不导出、不改任务状态、不写 `videoPath`；剪映会到前台，只在用户明确要看工程时调。 |
 | `submitRender` / `getRenderJob` / `cancelRenderJob` | 本机渲染队列下单、查进度、取消。`getRenderJob` 成功时给出成片路径、时长与画面尺寸。 |
 | `planPublication` / `listPublications` | 只登记发布意向与查看登记结果；提交发布必须由用户在面板确认。 |
 
@@ -28,6 +29,15 @@
 - `allowGui: true`：worker 先自检。屏幕锁着直接返回 `reasonCode = screen_locked`（不开剪映、不等 1800 秒）；工具链缺失现场编译；面板可用才代点导出，返回 `stage = exported` 与真实 `videoPath`，或按 rc 映射成 `export_panel_unavailable` / `export_timeout` / `export_aspect_mismatch` 等原因码。
 
 `reasonCode` 写在结果顶层，任务详情把它归一进 `run.output.manualExportReason`，界面据此给不同的下一步。一个不变量：**没有真实产物就不写 `videoPath`**，也不会把这类任务记成 `succeeded`。
+
+## `openJianyingDraft` 的契约
+
+打开工程是给人看的动作，不是流水线的一步，所以它和导出彻底分开：
+
+- 排一条 `jianying_open` 任务，worker 调 `export/open_draft.py --name <草稿目录>`；成功后 job 落 `stage = draft_opened`，任务的 `status` / `output` 一个字都不改。
+- 省略 `draftPath` 就用任务记录里的草稿；没有就直接拒绝，不猜「最新草稿」，也不去目录里挑文件。
+- 屏幕锁着判 `screen_locked`，剪映正被别人占用判 `export_user_busy`，两种都不硬点面板。
+- 平台侧同一动作走 `POST /production/runs/:id/open-draft`（body `{draftPath?, waitIdle?}`），界面上的「在剪映中打开」调的就是它。
 
 ## `submitRender` 的 timeline 契约
 

@@ -22,6 +22,7 @@ export enum AssistantToolName {
   CANCEL_RENDER_JOB = 'cancel_render_job',
   CREATE_JIANYING_DRAFT = 'create_jianying_draft',
   START_JIANYING_EXPORT = 'start_jianying_export',
+  OPEN_JIANYING_DRAFT = 'open_jianying_draft',
 }
 
 const runIdSchema = z.string().regex(/^[a-f0-9]{24}$/i, '任务 ID 是 24 位十六进制字符串')
@@ -141,6 +142,12 @@ export const startJianyingExportArgsSchema = z.object({
   allowGui: z.boolean().optional().describe('只有用户明确让你在这台 Mac 上驱动剪映导出时才传 true'),
   claimPath: z.string().min(1).optional()
     .describe('用户已经自己点过导出了：给他导出的成片路径，只做体检入库，不再动剪映'),
+})
+
+export const openJianyingDraftArgsSchema = z.object({
+  runId: runIdSchema,
+  draftPath: z.string().min(1).optional()
+    .describe('草稿目录；省略就用任务上次落的草稿'),
 })
 
 /** 给模型的工具清单。描述里写清「什么时候用」和「需要用户先提供什么」。 */
@@ -441,6 +448,22 @@ export const ASSISTANT_TOOLS: AssistantToolDefinition[] = [
           runId: { type: 'string', description: '任务 ID，必须已经落过剪映工程' },
           allowGui: { type: 'boolean', description: '是否允许驱动本机剪映导出面板' },
           claimPath: { type: 'string', description: '用户人工导出的成片绝对路径；给了就只认领，不动剪映' },
+        },
+        required: ['runId'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: AssistantToolName.OPEN_JIANYING_DRAFT,
+      description: '把已有剪映草稿在这台 Mac 的剪映里打开，让人接着改；不导出、不保存。剪映会抢到前台，只在用户明确让你打开时用。',
+      parameters: {
+        type: 'object',
+        properties: {
+          runId: { type: 'string', description: '任务 ID，必须已经落过剪映工程' },
+          draftPath: { type: 'string', description: '草稿目录绝对路径；省略就用任务记录里的草稿' },
         },
         required: ['runId'],
         additionalProperties: false,

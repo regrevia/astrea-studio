@@ -234,3 +234,9 @@ python3 -c "import json;d=json.load(open('~/CreatorStudio/deliver/jianying-draft
 ```
 
 生成脚本已放进交付目录：`build_draft.py`（25 个 API 调用，自带合法骨架 `skeleton/`）+ `patch_draft.py`（回填素材 / 关键帧 / 混合模式 / 画布比例），两次跑出来字节数一致，可安全重跑。要长期用应搬进 `integrations/mac-worker/`（本轮未动，避免和他人改动冲突）。
+
+## 10. 让剪映打开现成草稿
+
+平台侧 `POST /production/runs/:id/open-draft`（MCP `open_jianying_draft`）排一条 `jianying_open` 任务，
+worker 调 `export/open_draft.py --name <草稿目录名> --wait-idle`：只打开、不导出、不改 run 状态；
+屏幕锁定或剪映被占用时直接退避，不硬点面板。

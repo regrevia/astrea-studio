@@ -80,6 +80,11 @@ const ReviseRunSchema = z.object({
   })).max(50).optional().describe('按场景逐条改，一次只改一项；适合只换一句字幕或一处素材'),
 })
 
+const OpenJianyingDraftSchema = z.object({
+  runId: z.string().describe('任务 ID'),
+  draftPath: z.string().min(1).optional().describe('草稿目录；省略就用任务上次落的草稿'),
+})
+
 const SubmitRenderSchema = z.object({
   kind: z.enum(StudioJobKind).describe('本机渲染通道：timeline 时间线成片 / motion 动效 / slides 图文 / jianying 剪映草稿 / paper 长图'),
   payload: z.record(z.string(), z.unknown()).describe('通道入参；timeline 要 canvas+video+text+audio，轴内 src 用绝对路径'),
@@ -277,6 +282,17 @@ export class ProductionMcpController {
       ...(params.claimPath ? { claimPath: params.claimPath } : {}),
     })
     return toYamlTextResult(job)
+  }
+
+  @Tool({
+    name: 'openJianyingDraft',
+    description: 'Open an existing 剪映 draft for this run in the desktop app so the user can keep editing. It only opens — nothing is exported, the run status does not change, and 剪映 takes the foreground, so call it only when the user asked to see or edit the draft.',
+    parameters: OpenJianyingDraftSchema,
+  })
+  async openJianyingDraft(params: z.infer<typeof OpenJianyingDraftSchema>) {
+    const user = getUser()
+    const opened = await this.production.openDraft(user.id, params.runId, params.draftPath ? { draftPath: params.draftPath } : {})
+    return toYamlTextResult(opened)
   }
 
   @Tool({

@@ -142,6 +142,11 @@ export function startRunExport(id: string, data: { allowGui?: boolean, draftPath
   return http.post<{ jobId: string, attempt: number, draftPath: string }>(`production/runs/${id}/export`, data)
 }
 
+/** 把草稿在剪映里打开（只打开，不导出）。剪映会到前台。 */
+export function openRunDraft(id: string, data: { draftPath?: string, waitIdle?: number } = {}) {
+  return http.post<{ jobId: string, attempt: number, draftPath: string }>(`production/runs/${id}/open-draft`, data)
+}
+
 /** 重试失败的任务。返回的是新 attempt 序号，不是 run。 */
 export function retryRun(id: string) {
   return http.post<{ runId: string, attempt: number }>(`production/runs/${id}/retry`)

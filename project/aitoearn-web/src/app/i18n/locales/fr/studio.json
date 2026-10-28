@@ -78,6 +78,7 @@
       "retry": "Relancer",
       "revise": "Demander une modification",
       "openVideo": "Ouvrir la vidéo",
+      "openDraft": "Ouvrir dans 剪映",
       "exportGui": "Exporter sur ce Mac"
     },
     "confirm": {
@@ -97,7 +98,8 @@
       "revise": "Modification non envoyée, réessaie",
       "cancel": "Annulation échouée, réessaie",
       "retry": "Relance échouée, réessaie",
-      "exportGui": "Export non planifié ; réessayez plus tard."
+      "exportGui": "Export non planifié ; réessayez plus tard.",
+      "openDraft": "Impossible de lancer l’ouverture ; réessayez plus tard."
     },
     "detail": {
       "empty": "Choisis une tâche pour voir la progression",
