@@ -672,11 +672,18 @@ export class ProductionAssistantService {
       detail: `${job?.progress ?? 0}% · ${job?.stage || run.currentStage || 'queued'}${run.lastError ? ` · ${run.lastError}` : ''}`,
       link: '/studio',
     }))
+    // 成片落在素材库里的绝对路径要原样交给模型：用户问「片子在哪」时它得能直接答，
+    // 也能把这个路径拿去剪映/上传/二次剪辑，而不是只知道一个 runId。
+    const libraryPath = typeof output['libraryPath'] === 'string' ? output['libraryPath'] : ''
+    const duration = Number(output['duration']) > 0 ? `${Number(output['duration']).toFixed(1)}s` : ''
+    const md5 = typeof output['md5'] === 'string' ? output['md5'] : ''
+    const artifact = libraryPath || (typeof output['videoPath'] === 'string' ? output['videoPath'] : '')
     return {
       text: [
         `状态：${statusText}；阶段：${job?.stage || run.currentStage}；进度：${job?.progress ?? 0}%`,
         `错误：${run.lastError || job?.lastError || '无'}`,
-        `产物：${videoUrl || '无'}${detail ? `；平台成片：${detail}` : ''}`,
+        `产物：${videoUrl || artifact || '无'}${detail ? `；平台成片：${detail}` : ''}`,
+        `本地文件：${artifact ? `${artifact}${duration ? ` · ${duration}` : ''}${md5 ? ` · md5 ${md5}` : ''}` : '未生成'}`,
         `最近事件：${events.slice(-3).map(item => item.message).join(' | ') || '无'}`,
       ].join('\n'),
       actions,
