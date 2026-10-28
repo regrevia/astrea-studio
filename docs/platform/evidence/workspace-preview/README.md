@@ -65,3 +65,11 @@
 - 点「上一批」第 1 版后详情面板 src 切到 `…a43c62/r1/master.mp4`。
 
 截图：[two-batches.png](/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/workspace-preview/two-batches.png)
+
+## 首帧落在钩子上
+
+固定取第 1 秒时几版缩略图几乎一样。现在按时间线里起得最早的那句开场文字算：落在它开头往后 1.5 秒（不越过片尾 0.3 秒）。
+
+实测两条批次的 6 个缩略图 `currentTime` 都是 `1.7`，三列能看出运镜/版式差异；批次卡标题变成 `批量结果 · 01:40:50` / `上一批 · 01:40:50`，时间到秒，同分钟连出两批也分得清（时间取自项目 `recentBatches[].at`）。
+
+截图：[hook-frame.png](/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/workspace-preview/hook-frame.png)

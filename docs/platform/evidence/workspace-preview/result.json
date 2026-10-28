@@ -121,5 +121,24 @@
     "thumbCount": 6,
     "detailAfterClickOlderFirst": "/oss/studio/runs/6ae233a10e7ac5971aa43c62/r1/master.mp4",
     "screenshot": "two-batches.png"
+  },
+  "hookFirstFrame": {
+    "change": "首帧从固定 1 秒改成「最早开场文字开头 + 1.5 秒」；批次卡标题带批次时间（到秒）",
+    "measured": {
+      "thumbCurrentTimes": [
+        1.7,
+        1.7,
+        1.7,
+        1.7,
+        1.7,
+        1.7
+      ],
+      "cardTitles": [
+        "批量结果 · 01:40:50",
+        "上一批 · 01:40:50"
+      ]
+    },
+    "why": "时间线里的文字段常横跨整条片子（0.2-9.85s），取中点会跳到中段产品镜头",
+    "screenshot": "hook-frame.png"
   }
 }

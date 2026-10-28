@@ -52,6 +52,16 @@ const PAGE_SIZE = 12
 type RunFilter = 'all' | 'succeeded' | 'running' | 'failed'
 const RUN_FILTERS: RunFilter[] = ['all', 'succeeded', 'running', 'failed']
 
+/** 批次时间到秒：同一分钟连出两批时，靠秒数才分得清哪张卡更新。 */
+function formatBatchTime(at: number, lng: string): string {
+  return new Date(at).toLocaleTimeString(lng === 'en' ? 'en-US' : 'zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
+}
+
 export default function ProjectWorkspace() {
   const { t } = useTransClient('studio')
   const params = useParams<{ lng: string, id: string }>()
@@ -344,16 +354,17 @@ export default function ProjectWorkspace() {
             </CardContent>
           </Card>
 
-          {batchCards.map((batch, index) => (
-            <Card key={batch[0].id}>
+          {batchCards.map((batchRuns, index) => (
+            <Card key={batchRuns[0].id}>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">
                   {index === 0 ? t('project.batch') : t('project.batchPrev')}
+                  {batchGroups[index]?.at ? ` · ${formatBatchTime(batchGroups[index].at as number, lng)}` : ''}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <BatchCompare
-                  runs={batch}
+                  runs={batchRuns}
                   selectedId={selectedRunId}
                   onSelect={setSelectedRunId}
                 />

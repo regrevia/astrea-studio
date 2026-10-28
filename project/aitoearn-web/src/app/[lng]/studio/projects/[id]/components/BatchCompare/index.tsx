@@ -11,6 +11,26 @@ import { useTransClient } from '@/app/i18n/client'
 import { cn } from '@/utils/className'
 import { deriveRunArtifacts } from '@/app/[lng]/studio/utils/runArtifacts'
 
+/**
+ * 首帧取哪一秒：挑起得最早的那句开场文字，落在它开头往后 1.5 秒。
+ *
+ * 钩子文案压在前几秒，固定取 1 秒时几版看着一样；文字段常常横跨整条片子，
+ * 取中点会跳到中段产品镜头，所以按句子开头算。
+ */
+function hookFrameAt(run: ProductionRun, duration?: number): number {
+  const timeline = run.spec?.timeline as { text?: Array<{ start?: number, end?: number }> } | undefined
+  const rows = (timeline?.text ?? []).filter(
+    row => typeof row.start === 'number' && typeof row.end === 'number' && (row.end as number) > (row.start as number),
+  )
+  const first = rows.sort((a, b) => (a.start as number) - (b.start as number))[0]
+  if (!first) {
+    return 1
+  }
+  const at = (first.start as number) + 1.5
+  const ceiling = ((duration && duration > 0.4) ? duration : at) - 0.3
+  return Math.max(0.2, Math.min(at, ceiling))
+}
+
 interface BatchCompareProps {
   runs: ProductionRun[]
   selectedId: string
@@ -47,7 +67,9 @@ export function BatchCompare({ runs, selectedId, onSelect }: BatchCompareProps) 
                       muted
                       playsInline
                       preload="metadata"
-                      onLoadedMetadata={(event) => { event.currentTarget.currentTime = 1 }}
+                      onLoadedMetadata={(event) => {
+                        event.currentTarget.currentTime = hookFrameAt(run, artifacts.duration)
+                      }}
                     />
                   )
                 : (
