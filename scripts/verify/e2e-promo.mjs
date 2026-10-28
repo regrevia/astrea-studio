@@ -11,7 +11,7 @@
  * token 默认读 /tmp/auto_token.txt，可用 E2E_TOKEN 覆盖。
  */
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const BASE = process.env.E2E_BASE || 'http://127.0.0.1:8080'
@@ -83,6 +83,13 @@ function fail(reason, detail) {
   process.exit(1)
 }
 
+// 素材行：一行一个绝对路径或 pack:<包名>/<图名>，和表单里填的写法一致。
+// 给了素材，成片每屏收尾前会插入这张真图，验收要连这段一起看。
+const MATERIALS = (process.env.E2E_MATERIALS || '')
+  .split('\n')
+  .map(line => line.trim())
+  .filter(Boolean)
+
 const spec = {
   engine: 'timeline',
   mode: 'vertical_short',
@@ -94,6 +101,8 @@ const spec = {
   voice: 'zh-CN-YunxiNeural',
   kicker: '宣发工作台',
 }
+if (MATERIALS.length > 0)
+  spec.materials = MATERIALS
 
 console.log(`建任务：project=${projectId}`)
 const created = await api('/runs', {
@@ -154,6 +163,23 @@ const report = {
   duration: Number(probe.video.duration.toFixed(3)),
   audio: probe.audioCount > 0,
   jobs: jobs.map(j => ({ kind: j.kind, attempt: j.attempt, status: j.status })),
+}
+
+// 抽帧留着给人和下一次比对：素材插没插进去，看一帧比看日志快。
+// 给了 E2E_FRAMES="1.0,3.8" 就按秒抽，抽不到的帧直接算验收失败（别悄悄少一张）。
+const framesAt = (process.env.E2E_FRAMES || '')
+  .split(',').map(x => Number(x.trim())).filter(n => Number.isFinite(n) && n > 0)
+report.materials = MATERIALS
+if (framesAt.length > 0) {
+  report.frames = []
+  for (const at of framesAt) {
+    const file = resolve(EVIDENCE_DIR, `e2e-${tag}-${runId}-t${at.toFixed(1)}.png`)
+    spawnSync('ffmpeg', ['-v', 'error', '-y', '-ss', String(at), '-i', local,
+      '-frames:v', '1', file], { stdio: 'inherit' })
+    if (!existsSync(file))
+      fail(`抽帧失败：t=${at}s`, report)
+    report.frames.push(file)
+  }
 }
 
 const problems = []

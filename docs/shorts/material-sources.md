@@ -191,9 +191,10 @@ find ~/Pictures -maxdepth 3 -type f \( -iname '*.png' -o -iname '*.jpg' -o -inam
 
 ## 7. 接进 spec：`pack:<slug>/<name>`
 
-解析层只有一份：`integrations/mac-worker/tools/material_packs.py`，出片入口
-`deploy/schematic_preview.py` 在参数解析阶段把 `pack:` 换成绝对路径，渲染层（`paper_short` /
-`paper_render_engine`）完全没改，版位后缀语法照旧。
+解析层有两处，都认同一套写法：`integrations/mac-worker/tools/material_packs.py`（命令行出片，
+`deploy/schematic_preview.py` 在参数解析阶段换成绝对路径）和
+`integrations/mac-worker/export/vertical_short.py` 的 `resolve_materials()`（平台的
+`spec.materials` 通道，见 §7.1）。渲染层不碰字符串，拿到的一律是绝对路径。
 
 ```bash
 # 命令行：包内引用 + 版位后缀（#高#contain#宽）
@@ -222,6 +223,29 @@ spec JSON 顶层也能写，命令行 `--shots` 为空时生效（临时换图�
 - 写错立刻报人话：`素材包不存在：nope（现有包：errs, long, smoke）`、
   `素材包 smoke 里没有 nope。包里可用：example-com`；
 - `MATERIALS_ROOT` 决定根目录，默认 `~/CreatorStudio/materials`。
+
+### 7.1 平台 `spec.materials`：给竖屏成片插真素材
+
+`POST /api/production/runs` 的 `spec.materials` 收一组字符串，一行一个引用；
+制作台「素材（可选）」文本框写的就是它。解析规则与命令行一致：`pack:` 走素材包，
+其余按绝对路径（`~` 会展开，相对路径拼在 `MATERIALS_ROOT` 下），后缀 `#高#填充#最大高` 先剥掉。
+
+```json
+{"engine": "timeline", "mode": "vertical_short", "materials": [
+  "pack:envoy-demo/github-com-regrevia-envoy-1",
+  "pack:envoy-demo/github-com-regrevia-envoy-2#838#contain#396"]}
+```
+
+落位规则：第 i 条素材进第 i 屏——卡面先讲要点，这一屏收尾前插入真图（0.9–1.6 s，
+按屏长取 `min(1.6, max(0.9, 屏长-1.0))`），下一页再切走；口播起点不重排。
+第一帧永远是卡面，封面标题不会被素材顶掉。
+
+缺素材当场失败，不静默跳过：`素材不存在：pack:envoy-demo/no-such-shot（包里是 … 这些）`、
+`素材不存在：pack:no-pack/x（没有这个素材包：…）`。文案故意不含 `FileNotFoundError`——
+那是「本机环境问题」的判据，会被平台自动重排三次，白等三轮还是同一句错。
+
+用了哪些素材、多大、sha256 前 16 位，落在成片工作目录 `spec.json` 的
+`meta.materials[]` 里，可回溯到具体文件。
 
 ## 9. 哪种主题该用哪种途径
 

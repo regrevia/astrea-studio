@@ -1,0 +1,29 @@
+{
+  "at": "2026-10-28T01:28:56.567Z",
+  "runId": "6ae14f923f3f9145994a3fa3",
+  "projectId": "6adc2161656a13996166bbfc",
+  "revision": 1,
+  "videoUrl": "/oss/studio/runs/6ae14f923f3f9145994a3fa3/r1/master.mp4",
+  "bytes": 13118389,
+  "width": 1080,
+  "height": 1920,
+  "fps": "30/1",
+  "duration": 28.69,
+  "audio": true,
+  "jobs": [
+    {
+      "kind": "render_timeline",
+      "attempt": 1,
+      "status": "succeeded"
+    }
+  ],
+  "materials": [
+    "pack:envoy-demo/github-com-regrevia-envoy-1",
+    "pack:envoy-demo/github-com-regrevia-envoy-2"
+  ],
+  "frames": [
+    "/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/e2e-materials-6ae14f923f3f9145994a3fa3-t1.0.png",
+    "/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/e2e-materials-6ae14f923f3f9145994a3fa3-t3.6.png",
+    "/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/e2e-materials-6ae14f923f3f9145994a3fa3-t8.6.png"
+  ]
+}

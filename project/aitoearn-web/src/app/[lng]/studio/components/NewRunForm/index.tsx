@@ -225,7 +225,7 @@ export default function NewRunForm({ projects, projectId: selectedProjectId, onC
             placeholder={'/Users/me/materials/a.png\npack:envoy/hero'}
             onChange={event => setMaterialsText(event.target.value)}
           />
-          <span className={hintClass}>每行一个绝对路径，或用 pack 前缀指向素材包。</span>
+          <span className={hintClass}>每行一个，第几条进第几屏，图插在卡面收尾前。</span>
         </div>
 
         <div className="flex flex-col gap-1.5 sm:col-span-2">

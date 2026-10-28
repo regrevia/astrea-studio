@@ -991,9 +991,68 @@ def _film_glow(workdir: Path, total: float, palette_idx: int = 0,
     return out
 
 
+MATERIALS_ROOT = Path(os.environ.get("MATERIALS_ROOT") or (Path.home() / "CreatorStudio" / "materials")).expanduser()
+# 一屏有素材时先出多久真素材；下限保证「一眼能看清」，上限不抢口播的戏
+BROLL_MIN, BROLL_MAX = 0.9, 1.6
+
+
+class MaterialError(ValueError):
+    """素材引用解析不出来：给写稿的人一句能改的话，别冒成渲染内部异常。"""
+
+
+def _pack_shot(slug: str, name: str) -> Path:
+    pack = MATERIALS_ROOT / "packs" / slug
+    index = pack / "index.json"
+    if not index.is_file():
+        raise MaterialError(f"素材不存在：pack:{slug}/{name}（没有这个素材包：{pack}）")
+    try:
+        shots = json.loads(index.read_text(encoding="utf-8")).get("shots") or []
+    except json.JSONDecodeError:
+        raise MaterialError(f"素材包索引读不出来：{index}") from None
+    for shot in shots:
+        if name in (str(shot.get("name") or ""), Path(str(shot.get("file") or "")).name):
+            found = pack / str(shot.get("file") or "")
+            if found.is_file():
+                return found
+    names = "、".join(str(x.get("name")) for x in shots[:5])
+    raise MaterialError(f"素材不存在：pack:{slug}/{name}（包里是 {names} 这些）")
+
+
+def resolve_materials(raw) -> list[tuple[str, Path]]:
+    """spec.materials 的一串引用 → 本机文件：绝对路径 / ~ / pack:<包名>/<图名>。
+
+    `#838#contain#396` 那类版位后缀是版式参数，取文件时先剥掉。
+    解析失败要说清是哪个引用、找过哪里：静默跳过一屏素材，成片和稿子说的
+    就不是一回事了，而且要等上了平台才发现。
+    """
+    out: list[tuple[str, Path]] = []
+    for ref in raw or []:
+        text = str(ref or "").strip()
+        if not text:
+            continue
+        bare = text.split("#")[0].strip() or text
+        if bare.startswith("pack:"):
+            slug, _, name = bare[len("pack:"):].partition("/")
+            if not name:
+                raise MaterialError(f"素材引用少了包内名字：{text}（应写成 pack:<包名>/<图名>）")
+            path = _pack_shot(slug, name)
+        else:
+            path = Path(os.path.expanduser(bare))
+            if not path.is_absolute():
+                path = MATERIALS_ROOT / path
+            if not path.is_file():
+                raise MaterialError(f"素材不存在：{bare}（找过 {path}）")
+        out.append((text, path.resolve()))
+    return out
+
+
 def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | None = None) -> dict:
     """脚本 → timeline spec（静帧卡 + 立绘 + 逐屏配音）。"""
     workdir.mkdir(parents=True, exist_ok=True)
+    # 表单里每行一个素材：按屏顺序铺，第一行给第一屏。解析不了当场报错，
+    # 不等到渲染层才对不上文件。
+    materials = resolve_materials(script.get("materials"))
+    used_materials: list[tuple[str, Path]] = []
     # 一次排多条母版时，同稿不同表演：种子取自 runId，只影响手势选择，
     # 文案/配音/时长一个字都不动。没有种子（老 spec 直发）时行为完全不变。
     _raw_seed = str(script.get("_variant_seed") or "")
@@ -1256,13 +1315,32 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
         # 看着像背景在慢慢变亮。4.5% 够破 PPT 感，又看不出背景在动
         _deep = 1.045 + 0.010 * ((variant_seed // 2) % 2)
         z0, z1 = ((1.0, _deep) if (i + _flip) % 2 == 0 else (_deep, 1.0))
-        video.append({
-            "src": str(card), "out": round(dur, 3), "zoom": [z0, z1],
-            # 封面第一帧就是成片封面：平台取首帧当图，黑起头等于没封面
-            "fade_in": 0.0,
-            "fade_out": FADE if i == total - 1 else 0.0,
-            "xfade_in": 0.0 if i == 0 else XFADE,
-        })
+        mat = materials[i] if i < len(materials) else None
+        if mat:
+            # 有素材的屏：卡面先讲要点，这一屏收尾前插入真素材（截图/实拍），
+            # 下一页再切走。卡面在前，第一帧还是封面标题；配音仍从这一屏起点开口，
+            # 时间轴不用重算——这是剪辑，不是重新配一遍音。
+            used_materials.append(mat)
+            broll = round(min(BROLL_MAX, max(BROLL_MIN, dur - 1.0)), 3)
+            video.append({
+                "src": str(card), "out": round(dur - broll, 3), "zoom": [z0, z1],
+                "fade_in": 0.0, "fade_out": 0.0,
+                "xfade_in": 0.0 if i == 0 else XFADE,
+            })
+            video.append({
+                "src": str(mat[1]), "out": broll, "zoom": [1.0, 1.02],
+                "fade_in": 0.0,
+                "fade_out": FADE if i == total - 1 else 0.0,
+                "xfade_in": XFADE,
+            })
+        else:
+            video.append({
+                "src": str(card), "out": round(dur, 3), "zoom": [z0, z1],
+                # 封面第一帧就是成片封面：平台取首帧当图，黑起头等于没封面
+                "fade_in": 0.0,
+                "fade_out": FADE if i == total - 1 else 0.0,
+                "xfade_in": 0.0 if i == 0 else XFADE,
+            })
         # 换屏是引擎里的真交叠（video.xfade_in）：以前用「下一张卡当叠层」模拟，
         # 叠层是固定 1.0 倍、底图在 1.0~1.07 之间推拉，0.4s 里两张同图案的卡
         # 对不齐，网格点和光斑就互相咬，看着像背后的光在抖。现在底图自己融，
@@ -1638,6 +1716,11 @@ def build_spec(script: dict, workdir: Path, *, voice: str = "", logo: Path | Non
                  "gesture": _gesture_summary(gesture_audit, switch_audit, motion_audit),
                  # 人物占宽：竖屏里缩成一张小贴纸，再准的手势也没人看见
                  "char_widths": char_widths,
+                 # 素材落到了哪几个文件：出片后要能回查「片里那张图是哪来的」
+                 "materials": [{"ref": ref, "path": str(path),
+                                "bytes": path.stat().st_size,
+                                "sha256": hashlib.sha256(path.read_bytes()).hexdigest()[:16]}
+                               for ref, path in used_materials],
                  "lip": lip_info,
                  "pacing": {"scenes": pacing,
                             "min_gap": min((x["gap"] for x in pacing), default=0.0),

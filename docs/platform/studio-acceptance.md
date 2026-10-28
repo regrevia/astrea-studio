@@ -58,7 +58,20 @@ node scripts/verify/e2e-promo.mjs --project <项目 ID>
 ## 6. 成片落到哪个草稿箱
 
 制作台的项目选择器右侧新增「草稿箱」下拉：选中项目后可以直接把它绑到一个草稿箱（不选即后端默认箱），改动落到项目的 `materialGroupId` 上。后端 `attachMaterialForWorker` 早就按 `项目.materialGroupId → 用户默认分组` 的顺序解析，缺的是界面这一端——在此之前所有项目的 `materialGroupId` 都是空串。
-## 7. 还没验收的
+## 7. 素材引用真的进了成片
+
+`spec.materials` 写 `pack:envoy-demo/...` 两行，跑 `E2E_MATERIALS=$'pack:…/github-com-regrevia-envoy-1\npack:…/-2' E2E_FRAMES="5.6" node scripts/verify/e2e-promo.mjs --tag materials`：
+1080×1920 / 28.69 s / 30 fps / 有音轨，`/oss/studio/runs/6ae14f923f3f9145994a3fa3/r1/master.mp4` 13,118,389 B。
+
+素材是否真的上屏，不看日志看帧：成片 t=5.6 s 抽帧 OCR 出 `regrevia / Envoy`、`Code`、`Sign in`——仓库页截图在片子里；
+同一跑里 t=1.0 与 t=3.6 抽帧 OCR 全是封面文案「一条片子，从一句话到能发」，说明卡面在前、素材在后，
+封面标题没被素材顶掉。成片工作目录 `spec.json` 的 `meta.materials[]` 记了两个文件路径、字节数、sha256 前缀。
+证据：[e2e-materials-6ae14f923f3f9145994a3fa3.json](evidence/e2e-materials-6ae14f923f3f9145994a3fa3.json)。
+
+素材缺失也不会白跑：`pack:envoy-demo/no-such-shot` 立刻报「素材不存在：…（包里是 … 这些）」，
+离线自测 `integrations/mac-worker/export/test_vertical_materials.py` 7 项覆盖解析、后缀、坏包、坏图名。
+
+## 8. 还没验收的
 
 - 真机解锁后走 `allowGui: true` 的成功导出（面板代点 → `exported` + 真实 `videoPath`）。当前屏幕是锁的，属于人工前置条件。
 - GUI 自动化的辅助功能授权（编译出的辅助工具尚未被授予 Accessibility）。
