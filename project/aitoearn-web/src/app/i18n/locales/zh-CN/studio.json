@@ -285,6 +285,11 @@
     "status_all": "全部状态",
     "status_succeeded": "已完成",
     "status_running": "进行中",
-    "status_failed": "未成功"
+    "status_failed": "未成功",
+    "create": "新建项目",
+    "createPlaceholder": "项目名，例如「双十一预热」",
+    "createSubmit": "创建",
+    "cancel": "取消",
+    "createFailed": "创建失败，换个名字再试"
   }
 }

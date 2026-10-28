@@ -1,0 +1,12 @@
+{
+  "round": 19,
+  "createdProjectId": "6ae1f56d9c4cc169dd7132e2",
+  "createdName": "UI 新建项目验收",
+  "entry": "工作区表头「新建项目」",
+  "flow": "按钮 → 对话框输入项目名 → 创建 → 跳转新项目工作区",
+  "apiCountAfter": 9,
+  "screenshots": [
+    "docs/platform/evidence/project-create-dialog.png",
+    "docs/platform/evidence/project-create-created.png"
+  ]
+}

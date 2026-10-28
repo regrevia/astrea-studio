@@ -10,13 +10,21 @@
 import type { Inventory, ProductionProject, ProductionRun } from '@/api/production/production.types'
 import { ArrowLeft, Package } from 'lucide-react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { getInventory, getProjects, getRuns } from '@/api/production/production.api'
+import { createProject, getInventory, getProjects, getRuns } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import NewRunForm from '../../components/NewRunForm'
 import { RunDetailPanel } from '../../components/RunDetailPanel'
@@ -36,6 +44,11 @@ export default function ProjectWorkspace() {
   const params = useParams<{ lng: string, id: string }>()
   const lng = params?.lng ?? 'zh-CN'
   const projectId = params?.id ?? ''
+  const router = useRouter()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
 
   const [project, setProject] = useState<ProductionProject | null>(null)
   const [runs, setRuns] = useState<ProductionRun[]>([])
@@ -103,6 +116,29 @@ export default function ProjectWorkspace() {
     return () => { alive = false }
   }, [])
 
+  /** 建完直接进新项目的工作区，省掉再找一遍。 */
+  const submitCreate = useCallback(async () => {
+    const name = newName.trim()
+    if (!name || creating)
+      return
+    setCreating(true)
+    setCreateError('')
+    try {
+      const created = await createProject({ name })
+      const id = created?.data?.id
+      setCreateOpen(false)
+      setNewName('')
+      if (id)
+        router.push(`/${lng}/studio/projects/${id}`)
+    }
+    catch {
+      setCreateError(t('project.createFailed'))
+    }
+    finally {
+      setCreating(false)
+    }
+  }, [creating, lng, newName, router, t])
+
   const projectName = project?.name ?? ''
   const projectMap = useMemo<Record<string, string>>(
     () => (project ? { [project.id]: project.name } : {}),
@@ -141,7 +177,39 @@ export default function ProjectWorkspace() {
             </p>
           )}
         </div>
+        <Button variant="outline" size="sm" className="shrink-0" onClick={() => setCreateOpen(true)}>
+          {t('project.create')}
+        </Button>
       </div>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('project.create')}</DialogTitle>
+          </DialogHeader>
+          <form
+            className="space-y-3"
+            onSubmit={(event) => { event.preventDefault(); submitCreate().catch(() => {}) }}
+          >
+            <Input
+              value={newName}
+              maxLength={40}
+              autoFocus
+              placeholder={t('project.createPlaceholder')}
+              onChange={event => setNewName(event.target.value)}
+            />
+            {createError && <p role="alert" className="text-xs text-destructive">{createError}</p>}
+            <DialogFooter>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setCreateOpen(false)}>
+                {t('project.cancel')}
+              </Button>
+              <Button type="submit" size="sm" disabled={creating || !newName.trim()}>
+                {t('project.createSubmit')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         <div className="space-y-4">

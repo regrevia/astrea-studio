@@ -285,6 +285,11 @@
     "status_all": "All",
     "status_succeeded": "Done",
     "status_running": "In progress",
-    "status_failed": "Failed"
+    "status_failed": "Failed",
+    "create": "New project",
+    "createPlaceholder": "Project name",
+    "createSubmit": "Create",
+    "cancel": "Cancel",
+    "createFailed": "Could not create it"
   }
 }
