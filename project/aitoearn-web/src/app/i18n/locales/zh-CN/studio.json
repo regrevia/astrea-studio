@@ -183,6 +183,7 @@
       "progress": "已完成 {{n}}%",
       "waitingHint": "需要你确认后才会继续",
       "master": "成片",
+      "library": "已入库",
       "duration": "{{n}} 秒",
       "noVideo": "还没有可播放的成片",
       "jianying": "剪映草稿",

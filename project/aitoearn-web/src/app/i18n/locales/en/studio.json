@@ -183,6 +183,7 @@
       "progress": "{{n}}% done",
       "waitingHint": "Waiting for your confirmation",
       "master": "Video",
+      "library": "In library",
       "duration": "{{n}}s",
       "noVideo": "No playable video yet",
       "jianying": "JianYing draft",

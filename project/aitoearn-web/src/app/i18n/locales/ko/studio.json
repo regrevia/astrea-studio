@@ -105,6 +105,7 @@
       "progress": "{{n}}% 완료",
       "waitingHint": "확인하면 계속 진행됩니다",
       "master": "영상",
+      "library": "라이브러리 저장됨",
       "duration": "{{n}}초",
       "noVideo": "재생할 영상이 아직 없습니다",
       "jianying": "JianYing 초안",

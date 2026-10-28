@@ -40,7 +40,7 @@ if lsof -n -P -iTCP:3001 -sTCP:LISTEN >/dev/null 2>&1; then
   sleep 1
 fi
 
-echo "== 启动 standalone（日志 $LOG）"
+echo "== 启动 standalone（日志 ${LOG}）"
 ( cd "$STANDALONE" && AUTO_LOGIN_TOKEN="$(cat "$TOKEN_FILE")" PORT=3001 HOSTNAME=127.0.0.1 nohup node server.js > "$LOG" 2>&1 & )
 
 for _ in $(seq 1 30); do

@@ -105,6 +105,7 @@
       "progress": "{{n}}% 完了",
       "waitingHint": "確認すると続行します",
       "master": "動画",
+      "library": "ライブラリ保存済み",
       "duration": "{{n}} 秒",
       "noVideo": "再生できる動画はまだありません",
       "jianying": "JianYing 下書き",

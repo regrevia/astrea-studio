@@ -105,6 +105,7 @@
       "progress": "{{n}} % terminé",
       "waitingHint": "Attend ta confirmation",
       "master": "Vidéo",
+      "library": "Dans la bibliothèque",
       "duration": "{{n}} s",
       "noVideo": "Aucune vidéo lisible",
       "jianying": "Brouillon JianYing",

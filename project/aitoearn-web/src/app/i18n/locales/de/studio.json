@@ -105,6 +105,7 @@
       "progress": "{{n}} % fertig",
       "waitingHint": "Wartet auf deine Bestätigung",
       "master": "Video",
+      "library": "In Bibliothek",
       "duration": "{{n}} s",
       "noVideo": "Noch kein abspielbares Video",
       "jianying": "JianYing-Entwurf",

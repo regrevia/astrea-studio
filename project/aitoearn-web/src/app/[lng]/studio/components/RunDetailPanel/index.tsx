@@ -102,6 +102,14 @@ export function RunDetailPanel({ run, projectName, onChanged }: RunDetailPanelPr
             <p className="text-xs text-muted-foreground">{t('run.detail.noVideo')}</p>
           )}
 
+      {/* 入库落点：素材库按项目/月分目录 */}
+      {artifacts.libraryPath && (
+        <div className="flex flex-col gap-1 rounded-md border border-border p-3">
+          <span className="text-xs font-medium text-foreground">{t('run.detail.library')}</span>
+          <code className="break-all text-[11px] text-muted-foreground">{artifacts.libraryPath}</code>
+        </div>
+      )}
+
       {/* 剪映草稿：产物是草稿目录，导出由用户在剪映里完成 */}
       {artifacts.jianying && (
         <div className="flex flex-col gap-1 rounded-md border border-border p-3">

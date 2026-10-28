@@ -71,6 +71,7 @@ describe('productionAssistantService', () => {
     listProjects: ReturnType<typeof vi.fn>
     createProject: ReturnType<typeof vi.fn>
     createRun: ReturnType<typeof vi.fn>
+    createRunBatch: ReturnType<typeof vi.fn>
     reviseRun: ReturnType<typeof vi.fn>
     runDetail: ReturnType<typeof vi.fn>
     listRuns: ReturnType<typeof vi.fn>
@@ -102,6 +103,7 @@ describe('productionAssistantService', () => {
       listProjects: vi.fn(async () => [{ id: 'project-1', name: '默认项目', isDefault: true }]),
       createProject: vi.fn(async (_userId: string, data: { name: string }) => ({ id: 'project-2', name: data.name })),
       createRun: vi.fn(async () => ({ id: RUN_ID, title: '30 秒竖屏', status: 'queued', revision: 1 })),
+      createRunBatch: vi.fn(async () => []),
       reviseRun: vi.fn(async () => ({ id: RUN_ID, revision: 2 })),
       runDetail: vi.fn(),
       listRuns: vi.fn(async () => ({ list: [], total: 0, pageNo: 1, pageSize: 5 })),
@@ -180,6 +182,33 @@ describe('productionAssistantService', () => {
     })
     expect(result.reply.actions?.[0]).toMatchObject({ type: 'run', status: 'running' })
     expect(result.reply.actions?.[0].label).toContain('已创建任务')
+  })
+
+  it('create_run_batch 一次排 N 条：同一套规格交给 createRunBatch，标题由服务补 1/N 后缀', async () => {
+    production.createRunBatch.mockResolvedValue([
+      { id: 'run-1', title: '同题多版 · 1/2' },
+      { id: 'run-2', title: '同题多版 · 2/2' },
+    ])
+    client.chat
+      .mockResolvedValueOnce({
+        content: '',
+        toolCalls: [toolCall('create_run_batch', {
+          title: '同题多版',
+          script: ['第一句'],
+          materials: ['/tmp/a.mp4'],
+          canvas: 'portrait',
+          count: 2,
+        })],
+      })
+      .mockResolvedValueOnce({ content: '已排两条，出片后一起看。', toolCalls: [] })
+
+    const result = await service.sendMessage('user-1', SESSION_ID, '这两版各出一条')
+
+    expect(production.createRunBatch).toHaveBeenCalledTimes(1)
+    const [, input, count] = production.createRunBatch.mock.calls[0]
+    expect(count).toBe(2)
+    expect(input.spec).toMatchObject({ engine: 'timeline', materials: ['/tmp/a.mp4'] })
+    expect(result.reply.content).toContain('已排两条')
   })
 
   it('不给素材时走竖屏脚本通道：materials 退场，三段式要点与口播稿一起落到 spec', async () => {

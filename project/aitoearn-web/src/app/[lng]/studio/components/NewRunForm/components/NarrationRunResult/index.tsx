@@ -114,7 +114,7 @@ export default function NarrationRunResult({ runId }: { runId: string }) {
 
         {run?.output?.libraryPath && (
           <code className="break-all text-[11px] text-muted-foreground">
-            已入库
+            {t('run.detail.library')}
             {' '}
             {run.output.libraryPath}
           </code>
