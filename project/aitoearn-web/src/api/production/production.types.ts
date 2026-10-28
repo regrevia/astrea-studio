@@ -62,6 +62,21 @@ export interface ProductionRunOutput {
   platforms?: Record<string, ProductionPlatformVideo>
   copyCheck?: ProductionCopyCheck
   videoQa?: ProductionVideoQa
+  /** 成片入库后的文件落点（本机绝对路径），库里按规范命名，发布与归档都认这条路径。 */
+  libraryPath?: string
+  /** 库里的资产 id（文件名去后缀），用于跨任务引用同一条成片。 */
+  libraryAssetId?: string
+  /** 入库时算的 md5，校验成片没被替换。 */
+  md5?: string
+  /** 母版 + 各平台规格的入库清单。 */
+  libraryEntries?: ProductionLibraryEntry[]
+}
+
+/** 一条入库记录：kind=master 是母版，kind=platform 是某个平台的规格。 */
+export interface ProductionLibraryEntry {
+  kind?: string
+  platform?: string
+  path?: string
 }
 
 /** 文案体检里的一条提醒。level 为 warn 才值得上屏，info 是可选建议。 */

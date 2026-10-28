@@ -129,7 +129,7 @@ export function voiceRate(voice: string): number {
 
 /** 一句口播的预计秒数。 */
 export function estimateLineSeconds(say: string, rate = 1): number {
-  const chars = [...say].length
+  const chars = Array.from(say).length
   const pauses = say.match(PAUSE_PATTERN)?.length ?? 0
   return chars / (CHARS_PER_SECOND * rate) + (pauses * PAUSE_SECONDS) / rate
 }
@@ -219,7 +219,7 @@ export function buildVoiceOptions(inventory?: Inventory | null): VoiceOption[] {
     .filter(item => (item.voice ?? '').startsWith('sami:'))
     .map(item => ({ value: item.voice ?? '', label: item.name, note: SAMI_NOTE }))
   const seen = new Set<string>()
-  return [...edgeOptions, ...samiOptions].filter((option) => {
+  return edgeOptions.concat(samiOptions).filter((option) => {
     if (!option.value || seen.has(option.value))
       return false
     seen.add(option.value)

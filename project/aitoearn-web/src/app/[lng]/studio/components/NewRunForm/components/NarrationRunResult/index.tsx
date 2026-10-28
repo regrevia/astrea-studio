@@ -112,6 +112,14 @@ export default function NarrationRunResult({ runId }: { runId: string }) {
 
         {videoPath && <code className="break-all text-[11px] text-muted-foreground">{videoPath}</code>}
 
+        {run?.output?.libraryPath && (
+          <code className="break-all text-[11px] text-muted-foreground">
+            已入库
+            {' '}
+            {run.output.libraryPath}
+          </code>
+        )}
+
         {run?.status === 'failed' && (
           <div className="flex flex-col gap-1.5">
             <p className="text-sm text-destructive">{run.lastError || '渲染失败，原因没传回来'}</p>

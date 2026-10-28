@@ -24,6 +24,9 @@ export interface RunArtifacts {
   /** 这条任务走的是剪映草稿通道：产物是草稿目录，导出要用户在剪映里做。 */
   jianying: boolean
   jianyingDelivered: boolean
+  /** 成片在库里的落点：有它说明片子已按规范归档，不是临时文件。 */
+  libraryPath?: string
+  libraryAssetId?: string
   /** 发布草稿（AiToEarn 草稿箱）条目 id。 */
   publishDraftId?: string
   copyFindings: ProductionCopyFinding[]
@@ -69,6 +72,8 @@ export function deriveRunArtifacts(run?: ProductionRun | null): RunArtifacts {
     jianying: touchesJianying(run),
     // 草稿是不是真落了，只能看阶段有没有走到；没走到就别让用户去剪映里白找。
     jianyingDelivered: run.status === 'succeeded' && run.currentStage?.includes('jianying') === true,
+    libraryPath: output?.libraryPath,
+    libraryAssetId: output?.libraryAssetId,
     publishDraftId: run.materialId,
     copyFindings: (output?.copyCheck?.findings ?? []).filter(item => item.level === 'warn'),
     qaFindings: output?.videoQa?.findings ?? [],
