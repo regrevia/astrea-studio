@@ -604,3 +604,23 @@ def snapshot(panel_rect, out_path=None):
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     return data
+
+
+def foreground_pid():
+    """当前前台 App 的 pid（导出结束后要把焦点还回去，不能把人的编辑器顶掉）。"""
+    try:
+        out = subprocess.run([AX_TOOL, "front"], capture_output=True, text=True, timeout=10).stdout
+        return int((out or "").split()[0])
+    except Exception:
+        return 0
+
+
+def restore_front(pid: int) -> bool:
+    """把前台还给导出前那个 App。没记录到 pid 就什么都不做。"""
+    if not pid:
+        return False
+    try:
+        p = subprocess.run([AX_TOOL, "activate", str(pid)], capture_output=True, text=True, timeout=15)
+        return p.returncode == 0
+    except Exception:
+        return False

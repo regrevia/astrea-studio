@@ -445,6 +445,8 @@ def main(argv=None):
     ap.add_argument("--platform", default="")
     ap.add_argument("--list-options", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="选参数但不点导出")
+    ap.add_argument("--abort-on-activity", action="store_true", default=True,
+                    help="点导出前若用户刚有操作就放弃（默认开，挂后台时用）")
     ap.add_argument("--outdir", default=str(DEFAULT_OUTDIR))
     ap.add_argument("--job-id", default="",
                     help="任务 id（必填）：产物落到 outdir/<jobId>/r<rev>/；不接受按目录里最新文件认领")
@@ -583,6 +585,11 @@ def main(argv=None):
         return 8
 
     since = time.time()
+    # 最后一道「别抢前台」闸：面板开着的时候人可能已经回来敲键盘了。
+    # 这时点下去就是替人点掉一个导出、还把剪映顶到最前，宁可不导。
+    if args.abort_on_activity and P.idle() < 1.0:
+        print("排队：面板已就绪但用户刚有操作，这次不点导出", file=sys.stderr)
+        return 9
     if not click_export(rect, prefer_ax=args.try_axpress):
         print("找不到导出按钮", file=sys.stderr)
         return 4
