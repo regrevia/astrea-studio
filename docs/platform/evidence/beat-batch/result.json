@@ -1,0 +1,50 @@
+{
+  "project": "卡点成片验收",
+  "projectId": "6ae2268123fdf91423383ec9",
+  "sourceRun": "6ae2269123fdf91423383f2c",
+  "entrypoint": "POST /api/production/runs/batch（同一份卡点 spec 提交 3 版）",
+  "runs": [
+    {
+      "index": 1,
+      "runId": "6ae226e623fdf914233840cb",
+      "status": "succeeded",
+      "seconds": 30,
+      "md5": "1eb47212f8b00666123e5f8b9f1771cd",
+      "library": "20261029-004638__studio__001__卡点批量-30-秒-1-3__douyin__r1.mp4",
+      "segments": 15,
+      "firstIn": 0
+    },
+    {
+      "index": 2,
+      "runId": "6ae226e623fdf914233840d4",
+      "status": "succeeded",
+      "seconds": 30,
+      "md5": "aceb316b9f1750a6447d1769ba72943b",
+      "library": "20261029-004644__studio__001__卡点批量-30-秒-2-3__douyin__r1.mp4",
+      "segments": 15,
+      "firstIn": 2
+    },
+    {
+      "index": 3,
+      "runId": "6ae226e623fdf914233840dd",
+      "status": "succeeded",
+      "seconds": 30,
+      "md5": "12f72b389bf6c53461a70ce04694e3e4",
+      "library": "20261029-004651__studio__001__卡点批量-30-秒-3-3__douyin__r1.mp4",
+      "segments": 15,
+      "firstIn": 4
+    }
+  ],
+  "streams": "三条都是 h264 + aac，30.000 s",
+  "music": {
+    "bpm": 60.09,
+    "cutEvery": "2 拍",
+    "volume": 0.32,
+    "loop": true
+  },
+  "ssim": {
+    "v1_vs_v2": 0.964785,
+    "v1_vs_v3": 0.923282
+  },
+  "variantRule": "批量里第 2、3 版把素材入点错开（+2s、+4s）并翻转推拉方向，画面不同但拍点网格与配乐一致"
+}
