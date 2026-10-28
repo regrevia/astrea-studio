@@ -24,6 +24,12 @@
   "frames": [
     "/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/e2e-materials-6ae14f923f3f9145994a3fa3-t1.0.png",
     "/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/e2e-materials-6ae14f923f3f9145994a3fa3-t3.6.png",
-    "/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/e2e-materials-6ae14f923f3f9145994a3fa3-t8.6.png"
-  ]
+    "/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/e2e-materials-6ae14f923f3f9145994a3fa3-t8.6.png",
+    "docs/platform/evidence/e2e-materials-6ae14f923f3f9145994a3fa3-t5.6-broll.png"
+  ],
+  "brollCheck": {
+    "at": 5.6,
+    "ocr": "regrevia / Envoy, Code, Sign in",
+    "verdict": "素材上屏"
+  }
 }
