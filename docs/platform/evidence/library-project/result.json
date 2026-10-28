@@ -68,5 +68,41 @@
       "backendSpec": "EXIT=0",
       "workerTests": "28 tests OK"
     }
+  },
+  "migration": {
+    "before": [
+      "studio/（102 个成片，全部混在一起）",
+      "6adc2161656a13996166bbfc/",
+      "6ae235e6aa561aad282987e0/"
+    ],
+    "after": [
+      "envoy-剪映原生演示__6adc2161",
+      "刷新留存验收__6ae23137",
+      "卡点工作区验收__6ae225a4",
+      "卡点成片验收__6ae22681",
+      "卡点验收__6ae22436",
+      "批量出片验收__6ae22945",
+      "未归属",
+      "标题卡点验收__6ae22841",
+      "版本切换验收__6ae22f3b",
+      "端到端验收-一体化宣发工作台__6ae23569",
+      "端到端验收-一体化宣发工作台__6ae235e6",
+      "素材排片验收__6ae22119",
+      "钩子三版验收2__6ae22bae",
+      "钩子三版验收__6ae22a73",
+      "钩子终验__6ae22cb2",
+      "音量三段验收__6ae22dff"
+    ],
+    "moved": {
+      "studio_by_runId": 99,
+      "studio_unassigned": 6,
+      "projectDirs": {
+        "端到端验收-一体化宣发工作台__6ae235e6": 10,
+        "envoy-剪映原生演示__6adc2161": 6
+      }
+    },
+    "unassigned": 6,
+    "verify": "干净（lib.verify 无缺文件/大小不符/缺 sidecar）",
+    "tests": "31 条 worker 单测全过（新增 migrate 三条：纯 id 目录、studio 按 runId、找不到归属保留）"
   }
 }

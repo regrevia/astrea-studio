@@ -67,6 +67,74 @@ class LibraryTest(unittest.TestCase):
         self.assertEqual((r1["revision"], r2["revision"]), (1, 2))
         self.assertTrue(Path(r1["path"]).is_file())
 
+    def test_migrate_old_id_dir(self):
+        old = self.root / "6abc12345678901234567890" / "2026-10"
+        old.mkdir(parents=True)
+        pid = "6abc12345678901234567890"
+        name = "20261001-120000__%s__001__旧片__douyin__r1.mp4" % pid
+        (old / name).write_bytes(FAKE_MP4)
+        (old / name.replace(".mp4", ".json")).write_text(json.dumps(
+            {"assetId": name[:-4], "path": str(old / name), "project": pid,
+             "title": "旧片", "revision": 1}, ensure_ascii=False), encoding="utf-8")
+        (self.root / "index.jsonl").write_text(json.dumps(
+            {"assetId": name[:-4], "path": str(old / name), "project": pid,
+             "title": "旧片", "revision": 1, "bytes": len(FAKE_MP4)},
+            ensure_ascii=False) + "\n", encoding="utf-8")
+
+        moved = lib.migrate_dir(self.root, pid, "账号诊断", project_id=pid, dry_run=True)
+        self.assertEqual(len(moved), 2)
+        self.assertTrue((old / name).is_file(), "预演不能动文件")
+
+        moved = lib.migrate_dir(self.root, pid, "账号诊断", project_id=pid)
+        self.assertEqual(len(moved), 2)
+        newdir = self.root / "账号诊断__6abc1234"
+        newfile = newdir / "2026-10" / name.replace("__%s__" % pid, "__账号诊断__6abc1234__")
+        self.assertTrue(newfile.is_file())
+        self.assertFalse((self.root / pid).exists())
+        row = json.loads((newfile.with_suffix(".json")).read_text(encoding="utf-8"))
+        self.assertEqual(row["path"], str(newfile))
+        self.assertEqual(row["projectDir"], "账号诊断__6abc1234")
+        idx = json.loads((self.root / "index.jsonl").read_text(encoding="utf-8").strip())
+        self.assertEqual(idx["path"], str(newfile))
+        self.assertEqual(idx["projectId"], pid)
+        self.assertEqual(lib.verify(root=self.root), [])
+
+    def test_migrate_studio_by_run_id(self):
+        legacy = self.root / "studio" / "2026-09"
+        legacy.mkdir(parents=True)
+        name = "20260901-120000__studio__001__老片__douyin__r1.mp4"
+        (legacy / name).write_bytes(FAKE_MP4)
+        (legacy / name.replace(".mp4", ".json")).write_text(json.dumps(
+            {"assetId": name[:-4], "path": str(legacy / name), "project": "studio",
+             "runId": "run-9", "bytes": len(FAKE_MP4)}, ensure_ascii=False), encoding="utf-8")
+        (self.root / "index.jsonl").write_text(json.dumps(
+            {"assetId": name[:-4], "path": str(legacy / name), "project": "studio",
+             "runId": "run-9", "bytes": len(FAKE_MP4)}, ensure_ascii=False) + "\n",
+            encoding="utf-8")
+        rmap = {"run-9": {"name": "账号诊断", "id": "6abc12345678901234567890"}}
+        res = lib.migrate_studio(self.root, rmap, dry_run=True)
+        self.assertEqual((len(res["moved"]), len(res["kept"])), (1, 0))
+        self.assertTrue((legacy / name).is_file())
+
+        res = lib.migrate_studio(self.root, rmap)
+        self.assertEqual(len(res["moved"]), 1)
+        newfile = self.root / "账号诊断__6abc1234" / "2026-09" / name.replace("__studio__", "__账号诊断__6abc1234__")
+        self.assertTrue(newfile.is_file())
+        self.assertFalse((self.root / "studio").exists())
+        idx = json.loads((self.root / "index.jsonl").read_text(encoding="utf-8").strip())
+        self.assertEqual(idx["path"], str(newfile))
+        self.assertEqual(idx["projectDir"], "账号诊断__6abc1234")
+        self.assertEqual(lib.verify(root=self.root), [])
+
+    def test_migrate_studio_keeps_unknown(self):
+        legacy = self.root / "studio" / "2026-09"
+        legacy.mkdir(parents=True)
+        (legacy / "a.mp4").write_bytes(FAKE_MP4)
+        res = lib.migrate_studio(self.root, {})
+        self.assertEqual(res["moved"], [])
+        self.assertEqual(len(res["kept"]), 1)
+        self.assertTrue((legacy / "a.mp4").is_file())
+
     def test_verify(self):
         row = lib.land(self.src, project="p", title="t", root=self.root)
         self.assertEqual(lib.verify(self.root), [])

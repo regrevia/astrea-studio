@@ -24,6 +24,25 @@ library/
 - `YYYY-MM` 用**入库时间**，不是拍摄/生成时间；按时间找片子只看这一个维度。
 - 同一次任务的不同修订版是不同文件（`r1`、`r2`…），旧版永久保留，回滚就是找旧文件。
 
+## 1.1 旧目录迁移
+
+早期入库不分项目、一律落 `studio/`，后来又只按 ObjectId 建目录。`library.py migrate` 做一次性搬迁：
+
+```
+# 纯 id 目录 → 项目名__id8
+python library.py migrate --dir 6ae235e6aa561aad282987e0 \
+    --project-name "端到端验收 · 一体化宣发工作台" --project-id 6ae235e6aa561aad282987e0
+
+# studio/ 按 runId 找到所属项目后逐条搬（run_map: {runId: {name, id}}）
+python library.py migrate --dir studio --run-map /tmp/legacy_run_map.json
+
+# 找不到归属的散件归到 未归属/
+python library.py migrate --dir studio --project-name "未归属"
+```
+
+- 先加 `--dry-run` 看清单；搬迁同时改文件名里的项目段、sidecar 的 `path/project/projectId/projectDir`，并回写台账路径字段（台账"永不改写"的唯一例外）。
+- 找不到 runId / 项目已删的文件留在原地，最后统一收进 `未归属/`，不静默丢。
+
 ## 2. 命名规则
 
 ```

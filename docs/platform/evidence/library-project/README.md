@@ -40,3 +40,16 @@
 后端把 `libraryProjectName` 一起交给 worker（渲染任务与剪映导出认领任务都带），读不到名字就退回只用 id。台账 `index.jsonl` 新增 `projectId`、`projectDir` 两个字段，旧行照旧可查；早期落在 `studio/` 或纯 id 目录下的文件不动。
 
 实测：新跑一条 succeeded，落点如上，台账最后一行 `projectDir=端到端验收-一体化宣发工作台__6ae235e6`。后端 spec EXIT=0，worker 单测 28 条全过。
+
+## 旧目录迁移
+
+`library.py migrate` 把历史遗留目录一次搬进新命名，先 `--dry-run` 出清单再执行：
+
+| 旧 | 新 | 文件数 |
+| --- | --- | --- |
+| `studio/`（按 runId 找到项目） | 8 个项目目录 | 99 |
+| `studio/`（早期手工入库、无 runId） | `未归属/` | 6 |
+| `6adc2161656a13996166bbfc/` | `envoy-剪映原生演示__6adc2161/` | 6 |
+| `6ae235e6aa561aad282987e0/` | `端到端验收-一体化宣发工作台__6ae235e6/` | 10 |
+
+搬迁同时改文件名里的项目段、sidecar 的 `path/project/projectId/projectDir`，并回写台账路径；`library.py verify` 对账干净。库根现在只有 15 个项目目录 + `未归属` + `index.jsonl`。
