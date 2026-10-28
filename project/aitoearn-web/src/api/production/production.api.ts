@@ -109,7 +109,15 @@ export function createRunBatch(data: {
 export type RunBatchVariant = 'mirror' | 'opening' | 'hook'
 
 /** 精确修改：合并 spec 补丁并重新渲染。 */
-export function reviseRun(id: string, data: { brief?: string, spec?: Record<string, unknown> }) {
+/** 逐场景改动：只动第几屏的字幕/时长/素材，一次一项。 */
+export interface SceneRevision {
+  index: number
+  text?: string
+  duration?: number
+  src?: string
+}
+
+export function reviseRun(id: string, data: { brief?: string, spec?: Record<string, unknown>, scenes?: SceneRevision[] }) {
   return http.post<ProductionRun>(`production/runs/${id}/revise`, data)
 }
 

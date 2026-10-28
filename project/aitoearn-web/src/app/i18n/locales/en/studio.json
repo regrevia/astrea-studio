@@ -171,7 +171,10 @@
       "placeholder": "Say what to change, e.g. subtitles in the second part are too slow",
       "cancel": "Cancel",
       "submit": "Submit",
-      "empty": "Describe the change first"
+      "empty": "Describe the change first",
+      "scenes": "Edit subtitles",
+      "line": "Line {{n}}",
+      "linePlaceholder": "New line here; leave blank to keep it"
     },
     "error": {
       "detail": "Could not load run details; retrying shortly",

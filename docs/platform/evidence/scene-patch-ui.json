@@ -1,0 +1,30 @@
+{
+  "round": 22,
+  "feature": "改稿弹窗里逐句改字幕（前端）",
+  "ui": {
+    "entry": "/zh-CN/studio 任务行「提修改」",
+    "dialog": "列出当前每一句台词，每句给一个输入框；只提交填了的行",
+    "refresh": "打开弹窗时按 run id 重取一次当前版本，避免用列表里的旧台词覆盖",
+    "screenshot": "docs/platform/evidence/scene-patch-ui.png"
+  },
+  "live": {
+    "runId": "6ae1f91afccd24d42cfc6b1d",
+    "finalRevision": 5,
+    "status": "succeeded",
+    "timelineTextAfter": [
+      "界面改稿第三版",
+      "第二句原稿"
+    ],
+    "untouchedLineKept": true,
+    "output": "studio/runs/6ae1f91afccd24d42cfc6b1d/r5/master.mp4",
+    "md5": "c336388f7ad5a6fb0e811693e0cf2cbe",
+    "revision2Md5": "6edb757d423126c352c16632e6871735"
+  },
+  "tests": {
+    "tsc_web": 0,
+    "ui-copy-lint": "0 error",
+    "zh-lint": "0 error",
+    "timeline-spec.spec.ts": "46 passed",
+    "production.service.spec.ts": "30 passed"
+  }
+}
