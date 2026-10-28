@@ -160,7 +160,8 @@
       "revise": "提修改",
       "openVideo": "打开成片",
       "exportGui": "让这台 Mac 导出",
-      "claimExport": "认领已导出成片"
+      "claimExport": "认领已导出成片",
+      "variants": "再出几版"
     },
     "confirm": {
       "cancel": "取消后已渲染的部分不再保留，可以稍后重新出片。",
@@ -194,7 +195,8 @@
       "cancel": "取消失败，稍后重试",
       "retry": "重新出片没成功，稍后重试",
       "exportGui": "导出没排上，稍后再试",
-      "claimExport": "认领没排上，稍后再试"
+      "claimExport": "认领没排上，稍后再试",
+      "variants": "没排上，稍后再试"
     },
     "detail": {
       "empty": "选一条任务看进度和成片",
@@ -256,6 +258,19 @@
       "done": "已完成",
       "failed": "生成中断",
       "cancelled": "已取消"
+    },
+    "variants": {
+      "title": "再出几版",
+      "hint": "稿子与规格沿用这一条，只错开运镜、开场和开头字幕。",
+      "count": "出几版",
+      "dim": {
+        "mirror": "换运镜",
+        "opening": "换开场",
+        "hook": "换开头字幕"
+      },
+      "submit": "开始排队",
+      "done": "已排 {{count}} 版",
+      "cancel": "取消"
     }
   },
   "pub": {

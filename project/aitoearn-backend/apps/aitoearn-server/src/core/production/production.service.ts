@@ -419,6 +419,26 @@ export class ProductionService {
     return updated
   }
 
+  /**
+   * 拿一条已经出过的片子再排几版：稿子、规格、事实卡都沿用母版，
+   * 只在时间轴上错开运镜方向、开场镜头与开头字幕，方便一次多版挑着发。
+   */
+  async createRunVariants(
+    userId: string,
+    sourceRunId: string,
+    count = 2,
+    variants?: RunBatchVariant[],
+  ): Promise<ProductionRun[]> {
+    const source = await this.getRun(userId, sourceRunId)
+    return await this.createRunBatch(userId, {
+      projectId: source.projectId,
+      title: source.title.replace(/ · \d+\/\d+$/, ''),
+      brief: source.brief || source.title,
+      ...(source.spec ? { spec: source.spec as Record<string, unknown> } : {}),
+      ...(source.facts ? { facts: source.facts as Record<string, unknown> } : {}),
+    }, count, variants)
+  }
+
   async getRun(userId: string, runId: string): Promise<ProductionRun> {
     const run = await this.runRepo.getByIdForUser(runId, userId)
     if (!run) {

@@ -7,7 +7,7 @@
 'use client'
 
 import type { ProductionRun } from '@/api/production/production.types'
-import { Clapperboard, FolderInput, PencilLine, RotateCcw, XCircle } from 'lucide-react'
+import { Clapperboard, CopyPlus, FolderInput, PencilLine, RotateCcw, XCircle } from 'lucide-react'
 import { useState } from 'react'
 import { cancelRun, retryRun, startRunExport } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
@@ -16,6 +16,7 @@ import { confirm } from '@/utils/ui/confirm'
 import { canCancelRun, canRetryRun } from '../../utils/status'
 import { ClaimExportDialog } from './components/ClaimExportDialog'
 import { ReviseRunDialog } from './components/ReviseRunDialog'
+import { VariantsRunDialog } from './components/VariantsRunDialog'
 
 interface RunActionsProps {
   run: ProductionRun
@@ -31,6 +32,7 @@ export function RunActions({ run, onChanged, compact = false }: RunActionsProps)
   const [error, setError] = useState('')
   const [reviseOpen, setReviseOpen] = useState(false)
   const [claimOpen, setClaimOpen] = useState(false)
+  const [variantsOpen, setVariantsOpen] = useState(false)
   // 认领只对「草稿已落盘、用户自己去剪映导过」的任务成立；草稿路径是体检基准。
   const draftPath = typeof run.output?.draftPath === 'string' ? run.output.draftPath : ''
 
@@ -159,6 +161,12 @@ export function RunActions({ run, onChanged, compact = false }: RunActionsProps)
         <PencilLine className="h-4 w-4" />
         {t('run.action.revise')}
       </Button>
+      {run.status === 'succeeded' && (
+        <Button size={size} variant="outline" className="cursor-pointer" onClick={() => setVariantsOpen(true)}>
+          <CopyPlus className="h-4 w-4" />
+          {t('run.action.variants')}
+        </Button>
+      )}
 
       {error && <p role="alert" className="text-xs text-destructive">{t(error)}</p>}
 
@@ -167,6 +175,13 @@ export function RunActions({ run, onChanged, compact = false }: RunActionsProps)
         open={claimOpen}
         onOpenChange={setClaimOpen}
         onClaimed={() => onChanged?.()}
+      />
+
+      <VariantsRunDialog
+        run={run}
+        open={variantsOpen}
+        onOpenChange={setVariantsOpen}
+        onCreated={() => onChanged?.()}
       />
 
       <ReviseRunDialog

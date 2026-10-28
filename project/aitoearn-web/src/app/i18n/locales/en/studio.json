@@ -160,7 +160,8 @@
       "revise": "Revise",
       "openVideo": "Open video",
       "exportGui": "Export on this Mac",
-      "claimExport": "Claim exported video"
+      "claimExport": "Claim exported video",
+      "variants": "More variants"
     },
     "confirm": {
       "cancel": "Rendered parts are dropped; you can start it again later.",
@@ -194,7 +195,8 @@
       "cancel": "Cancel failed; try again",
       "retry": "Retry failed; try again",
       "exportGui": "Export could not be queued; try again later.",
-      "claimExport": "Claim could not be queued; try again later."
+      "claimExport": "Claim could not be queued; try again later.",
+      "variants": "Not queued, try again"
     },
     "detail": {
       "empty": "Pick a run to see progress and video",
@@ -256,6 +258,19 @@
       "done": "Done",
       "failed": "Interrupted",
       "cancelled": "Cancelled"
+    },
+    "variants": {
+      "title": "More variants",
+      "hint": "Reuse this script and spec; only camera, opening and first caption change.",
+      "count": "Variants",
+      "dim": {
+        "mirror": "Change camera",
+        "opening": "Change opening",
+        "hook": "Change first caption"
+      },
+      "submit": "Queue them",
+      "done": "{{count}} queued",
+      "cancel": "Cancel"
     }
   },
   "pub": {

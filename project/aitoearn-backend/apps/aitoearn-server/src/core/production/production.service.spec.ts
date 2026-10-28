@@ -235,6 +235,56 @@ describe('createRunBatch', () => {
   })
 })
 
+describe('createRunVariants', () => {
+  it('拿一条出过的片子再排几版：稿子规格沿用母版，标题去掉旧序号', async () => {
+    const { service, projectRepo, runRepo } = createService()
+    const timeline = {
+      canvas: { width: 1080, height: 1920, fps: 30 },
+      video: [
+        { src: 'a.mp4', in: 0, out: 3, keyframes: [{ at: 0, zoom: 1 }, { at: 3, zoom: 1.12 }] },
+        { src: 'b.mp4', in: 0, out: 3 },
+      ],
+    }
+    runRepo.getByIdForUser.mockResolvedValue({
+      id: 'run-1',
+      projectId: '6adc2161656a13996166bbfc',
+      title: '咖啡机 · 1/3',
+      brief: '三秒一句',
+      spec: { engine: 'timeline', timeline },
+      facts: { brand: '某品牌' },
+      revision: 1,
+      status: 'succeeded',
+    })
+    projectRepo.getByIdForUser.mockResolvedValue({ id: '6adc2161656a13996166bbfc' })
+    runRepo.create.mockImplementation(async (data: Record<string, unknown>) => ({ id: `run-${runRepo.create.mock.calls.length}`, ...data }))
+
+    const runs = await service.createRunVariants('user-1', 'run-1', 2)
+
+    expect(runs).toHaveLength(2)
+    expect(runs.map(r => r.title)).toEqual(['咖啡机 · 1/2', '咖啡机 · 2/2'])
+    const calls = runRepo.create.mock.calls.map(c => c[0] as Record<string, unknown>)
+    // 母版的项目、需求、事实卡整份带过来，不用前端再写一遍
+    expect(calls.map(c => c.projectId)).toEqual(['6adc2161656a13996166bbfc', '6adc2161656a13996166bbfc'])
+    expect(calls.map(c => c.brief)).toEqual(['三秒一句', '三秒一句'])
+    expect(calls.map(c => c.facts)).toEqual([{ brand: '某品牌' }, { brand: '某品牌' }])
+    const [first, second] = calls.map(c => c.spec as Record<string, unknown>)
+    expect(first['engine']).toBe('timeline')
+    // 第 2 版换开场：镜头顺序与母版不同，画布/时长不变
+    const firstRows = (first['timeline'] as Record<string, unknown>)['video'] as Array<Record<string, unknown>>
+    const secondRows = (second['timeline'] as Record<string, unknown>)['video'] as Array<Record<string, unknown>>
+    expect(secondRows[0]['src']).not.toBe(firstRows[0]['src'])
+    expect((second['timeline'] as Record<string, unknown>)['canvas']).toEqual({ width: 1080, height: 1920, fps: 30 })
+  })
+
+  it('别人的任务不能拿来排新版', async () => {
+    const { service, runRepo } = createService()
+    runRepo.getByIdForUser.mockResolvedValue(null)
+
+    await expect(service.createRunVariants('user-1', 'run-other', 2)).rejects.toBeTruthy()
+    expect(runRepo.create).not.toHaveBeenCalled()
+  })
+})
+
 describe('reviseRun', () => {
   it('以审计底稿为基线重新展开，不对已展开规格二次展开', async () => {
     const { service, runRepo } = createService()

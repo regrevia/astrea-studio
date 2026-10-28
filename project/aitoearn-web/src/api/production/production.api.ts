@@ -111,6 +111,11 @@ export function createRunBatch(data: {
   return http.post<{ runIds: string[], count: number }>('production/runs/batch', data)
 }
 
+/** 拿一条出过的片子再排几版：稿子与规格原样复用，只换运镜、开场与开头字幕。 */
+export function createRunVariants(runId: string, data: { count: number, variants?: RunBatchVariant[] }) {
+  return http.post<{ runIds: string[], count: number }>(`production/runs/${runId}/variants`, data)
+}
+
 export type RunBatchVariant = 'mirror' | 'opening' | 'hook'
 
 /** 精确修改：合并 spec 补丁并重新渲染。 */

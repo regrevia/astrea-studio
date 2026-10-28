@@ -1,0 +1,21 @@
+{
+  "sourceRun": "6ae21a6b99092e973cd685b8",
+  "variants": ["6ae21bb2e0c568eb7f80ef87", "6ae21bb2e0c568eb7f80ef90"],
+  "sourceMd5": "a694a029628b0749707f0d59f863a797",
+  "variant1Md5": "a694a029628b0749707f0d59f863a797",
+  "variant2Md5": "f2d7e10db88bcd5e2e3d505e671ae30e",
+  "variant1VsSourceSsim": 1.0,
+  "variant2VsSourceSsim": 0.924738,
+  "variant2FirstShots": ["seg-b.mp4", "seg-c.mp4", "seg-a.mp4", "seg-b.mp4"],
+  "sourceFirstShots": ["seg-a.mp4", "seg-b.mp4", "seg-c.mp4", "seg-a.mp4"],
+  "duration": 30,
+  "canvas": "1080x1920",
+  "qaFindings": [],
+  "ui": {
+    "button": "再出几版",
+    "dimsChecked": 3,
+    "count": 2,
+    "doneText": "已排 2 版",
+    "uiCreatedRuns": ["6ae21c0ee0c568eb7f80f15f", "6ae21c0ee0c568eb7f80f168"]
+  }
+}

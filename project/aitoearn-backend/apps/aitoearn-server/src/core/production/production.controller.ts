@@ -58,6 +58,13 @@ const BatchRunSchema = CreateRunSchema.extend({
 })
 class BatchRunDto extends createZodDto(BatchRunSchema, 'BatchProductionRunDto') {}
 
+const RunVariantsSchema = z.object({
+  count: z.number().int().min(1).max(8).default(2).describe('再排几版'),
+  variants: z.array(z.enum(['mirror', 'opening', 'hook'])).optional()
+    .describe('逐条错开哪几维：mirror 换运镜、opening 换开场、hook 换开头字幕；不传则全用，第 1 条永远是母版'),
+})
+class RunVariantsDto extends createZodDto(RunVariantsSchema, 'ProductionRunVariantsDto') {}
+
 const ReviseRunSchema = z.object({
   brief: z.string().optional().describe('修改后的需求'),
   spec: z.record(z.string(), z.unknown()).optional().describe('规格补丁'),
@@ -260,6 +267,18 @@ export class ProductionController {
       ...one,
       spec: normalizeRunSpec(one),
     }, count, variants)
+    return {
+      runIds: runs.map(run => run.id),
+      count: runs.length,
+      statusUrl: `/api/production/runs/${runs[0]?.id ?? ''}`,
+    }
+  }
+
+  @ApiDoc({ summary: '拿一条出过的片子再排几版：稿子与规格原样复用，只错开运镜/开场/钩子', body: RunVariantsDto.schema })
+  @Post('runs/:id/variants')
+  async createRunVariants(@GetToken() token: TokenInfo, @Param('id') id: string, @Body() body: RunVariantsDto) {
+    const { count, variants } = body
+    const runs = await this.production.createRunVariants(token.id, id, count, variants)
     return {
       runIds: runs.map(run => run.id),
       count: runs.length,
