@@ -43,7 +43,7 @@ const CreateRunSchema = z.object({
   brief: z.string().default('').describe('用户原始需求，用自然语言写'),
   engine: z.string().optional().describe('渲染通道：motion/slides/jianying/timeline，缺省走 MoneyPrinterTurbo'),
   template: z.string().optional().describe('版式模板，比如 factcard（竖屏干货卡）'),
-  spec: z.record(z.string(), z.unknown()).optional().describe('结构化制作规格：时长、比例、字幕、模板等'),
+  spec: z.record(z.string(), z.unknown()).optional().describe('结构化制作规格：mode="vertical_short" 时给 topic/points/script/materials/bgm；bgm={src, volume?, bpm?, offset?, beats?, pulse?{amount?,decay?}}，bpm 或 beats 决定拍点、pulse 决定拍点上是否推静帧镜头；进阶可直接给 canvas/video/overlay/audio/music，video 每段的 keyframes=[{at,zoom}] 是折线推镜关键帧'),
   facts: z.record(z.string(), z.unknown()).optional().describe('项目事实：产品名、卖点、禁止出现的说法'),
 })
 
