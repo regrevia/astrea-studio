@@ -1,0 +1,96 @@
+{
+  "project": "音量三段验收",
+  "projectId": "6ae22dffd4961ac32cc574ed",
+  "entrypoint": "工作区填标题/副标题 + 开场两个钩子（｜隔开）/中段/收尾 → 点「出 3 版」",
+  "feature": "配乐按钩子三段切音量：开场 0.34、中段 0.24（让位卖点）、收尾 0.40（推行动）",
+  "how": "时间轴音乐加 volume_steps，渲染端换成 volume 表达式逐帧取值；有分段音量时不再走 loudnorm，避免单遍归一化把曲线抹平，只留限幅兜峰值",
+  "runs": [
+    {
+      "runId": "6ae22e08d4961ac32cc5752e",
+      "status": "succeeded",
+      "seconds": 30,
+      "md5": "d1ab550857fbc24d882a433006dd75af",
+      "library": "20261029-011705__studio__001__音量三段验收-30-秒-1-3__douyin__r1.mp4",
+      "volume_steps": [
+        {
+          "at": 0,
+          "volume": 0.34
+        },
+        {
+          "at": 10,
+          "volume": 0.24
+        },
+        {
+          "at": 20,
+          "volume": 0.4
+        }
+      ],
+      "hooks": [
+        "还在排队买咖啡？",
+        "三分钟送到家",
+        "点下方领 20 元券"
+      ],
+      "videoQa": []
+    },
+    {
+      "runId": "6ae22e08d4961ac32cc57537",
+      "status": "succeeded",
+      "seconds": 30,
+      "md5": "c76ba7d0560474a902cc38c289a5eac5",
+      "library": "20261029-011714__studio__001__音量三段验收-30-秒-2-3__douyin__r1.mp4",
+      "volume_steps": [
+        {
+          "at": 0,
+          "volume": 0.34
+        },
+        {
+          "at": 10,
+          "volume": 0.24
+        },
+        {
+          "at": 20,
+          "volume": 0.4
+        }
+      ],
+      "hooks": [
+        "咖啡凉了才到家",
+        "三分钟送到家",
+        "点下方领 20 元券"
+      ],
+      "videoQa": []
+    },
+    {
+      "runId": "6ae22e08d4961ac32cc57540",
+      "status": "succeeded",
+      "seconds": 30,
+      "md5": "afd2977f47ffba88f8b6a5b5e8feacda",
+      "library": "20261029-011720__studio__001__音量三段验收-30-秒-3-3__douyin__r1.mp4",
+      "volume_steps": [
+        {
+          "at": 0,
+          "volume": 0.34
+        },
+        {
+          "at": 10,
+          "volume": 0.24
+        },
+        {
+          "at": 20,
+          "volume": 0.4
+        }
+      ],
+      "hooks": [
+        "还在排队买咖啡？",
+        "三分钟送到家",
+        "点下方领 20 元券"
+      ],
+      "videoQa": []
+    }
+  ],
+  "audioWindows": {
+    "0.5-9.5": "-25.0 dB",
+    "10.5-19.5": "-28.1 dB",
+    "20.5-29.5": "-23.6 dB"
+  },
+  "note": "三段差值 3.1 dB / 1.4 dB，与 0.34 / 0.24 / 0.40 的比例一致；三条视频的 videoQa.findings 全空"
+}

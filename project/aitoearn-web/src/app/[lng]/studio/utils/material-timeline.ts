@@ -159,11 +159,21 @@ export function buildMaterialTimeline(
   if (!video.length)
     return null
 
+  // 有钩子就按三段切音乐音量：开场压住、中段让给卖点、收尾抬起来推行动。
+  const hasHooks = Boolean(textPlan?.hooks && (textPlan.hooks.open || textPlan.hooks.mid || textPlan.hooks.end))
+  const volumeSteps = hasHooks
+    ? [
+        { at: 0, volume: 0.34 },
+        { at: round(targetSeconds / 3), volume: 0.24 },
+        { at: round(targetSeconds * 2 / 3), volume: 0.4 },
+      ]
+    : null
   const music = beatPlan
     ? {
         src: beatPlan.src,
         volume: 0.32,
         loop: true,
+        ...(volumeSteps ? { volume_steps: volumeSteps } : {}),
         // 没测出拍点就只铺音乐，不写 bpm，免得渲染端起一条空拍点网格。
         ...(beatPlan.bpm > 0 ? { bpm: beatPlan.bpm, offset: beatPlan.offset } : {}),
       }

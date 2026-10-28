@@ -1,10 +1,17 @@
 """配乐行与拍点接口的边界：路径只能落在素材根目录里，越界就是没有。"""
 
 import tempfile
+import sys
 import unittest
 from pathlib import Path
 
 import jobs
+
+sys_path = Path(__file__).resolve().parents[1] / "export"
+import sys
+
+sys.path.insert(0, str(sys_path))
+import timeline_render as render
 
 
 class MusicRowsTest(unittest.TestCase):
@@ -48,3 +55,13 @@ class MusicRowsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VolumeCurveTest(unittest.TestCase):
+    def test_later_step_wins(self):
+        curve = render._volume_curve([(0.0, 0.34), (10.0, 0.24), (20.0, 0.4)])
+        self.assertEqual(curve,
+                         "if(gte(t,20),0.4,if(gte(t,10),0.24,0.34))")
+
+    def test_single_step_is_a_constant(self):
+        self.assertEqual(render._volume_curve([(0.0, 0.3)]), "0.3")

@@ -83,6 +83,14 @@ def _keys_at(keys: list[tuple[float, float]], at: float) -> float:
     return keys[-1][1]
 
 
+def _volume_curve(steps: list[tuple[float, float]]) -> str:
+    """分段音量变成 ffmpeg volume 表达式：越靠后的时间点套在外层，时间点 >= at 就取那一档。"""
+    expr = f"{steps[0][1]:g}"
+    for at, volume in steps[1:]:
+        expr = f"if(gte(t,{at:g}),{volume:g},{expr})"
+    return expr
+
+
 def _pulse_keys(keys: list[tuple[float, float]], dur: float,
                 beats: list[float], amount: float, decay: float) -> list[tuple[float, float]]:
     """卡点脉冲：每个拍点上把当前 zoom 顶高 amount，再在 decay 秒内回到原曲线。"""
@@ -303,6 +311,7 @@ def load_spec(path, base: Path | None = None) -> dict:
             "start": float(a.get("start") or 0.0),
             "in": float(a.get("in") or 0.0),
             "volume": float(a.get("volume") if a.get("volume") is not None else 1.0),
+            "volume_expr": None,
             "loop": bool(a.get("loop")),
             "fade": float(a.get("fade") or 0.0),
             "out": float(a.get("out") or 0.0),
@@ -327,6 +336,27 @@ def load_spec(path, base: Path | None = None) -> dict:
         if m_in < 0:
             raise SpecError(f"music.in 不能为负，得到 {m_in}")
         m_loop = bool(music.get("loop", True))
+        # 分段音量：开场垫一层、中段让给卖点、收尾抬一点推行动。按时间轴切，不做渐隐。
+        m_steps = music.get("volume_steps") or []
+        if m_steps:
+            if not isinstance(m_steps, list):
+                raise SpecError("music.volume_steps 要是数组")
+            step_list = []
+            for index, step in enumerate(m_steps):
+                if not isinstance(step, dict):
+                    raise SpecError(f"music.volume_steps[{index}] 要是对象")
+                at = float(step.get("at") if step.get("at") is not None else 0.0)
+                vol = float(step.get("volume") if step.get("volume") is not None else m_vol)
+                if at < 0:
+                    raise SpecError(f"music.volume_steps[{index}].at 不能为负")
+                if not 0.0 < vol <= 2.0:
+                    raise SpecError(f"music.volume_steps[{index}].volume 要在 0~2")
+                step_list.append((at, vol))
+            if any(step_list[k + 1][0] <= step_list[k][0] for k in range(len(step_list) - 1)):
+                raise SpecError("music.volume_steps 必须按 at 严格递增")
+            if step_list[0][0] > 0:
+                step_list.insert(0, (0.0, m_vol))
+            m_steps = step_list
         m_bpm = music.get("bpm")
         m_offset = float(music.get("offset") or 0.0)
         if m_offset < 0:
@@ -352,11 +382,18 @@ def load_spec(path, base: Path | None = None) -> dict:
         else:
             m_bpm = None
         beats = [b for b in beats if b <= total + 1e-6]
+        volume_expr = None
+        if m_steps:
+            volume_expr = _volume_curve(m_steps)
+            m_vol = m_steps[0][1]
         music_info = {"src": str(m_src), "volume": m_vol, "in": m_in,
                       "loop": m_loop, "bpm": m_bpm, "offset": m_offset,
                       "beats": beats}
         audios.append({"src": m_src, "start": 0.0, "in": m_in, "volume": m_vol,
+                       "volume_expr": volume_expr,
                        "loop": m_loop, "fade": 0.0, "out": 0.0, "role": "bgm"})
+        if volume_expr:
+            music_info["volume_steps"] = [{"at": at, "volume": vol} for at, vol in m_steps]
 
         # 卡点：拍点上给静卡顶一下。改的是关键帧，不是画面时长——
         # 竖屏的语音/字幕时间来自配音，动时长会把人声和画面对不上。
@@ -770,8 +807,12 @@ class RenderPlan:
             for k, a in enumerate(self.spec["audio"]):
                 idx = audio_base + k
                 delay = int(round(a["start"] * 1000))
+                if a.get("volume_expr"):
+                    vol_arg = f"volume='{a['volume_expr']}':eval=frame"
+                else:
+                    vol_arg = f"volume={a['volume']:g}"
                 chain = (f"[{idx}:a]aresample={48000},aformat=sample_fmts=fltp:"
-                         f"channel_layouts=stereo,volume={a['volume']:g}")
+                         f"channel_layouts=stereo,{vol_arg}")
                 if a["fade"] > 0:
                     chain += (f",afade=t=in:st=0:d={a['fade']:g}")
                     tail = max(0.0, total - a["start"] - a["fade"])
@@ -781,9 +822,15 @@ class RenderPlan:
                 chain += f",apad=whole_dur={total:g}[a{k}]"
                 parts.append(chain)
             amix_in = "".join(f"[a{k}]" for k in range(len(self.spec["audio"])))
+            # 分段音量要的是「开场压住、中段让开」的相对关系；loudnorm 单遍会按时间追着改增益，
+            # 把这条曲线抹平，所以有分段音量时只用限幅兜峰值。
+            if any(a.get("volume_expr") for a in self.spec["audio"]):
+                tail = "alimiter=limit=0.95"
+            else:
+                tail = "loudnorm=I=-16:TP=-1.5:LRA=11"
             parts.append(
                 f"{amix_in}amix=inputs={len(self.spec['audio'])}:duration=longest:"
-                f"normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11,atrim=0:{total:g}[aout]")
+                f"normalize=0,{tail},atrim=0:{total:g}[aout]")
         else:
             parts.append(
                 f"anullsrc=channel_layout=stereo:sample_rate=48000,"
