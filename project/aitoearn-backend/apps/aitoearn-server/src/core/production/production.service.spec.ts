@@ -942,3 +942,32 @@ describe('deleteProject', () => {
     expect(projectRepo.deleteById).not.toHaveBeenCalled()
   })
 })
+
+describe('runVideoPath', () => {
+  it('素材库那份优先于产物目录', async () => {
+    const { service, runRepo } = createService()
+    runRepo.getByIdForUser.mockResolvedValue({
+      id: 'run-1',
+      output: { videoPath: '/Users/apple/CreatorStudio/out/run-1.mp4', libraryPath: '/Users/apple/CreatorStudio/library/p/2026-10/a.mp4' },
+    })
+    await expect(service.runVideoPath('user-1', 'run-1'))
+      .resolves
+      .toBe('/Users/apple/CreatorStudio/library/p/2026-10/a.mp4')
+  })
+
+  it('只有产物目录也能播', async () => {
+    const { service, runRepo } = createService()
+    runRepo.getByIdForUser.mockResolvedValue({ id: 'run-1', output: { videoPath: '/Users/apple/CreatorStudio/out/run-1.mp4' } })
+    await expect(service.runVideoPath('user-1', 'run-1'))
+      .resolves
+      .toBe('/Users/apple/CreatorStudio/out/run-1.mp4')
+  })
+
+  it('没有本地成片时明确报错，不返回空路径', async () => {
+    const { service, runRepo } = createService()
+    runRepo.getByIdForUser.mockResolvedValue({ id: 'run-1', output: {} })
+    await expect(service.runVideoPath('user-1', 'run-1'))
+      .rejects
+      .toMatchObject({ code: ResponseCode.ProductionRunVideoMissing })
+  })
+})

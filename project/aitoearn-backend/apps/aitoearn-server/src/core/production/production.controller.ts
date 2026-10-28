@@ -273,6 +273,14 @@ export class ProductionController {
     return await this.production.runDetail(token.id, id)
   }
 
+  @ApiDoc({ summary: '成片文件' })
+  @Get('runs/:id/video')
+  async runVideo(@GetToken() token: TokenInfo, @Param('id') id: string) {
+    const path = await this.production.runVideoPath(token.id, id)
+    const file = await this.assistant.capabilityMediaFile(path)
+    return new StreamableFile(file.body, { type: file.contentType })
+  }
+
   @ApiDoc({ summary: '任务事件流' })
   @Get('runs/:id/events')
   async getEvents(

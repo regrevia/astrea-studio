@@ -1,0 +1,27 @@
+{
+  "run": "6ae20a3cb2886cd834c8b67b",
+  "project": "6adc2161656a13996166bbfc",
+  "rest": {
+    "status": 200,
+    "content_type": "video/mp4",
+    "bytes": 30178
+  },
+  "ffprobe": {
+    "duration": "11.233333",
+    "width": 1080,
+    "height": 1920
+  },
+  "ui": {
+    "duration": 11.233,
+    "videoWidth": 1080,
+    "videoHeight": 1920,
+    "readyState": 4,
+    "src": "blob:",
+    "empty_state_count": 0
+  },
+  "missing_video": {
+    "run": "6adc2161656a13996166bbfc",
+    "code": 12851
+  },
+  "note": "剪映手动导出后认领入库的成片：run.output 只有 libraryPath/videoPath，没有 videoUrl，详情面板改为按需取回 blob。"
+}

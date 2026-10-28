@@ -82,6 +82,7 @@ export enum ResponseCode {
   ProductionRenderQueueUnavailable = 12859,
   ProductionProjectNotEmpty = 12860,
   ProductionProjectIsDefault = 12861,
+  ProductionRunVideoMissing = 12862,
 
   // 12900-12999: content（内容组合）
   MaterialGroupEmpty = 12900,

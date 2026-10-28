@@ -242,6 +242,32 @@ export class ProductionAssistantService {
     }
   }
 
+  /** 详情面板要播放成片：读宿主机成片文件，根目录由 worker 再校验，越界一律 404。 */
+  async capabilityMediaFile(absPath: string): Promise<{ body: Buffer, contentType: string }> {
+    const clean = (absPath ?? '').trim()
+    if (!clean.startsWith('/') || clean.includes('..')) {
+      throw new AppException(ResponseCode.ProductionRenderQueueUnavailable, '成片路径不合法')
+    }
+    const url = `${config.studioAssistant.inventoryUrl.replace(/\/+$/, '')}/media/file?path=${encodeURIComponent(clean)}`
+    let response: Response
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(INVENTORY_TIMEOUT_MS) })
+    }
+    catch (error) {
+      throw new AppException(
+        ResponseCode.ProductionRenderQueueUnavailable,
+        `宿主机能力服务连不上：${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
+    if (!response.ok) {
+      throw new AppException(ResponseCode.ProductionRenderQueueUnavailable, '没有这条成片')
+    }
+    return {
+      body: Buffer.from(await response.arrayBuffer()),
+      contentType: response.headers.get('content-type') || 'video/mp4',
+    }
+  }
+
   /** MCP 工具用：已交付成片清单（/deliverables），按修改时间新的在前。 */
   async capabilityDeliverables(limit: number): Promise<unknown[]> {
     const payload = await this.readCapabilityJson(`/deliverables?limit=${Math.max(1, Math.min(limit, 500))}`)

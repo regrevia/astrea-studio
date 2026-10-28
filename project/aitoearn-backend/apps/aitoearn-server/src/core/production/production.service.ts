@@ -454,6 +454,18 @@ export class ProductionService {
     return { run, jobs, attempts, events }
   }
 
+  /** 详情面板播放入库成片：优先素材库里那份，其次产物目录里的母版。 */
+  async runVideoPath(userId: string, runId: string): Promise<string> {
+    const run = await this.getRun(userId, runId)
+    const output = (run.output ?? {}) as { libraryPath?: unknown, videoPath?: unknown }
+    const candidate = [output.libraryPath, output.videoPath]
+      .find(value => typeof value === 'string' && value.startsWith('/'))
+    if (typeof candidate !== 'string') {
+      throw new AppException(ResponseCode.ProductionRunVideoMissing)
+    }
+    return candidate
+  }
+
   async retryRun(userId: string, runId: string) {
     const run = await this.getRun(userId, runId)
     // 重试沿用这条 run 真正的渲染引擎；之前写死 RENDER_MPT，slides/motion/timeline

@@ -5,6 +5,8 @@
  * 剪映草稿路径不进 output：草稿是「落到本机剪映草稿箱」的交付，靠 spec.engine === 'jianying'
  * 和 jianying_draft 阶段的留痕判断，不虚构字段。发布草稿是 materialId 指的 AiToEarn 草稿箱条目。
  */
+import { useEffect, useState } from 'react'
+import { fetchRunVideoBlobUrl } from '@/api/production/production.api'
 import type { ProductionCopyFinding, ProductionRun } from '@/api/production/production.types'
 
 export interface PlatformArtifact {
@@ -28,6 +30,8 @@ export interface RunArtifacts {
   jianyingClaimed: boolean
   /** 成片在库里的落点：有它说明片子已按规范归档，不是临时文件。 */
   libraryPath?: string
+  /** 成片有本地落点：面板要按需取回才能播。 */
+  localVideoReady: boolean
   libraryAssetId?: string
   /** 发布草稿（AiToEarn 草稿箱）条目 id。 */
   publishDraftId?: string
@@ -50,6 +54,7 @@ export function deriveRunArtifacts(run?: ProductionRun | null): RunArtifacts {
     jianying: false,
     jianyingDelivered: false,
     jianyingClaimed: false,
+    localVideoReady: false,
     copyFindings: [],
     qaFindings: [],
   }
@@ -77,9 +82,40 @@ export function deriveRunArtifacts(run?: ProductionRun | null): RunArtifacts {
     jianyingDelivered: run.status === 'succeeded' && run.currentStage?.includes('jianying') === true,
     jianyingClaimed: output?.claimed === true,
     libraryPath: output?.libraryPath,
+    localVideoReady: typeof output?.libraryPath === 'string' || typeof output?.videoPath === 'string',
     libraryAssetId: output?.libraryAssetId,
     publishDraftId: run.materialId,
     copyFindings: (output?.copyCheck?.findings ?? []).filter(item => item.level === 'warn'),
     qaFindings: output?.videoQa?.findings ?? [],
   }
+}
+
+/**
+ * 已入库成片的播放地址：取不到就回 undefined，面板继续显示空态而不是坏链接。
+ */
+export function useRunVideoBlobUrl(run?: ProductionRun | null, ready = false) {
+  const [url, setUrl] = useState<string>()
+  useEffect(() => {
+    if (!run?.id || !ready) {
+      setUrl(undefined)
+      return
+    }
+    let alive = true
+    let created: string | undefined
+    fetchRunVideoBlobUrl(run.id)
+      .then((next) => {
+        if (!alive || !next)
+          return
+        created = next
+        setUrl(next)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+      setUrl(undefined)
+      if (created)
+        URL.revokeObjectURL(created)
+    }
+  }, [run?.id, ready])
+  return url
 }

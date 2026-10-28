@@ -208,6 +208,10 @@ export const messages: Record<ResponseCode, Record<Locale, MessageValue>> = {
     'en-US': 'The default project cannot be deleted',
     'zh-CN': '默认项目不能删',
   },
+  [ResponseCode.ProductionRunVideoMissing]: {
+    'en-US': 'This run has no playable video yet',
+    'zh-CN': '这条任务还没有可播放的成片',
+  },
   [ResponseCode.ProductionRunNotFound]: {
     'en-US': 'Production run not found',
     'zh-CN': '生产任务未找到',

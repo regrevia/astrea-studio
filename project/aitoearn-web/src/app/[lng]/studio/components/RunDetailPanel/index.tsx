@@ -16,7 +16,7 @@ import { Progress } from '@/components/ui/progress'
 import { cn } from '@/utils/className'
 import { useRunDetail } from '../../hooks/useRunDetail'
 import { formatKib } from '../../studioConstants'
-import { deriveRunArtifacts } from '../../utils/runArtifacts'
+import { deriveRunArtifacts, useRunVideoBlobUrl } from '../../utils/runArtifacts'
 import { isRunBusy, runStageMeta, runStatusMeta } from '../../utils/status'
 import { RunActions } from '../RunActions'
 
@@ -30,6 +30,9 @@ export function RunDetailPanel({ run, projectName, onChanged }: RunDetailPanelPr
   const { t } = useTransClient('studio')
   const meta = runStatusMeta(run.status)
   const artifacts = deriveRunArtifacts(run)
+  // 剪映导出的成片只有本地落点，没有在线地址：面板按需取回再播。
+  const localVideoUrl = useRunVideoBlobUrl(run, !artifacts.masterUrl && artifacts.localVideoReady)
+  const videoSrc = artifacts.masterUrl ?? localVideoUrl
   const busy = isRunBusy(run.status)
   // 阶段只在与状态不同时上屏，避免同一句话出现两次。
   const stage = run.currentStage ? runStageMeta(run.currentStage, run.status) : null
@@ -75,7 +78,7 @@ export function RunDetailPanel({ run, projectName, onChanged }: RunDetailPanelPr
       )}
 
       {/* 母版成片 */}
-      {artifacts.masterUrl
+      {videoSrc
         ? (
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
@@ -85,7 +88,7 @@ export function RunDetailPanel({ run, projectName, onChanged }: RunDetailPanelPr
                     <span className="text-muted-foreground">{t('run.detail.duration', { n: Math.round(artifacts.duration) })}</span>
                   )}
                   <a
-                    href={artifacts.masterUrl}
+                    href={videoSrc}
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1 text-primary hover:underline"
@@ -95,7 +98,7 @@ export function RunDetailPanel({ run, projectName, onChanged }: RunDetailPanelPr
                   </a>
                 </div>
               </div>
-              <video key={artifacts.masterUrl} src={artifacts.masterUrl} controls className="aspect-video w-full rounded-md bg-muted" />
+              <video key={videoSrc} src={videoSrc} controls className="aspect-video w-full rounded-md bg-muted" />
             </div>
           )
         : (

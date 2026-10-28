@@ -300,6 +300,23 @@ export async function setCharacterOutfit(
 }
 
 /**
+ * 成片预览：已入库的 mp4 在宿主机上，`<video>` 带不上登录头，取回成 blob URL。
+ * 素材库那份优先，其次产物目录里的母版；都没有时后端返回「还没有可播放的成片」。
+ */
+export async function fetchRunVideoBlobUrl(runId: string): Promise<string | null> {
+  const credential = useUserStore.getState().token
+  if (!credential)
+    return null
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/production/runs/${encodeURIComponent(runId)}/video`,
+    { headers: { Authorization: `Bearer ${credential}` } },
+  )
+  if (!res.ok)
+    return null
+  return URL.createObjectURL(await res.blob())
+}
+
+/**
  * 素材原图：图片标签带不上登录头，所以取回成 blob URL，用完由调用方 revoke。
  * `rel` 是素材根目录内的相对路径。
  */

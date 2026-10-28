@@ -140,6 +140,42 @@ def material_file(rel: str) -> tuple[bytes, str]:
     return target.read_bytes(), ctype
 
 
+def _utf8_query_value(value: str) -> str:
+    """HTTP 头部按 latin-1 解，中文路径（成片文件名带中文）要按 utf-8 还原。"""
+    try:
+        return value.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return value
+
+
+def media_file(abs_path: str) -> tuple[bytes, str]:
+    """只读地吐一份成片文件（素材库 / 成片目录 / 交付目录）。
+
+    详情面板要播放已入库的成片，但登录头带不进 `<video>`，所以由后端代理取回。
+    允许的是本机成片根目录，越界、非视频、不存在一律 404，不暴露其它磁盘文件。
+    """
+    import mimetypes
+
+    from library import DEFAULT_ROOT as LIBRARY_ROOT
+
+    roots = [LIBRARY_ROOT.resolve(), (jobs.STUDIO_HOME / "out").resolve(),
+             jobs.DELIVER_DIR.resolve()]
+    raw = (abs_path or "").strip()
+    if not raw:
+        raise KeyError(abs_path)
+    target = Path(raw).expanduser()
+    if not target.is_absolute():
+        raise KeyError(abs_path)
+    target = target.resolve()
+    inside = any(str(target).startswith(str(root) + os.sep) for root in roots)
+    if not inside or not target.is_file():
+        raise KeyError(abs_path)
+    ctype = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+    if not ctype.startswith("video/"):
+        raise KeyError(abs_path)
+    return target.read_bytes(), ctype
+
+
 _frame_cache: dict[tuple[str, float], bytes] = {}
 
 
@@ -256,6 +292,10 @@ class Handler(BaseHTTPRequestHandler):
                         ensure_ascii=False).encode())
                 else:
                     self._send(200, json.dumps(jobs.get(jid), ensure_ascii=False).encode())
+            elif path == "/media/file":
+                q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+                data, ctype = media_file(_utf8_query_value((q.get("path") or [""])[0]))
+                self._send(200, data, ctype)
             elif path == "/materials/file":
                 q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
                 data, ctype = material_file((q.get("path") or [""])[0])
