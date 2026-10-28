@@ -168,3 +168,30 @@ strings -a /Applications/VideoFusion-macOS.app/Contents/Frameworks/libvideoedito
    把「新版把旧草稿解释歪了」挡在导出之前。
 
 以上 2/3 是本次已修（健康检查假阴性、草稿自动打开、盲点保护），4 是下一步。
+
+## 7. 版本适配（2026-10-28 调研结论）
+
+- 剪映专业版 macOS **当前最新就是 11.6.0（2026-10-13 上架）**，没有 11.7/12.x；11.3.0→11.6.0 约 1–2 周一版。
+  中文站点的「11.8/11.9」是手机版或 SEO 假版本。来源：App Store id1529999940、`itunes.apple.com/lookup?id=1529999940&country=cn`。
+- 草稿主文件自 6.0 起是 `draft_info.json`；只放 `draft_content.json` 会被登记成 `draft_info.json` 而实际文件缺失 → 「草稿内容已损坏」。
+  引擎探测明文/密文：**明文可开，打开后自动升级为密文**。所以「生成草稿」不受加密阻碍，只有「读模板」受密文阻碍。
+- 无 macOS/11.x 可用的密文解密实现（社区 codec 仅 Windows 10.3–10.6.5 且依赖 `videoeditor.dll`）。
+- 蒙版自 8.5 起静默失效（写 `materials.masks`，实际键 `common_mask`），11.4 仍未修。
+- 官方 pyJianYingDraft 明确「7+ 自动导出不支持、Mac 不支持导出」——自研 AX 是唯一导出路径，**升级必须重录 AX 树**。
+- **结论：保持 11.6 + 做版本探测**（11.6 已是当前最新，「升级」暂无标的）。探测三件事：App Store lookup `version`、
+  本机 `CFBundleShortVersionString`/`CFBundleVersion`、草稿密文头指纹；发现 >11.6.0 再走「独立用户/VM 打开候选版本 → AX 树 diff」。
+- 新旧共存不建议改 bundleId 重签（破坏公证、更新互相覆盖）；用新建 macOS 用户或 VM，HOME/容器/草稿天然隔离。
+
+## 8. 谁在驱动剪映：TCC 归属（关键，2026-10-28 实测）
+
+worker 由 launchd 拉起，**没有辅助功能（Accessibility）授权**，而我的终端 shell 有。同一条命令两种结果：
+
+| 调用方 | `ax_tool tree <剪映pid>` | CGEvent 点击 | osascript 菜单点击 |
+|---|---|---|---|
+| 终端 shell | 160 行完整 AX 树 | 生效（实测弹出导出面板） | 生效 |
+| launchd（worker 同一上下文） | **1 行空树** | 无效 | 被 TCC 拒绝 |
+
+推论：worker 侧 `rc=2 打不开导出面板` 不是坐标/文案问题，是权限问题；`ax_tool tree` 返回空树即为判据。
+当前对策：草稿生成、卡点、渲染、入库全走无 GUI 路径；GUI 导出要么用户点一次「导出」，
+要么在「系统设置 → 隐私与安全性 → 辅助功能」里把 worker 的解释器
+（`~/CreatorStudio/runtime/integrations/mac-worker/.python3`，由 launchd 拉起）加入白名单，之后 worker 才可能自己点。
