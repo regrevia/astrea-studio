@@ -153,3 +153,19 @@ PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib \
 
 **真·无人值守**：`--wait-idle 3600` 挂后台等一个小时的连续空闲（夜间），或直接走不碰 GUI 的
 `timeline` / `ffmpeg` 渲染通道出片；剪映导出只在人空着的窗口期做。
+
+### 9.4 「暂无访问权限」不是 TCC，是 App Sandbox（已修）
+
+现象：打开草稿，26 条媒体全红、弹「链接媒体」，进度 0/26，预览报「媒体格式不支持」，
+而系统**不弹任何授权窗**。
+
+根因（`codesign -d --entitlements -` 实测）：
+`com.apple.security.app-sandbox = true`，只带 `assets.movies.read-write`。
+剪映只能读 `~/Movies` 这类获准目录；我们的素材在 `~/CreatorStudio/...`，
+沙盒里没有该路径的读取权——沙盒缺权不会弹 TCC 授权，所以等授权窗等不到，
+在「链接媒体」里手点也只是一次性的 powerbox 授权，下次生成草稿又坏。
+
+修法：`jianying_engine._relocate_media()` 在部署草稿时把每个外部媒体复制进
+`<草稿目录>/assets/` 并把 JSON 里的绝对路径改指过去（草稿在 `~/Movies` 下，沙盒可读）。
+实测该草稿 `copied=26 missing=0`，重启剪映重开草稿后 `ax_tool tree` 里
+「暂无访问权限」计数 **0**，不再弹链接媒体。
