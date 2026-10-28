@@ -11,7 +11,7 @@ import type { FormEvent } from 'react'
 import type { VoiceOption } from './utils'
 import { Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { createRun, getInventory } from '@/api/production/production.api'
+import { createRunBatch, createRun, getInventory } from '@/api/production/production.api'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -62,6 +62,8 @@ export default function NewRunForm({ projects, projectId: selectedProjectId, onC
   const [materialsText, setMaterialsText] = useState('')
   const [maxSeconds, setMaxSeconds] = useState<number | undefined>(DEFAULT_MAX_SECONDS)
   const [platforms, setPlatforms] = useState<string[]>(DEFAULT_PLATFORMS)
+  /** 1 条=单条出片；2~3 条=同稿多母版，挑一条发。 */
+  const [count, setCount] = useState('1')
   const [voices, setVoices] = useState<VoiceOption[]>(() => buildVoiceOptions())
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState('')
@@ -114,19 +116,25 @@ export default function NewRunForm({ projects, projectId: selectedProjectId, onC
     setSubmitting(true)
     setFormError('')
     try {
-      const res = await createRun({
+      const wanted = Number(count) || 1
+      const payload = {
         projectId: effectiveProjectId,
         title: topic.trim(),
         brief: topic.trim(),
         spec: { ...buildVerticalShortSpec(values, parsed.lines) },
-      })
-      // 只有 code === 0 且带回 runId 才算建成功，否则留在表单里让用户改。
-      if (res?.code !== 0 || !res?.data?.runId) {
+      }
+      const res = wanted > 1
+        ? await createRunBatch({ ...payload, count: wanted })
+        : await createRun(payload)
+      // 只有 code === 0 且带回 runId/runIds 才算建成功，否则留在表单里让用户改。
+      const data = res?.data as { runId?: string, runIds?: string[] } | undefined
+      const ids = data?.runIds?.length ? data.runIds : (data?.runId ? [data.runId] : [])
+      if (res?.code !== 0 || ids.length === 0) {
         setFormError(res?.message || '提交失败，稍后重试')
         return
       }
-      setRunId(res.data.runId)
-      onCreated(res.data.runId ? [res.data.runId] : [])
+      setRunId(ids[0])
+      onCreated(ids)
     }
     finally {
       setSubmitting(false)
@@ -248,6 +256,20 @@ export default function NewRunForm({ projects, projectId: selectedProjectId, onC
               )
             })}
           </div>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="new-run-count">母版条数</Label>
+          <Select value={count} onValueChange={setCount}>
+            <SelectTrigger id="new-run-count" className="w-32 cursor-pointer">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {['1', '2', '3'].map(n => (
+                <SelectItem key={n} value={n}>{n}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {formError && (

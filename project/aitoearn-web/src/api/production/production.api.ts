@@ -91,6 +91,18 @@ export function createFactCardRunBatch(data: CreateFactCardRunInput & { count: n
   return http.post<{ runIds: string[], count: number }>('production/runs/batch', data)
 }
 
+/** 同一份稿子排多条母版（口播通道）：一次入队 count 条，返回全部 runId。 */
+export function createRunBatch(data: {
+  projectId: string
+  title: string
+  brief?: string
+  spec?: Record<string, unknown>
+  facts?: Record<string, unknown>
+  count: number
+}) {
+  return http.post<{ runIds: string[], count: number }>('production/runs/batch', data)
+}
+
 /** 精确修改：合并 spec 补丁并重新渲染。 */
 export function reviseRun(id: string, data: { brief?: string, spec?: Record<string, unknown> }) {
   return http.post<ProductionRun>(`production/runs/${id}/revise`, data)
