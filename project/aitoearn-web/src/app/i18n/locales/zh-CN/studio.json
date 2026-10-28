@@ -280,6 +280,11 @@
     "back": "返回制作台",
     "sourceRepo": "源码仓库",
     "notFound": "没找到这个项目",
-    "materialsShot": "第 {{index}} 张"
+    "materialsShot": "第 {{index}} 张",
+    "loadMore": "加载更多（还有 {{count}} 条）",
+    "status_all": "全部状态",
+    "status_succeeded": "已完成",
+    "status_running": "进行中",
+    "status_failed": "未成功"
   }
 }

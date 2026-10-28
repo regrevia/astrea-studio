@@ -77,6 +77,7 @@ export const getRunArgsSchema = z.object({
 
 export const listRunsArgsSchema = z.object({
   limit: z.number().int().min(1).max(10).default(5).describe('最多返回几条，默认 5'),
+  projectId: z.string().min(1).optional().describe('只看某个项目的任务，省略就是全部项目'),
 })
 
 export const reviseRunArgsSchema = z.object({
@@ -319,6 +320,7 @@ export const ASSISTANT_TOOLS: AssistantToolDefinition[] = [
         type: 'object',
         properties: {
           limit: { type: 'number', description: '最多返回几条，默认 5' },
+          projectId: { type: 'string', description: '只看某个项目的任务，省略就是全部项目' },
         },
         additionalProperties: false,
       },

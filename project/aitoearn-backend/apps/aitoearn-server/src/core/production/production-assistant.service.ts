@@ -438,7 +438,7 @@ export class ProductionAssistantService {
           const args = listRunsArgsSchema.safeParse(raw)
           if (!args.success)
             return this.invalidArgs(name, args.error)
-          return await this.listRuns(userId, args.data.limit)
+          return await this.listRuns(userId, args.data.limit, args.data.projectId)
         }
         case AssistantToolName.REVISE_RUN: {
           const args = reviseRunArgsSchema.safeParse(raw)
@@ -797,12 +797,12 @@ export class ProductionAssistantService {
     }
   }
 
-  private async listRuns(userId: string, limit: number): Promise<ToolResult> {
-    const { list, total } = await this.production.listRuns(userId, 1, limit)
+  private async listRuns(userId: string, limit: number, projectId?: string): Promise<ToolResult> {
+    const { list, total } = await this.production.listRuns(userId, 1, limit, undefined, projectId)
     return {
       text: list.length
         ? `共 ${total} 条，最近 ${list.length} 条：\n${list.map(item => `${item.id} ${item.title} ${RUN_STATUS_TEXT[item.status] ?? item.status}`).join('\n')}`
-        : '还没有任何任务。',
+        : (projectId ? '这个项目还没有任务。' : '还没有任何任务。'),
       actions: [action({
         type: ProductionAssistantActionType.INFO,
         status: ProductionAssistantActionStatus.OK,

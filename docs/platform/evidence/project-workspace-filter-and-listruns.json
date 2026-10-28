@@ -1,0 +1,29 @@
+{
+  "round": 18,
+  "projectId": "6adc2161656a13996166bbfc",
+  "assistantListRuns": {
+    "toolCount": 18,
+    "spec": "production-assistant.service.spec.ts 21 passed",
+    "forwards": [
+      "user-1",
+      1,
+      3,
+      null,
+      "6adc2161656a13996166bbfc"
+    ]
+  },
+  "workspaceTaskFilter": {
+    "statusOptions": [
+      "all",
+      "succeeded",
+      "running",
+      "failed"
+    ],
+    "loadMoreAll": "加载更多（还有 520 条）",
+    "afterOneClick": "加载更多（还有 508 条）",
+    "succeededApiTotal": 511,
+    "succeededUiRemaining": "加载更多（还有 499 条）",
+    "pageSize": 12,
+    "screenshot": "docs/platform/evidence/project-workspace-filter.png"
+  }
+}

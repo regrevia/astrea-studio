@@ -280,6 +280,11 @@
     "back": "Back to studio",
     "sourceRepo": "Source repo",
     "notFound": "Project not found",
-    "materialsShot": "Shot {{index}}"
+    "materialsShot": "Shot {{index}}",
+    "loadMore": "Load more ({{count}} left)",
+    "status_all": "All",
+    "status_succeeded": "Done",
+    "status_running": "In progress",
+    "status_failed": "Failed"
   }
 }

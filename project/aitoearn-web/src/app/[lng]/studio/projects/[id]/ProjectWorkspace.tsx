@@ -17,12 +17,19 @@ import { useTransClient } from '@/app/i18n/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import NewRunForm from '../../components/NewRunForm'
 import { RunDetailPanel } from '../../components/RunDetailPanel'
 import { RunRow } from '../../components/RunRow'
 
 /** 任务在跑时靠轮询对齐状态；渲染本身是分钟级，3 秒够用。 */
 const POLL_MS = 3000
+/** 一屏 12 条，点「加载更多」多要 12 条。 */
+const PAGE_SIZE = 12
+
+/** 任务区能筛的几档状态；all 表示不加条件。 */
+type RunFilter = 'all' | 'succeeded' | 'running' | 'failed'
+const RUN_FILTERS: RunFilter[] = ['all', 'succeeded', 'running', 'failed']
 
 export default function ProjectWorkspace() {
   const { t } = useTransClient('studio')
@@ -37,6 +44,10 @@ export default function ProjectWorkspace() {
   /** 素材选中结果按项目记住：下次进这个项目还在，不用重新点。 */
   const materialsKey = `studio:workspace:materials:${projectId}`
   const [materialsText, setMaterialsText] = useState('')
+  /** 任务区的状态筛选与分页：默认全部、一屏 12 条。 */
+  const [status, setStatus] = useState<RunFilter>('all')
+  const [pageSize, setPageSize] = useState(PAGE_SIZE)
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
 
   const refresh = useCallback(async () => {
@@ -45,12 +56,13 @@ export default function ProjectWorkspace() {
     // http.get 回的是整个信封（{code,data,message}），载荷在 .data 里。
     const [projectsRes, runsRes] = await Promise.all([
       getProjects(),
-      getRuns({ projectId, pageSize: 12 }),
+      getRuns({ projectId, pageSize, status: status === 'all' ? undefined : status }),
     ])
     const projects = projectsRes?.data ?? []
     setProject(projects.find(item => item.id === projectId) ?? null)
     setRuns(runsRes?.data?.list ?? [])
-  }, [projectId])
+    setTotal(runsRes?.data?.total ?? 0)
+  }, [pageSize, projectId, status])
 
   useEffect(() => {
     let alive = true
@@ -135,7 +147,19 @@ export default function ProjectWorkspace() {
         <div className="space-y-4">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">{t('project.runs')}</CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-sm">{t('project.runs')}</CardTitle>
+                <Select value={status} onValueChange={value => setStatus(value as RunFilter)}>
+                  <SelectTrigger className="h-8 w-28 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RUN_FILTERS.map(item => (
+                      <SelectItem key={item} value={item}>{t(`project.status_${item}`)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent className="space-y-2">
               {runs.length === 0 && (
@@ -150,6 +174,17 @@ export default function ProjectWorkspace() {
                   onChanged={() => { refresh().catch(() => {}) }}
                 />
               ))}
+              {runs.length < total && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setPageSize(current => current + PAGE_SIZE)}
+                >
+                  {t('project.loadMore', { count: total - runs.length })}
+                </Button>
+              )}
             </CardContent>
           </Card>
 

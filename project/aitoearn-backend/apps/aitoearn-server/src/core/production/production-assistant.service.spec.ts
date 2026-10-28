@@ -571,4 +571,20 @@ describe('productionAssistantService', () => {
     expect(deliverText).toContain('片子A.mp4')
     expect(deliverText).toContain('2.0 MB')
   })
+
+  it('list_runs 带 projectId 时把项目范围传给 service', async () => {
+    production.listRuns = vi.fn(async () => ({
+      list: [{ id: RUN_ID, title: '项目里的片', status: 'succeeded' }],
+      total: 1,
+      pageNo: 1,
+      pageSize: 3,
+    }))
+    client.chat
+      .mockResolvedValueOnce({ content: '', toolCalls: [toolCall('list_runs', { limit: 3, projectId: '6adc2161656a13996166bbfc' })] })
+      .mockResolvedValueOnce({ content: '这个项目最近一条已经出完了。', toolCalls: [] })
+
+    await service.sendMessage('user-1', SESSION_ID, '这个项目最近的任务')
+
+    expect(production.listRuns).toHaveBeenCalledWith('user-1', 1, 3, undefined, '6adc2161656a13996166bbfc')
+  })
 })
