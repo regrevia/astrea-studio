@@ -18,6 +18,7 @@ import type {
   RenderJob,
   RunDetail,
 } from './production.types'
+import { useUserStore } from '@/store/user'
 import http from '@/utils/request'
 
 /**
@@ -283,4 +284,21 @@ export async function setCharacterOutfit(
   catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : 'offline' }
   }
+}
+
+/**
+ * 素材原图：图片标签带不上登录头，所以取回成 blob URL，用完由调用方 revoke。
+ * `rel` 是素材根目录内的相对路径。
+ */
+export async function fetchMaterialBlobUrl(rel: string): Promise<string | null> {
+  const credential = useUserStore.getState().token
+  if (!credential)
+    return null
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_API_URL}/production/materials/file?path=${encodeURIComponent(rel)}`,
+    { headers: { Authorization: `Bearer ${credential}` } },
+  )
+  if (!res.ok)
+    return null
+  return URL.createObjectURL(await res.blob())
 }

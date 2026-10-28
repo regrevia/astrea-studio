@@ -11,10 +11,9 @@ import type { Inventory, ProductionProject, ProductionRun } from '@/api/producti
 import { ArrowLeft, Package } from 'lucide-react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createProject, getInventory, getProjects, getRuns } from '@/api/production/production.api'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createProject, fetchMaterialBlobUrl, getInventory, getProjects, getRuns } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
-import { useUserStore } from '@/store/user'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -50,36 +49,26 @@ function packShotPath(ref: string): string | null {
   return `packs/${slug}/shots/${name}.png`
 }
 
-/** 材质原图要带登录头，图片标签带不上，所以取回来放进 blob URL。 */
+/** 材质原图要带登录头，图片标签带不上，所以取回 blob URL 再用。 */
 function useMaterialThumbs(refs: string[]) {
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
-  const urls = useRef<string[]>([])
 
   useEffect(() => {
     let alive = true
     const created: string[] = []
-    const token = useUserStore.getState().token
-    if (!token) {
-      return () => {}
-    }
     refs.forEach((ref) => {
       const rel = packShotPath(ref)
       if (!rel)
         return
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/production/materials/file?path=${encodeURIComponent(rel)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then(res => (res.ok ? res.blob() : null))
-        .then((blob) => {
-          if (!blob || !alive)
+      fetchMaterialBlobUrl(rel)
+        .then((url) => {
+          if (!url || !alive)
             return
-          const url = URL.createObjectURL(blob)
           created.push(url)
           setThumbs(current => ({ ...current, [ref]: url }))
         })
         .catch(() => {})
     })
-    urls.current = created
     return () => {
       alive = false
       created.forEach(url => URL.revokeObjectURL(url))

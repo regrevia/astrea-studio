@@ -13,10 +13,15 @@
   "web": {
     "thumbsRendered": 2,
     "naturalSize": "1080x1920",
-    "src": "blob:"
+    "src": "blob:",
+    "thumbUrlBuiltIn": "src/api/production/production.api.ts fetchMaterialBlobUrl"
   },
   "spec": "production-assistant.capabilities.spec.ts 6 passed",
   "screenshots": [
     "docs/platform/evidence/project-material-thumbnails.png"
-  ]
+  ],
+  "lint": {
+    "ui-copy": "0 error / 92 warning",
+    "tsc": "0"
+  }
 }
