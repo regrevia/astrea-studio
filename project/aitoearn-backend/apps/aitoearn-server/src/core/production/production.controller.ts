@@ -62,6 +62,8 @@ class ReviseRunDto extends createZodDto(ReviseRunSchema, 'ReviseProductionRunDto
 const JianyingExportSchema = z.object({
   allowGui: z.boolean().optional().describe('是否允许驱动剪映导出面板（用户正在用机器时会退避）'),
   draftPath: z.string().optional().describe('草稿目录；省略就用任务里记下的剪映工程'),
+  waitIdle: z.number().min(0).max(600).optional()
+    .describe('等用户空闲多少秒再动鼠标；0 表示立刻就导（仍然点完即还台）'),
 })
 class JianyingExportDto extends createZodDto(JianyingExportSchema, 'ExportProductionDraftDto') {}
 

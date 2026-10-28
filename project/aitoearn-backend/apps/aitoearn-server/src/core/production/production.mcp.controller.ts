@@ -35,6 +35,8 @@ const CreateJianyingDraftSchema = z.object({
 const StartJianyingExportSchema = z.object({
   runId: z.string().describe('任务 ID，必须已经落过剪映工程'),
   allowGui: z.boolean().default(false).describe('true 才让本机驱动剪映导出面板；用户正在用机器时会被推迟'),
+  waitIdle: z.number().min(0).max(600).optional()
+    .describe('等空闲多少秒再点导出，0=立刻；点完立刻把前台和光标还给用户'),
 })
 
 const CreateRunSchema = z.object({
@@ -254,6 +256,7 @@ export class ProductionMcpController {
     const user = getUser()
     const job = await this.production.startJianyingExport(user.id, params.runId, {
       allowGui: params.allowGui,
+      ...(typeof params.waitIdle === 'number' ? { waitIdle: params.waitIdle } : {}),
     })
     return toYamlTextResult(job)
   }

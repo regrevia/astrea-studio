@@ -444,7 +444,7 @@ export class ProductionService {
   async startJianyingExport(
     userId: string,
     runId: string,
-    input: { allowGui?: boolean, draftPath?: string },
+    input: { allowGui?: boolean, draftPath?: string, waitIdle?: number },
   ) {
     const run = await this.getRun(userId, runId)
     if (run.status === ProductionRunStatus.CANCELLED) {
@@ -471,6 +471,7 @@ export class ProductionService {
         revision: run.revision,
         draftPath,
         allowGui: input.allowGui === true,
+        ...(typeof input.waitIdle === 'number' ? { waitIdle: input.waitIdle } : {}),
         platform: 'douyin',
       },
     } as unknown as Partial<ProductionJob>)
