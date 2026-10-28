@@ -1,0 +1,173 @@
+"""open_draft.py — 把剪映的某个草稿打开到编辑器，供导出驱动接手。
+
+为什么单独一步：导出驱动（jianying_export.py）只认「导出面板能开出来」，而面板
+只有在**草稿已经打开**时才存在。剪映没有「按路径打开草稿」的 CLI 参数，草稿只能
+从首页草稿箱点进去；这一步以前靠人点，于是整条 GUI 链路永远停在「等桌面」。
+
+做法：首页用 AX 树读到每张草稿卡（`HomePageDraftTitle:<名字>` + 卡片的矩形），
+双击卡片中心把它打开，然后等编辑器窗口出现 `MainWindowTitleBarExportBtn`。
+Qt 控件对 AXPress 无效，所以点击是真实鼠标坐标点击。
+
+退出码：0 已打开；2 找不到草稿/没进编辑器；9 用户在忙，这轮不动鼠标。
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import panel as P  # noqa: E402
+
+APP_PATH = Path("/Applications/VideoFusion-macOS.app")
+DRAFT_ROOT = Path.home() / "Movies/JianyingPro/User Data/Projects/com.lveditor.draft"
+EDITOR_MARKERS = ("MainWindowTitleBarExportBtn", "MainWindowTitleBarExport")
+
+
+def sh(*cmd, timeout=60):
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
+
+def tree_text(depth=1) -> str:
+    p = sh(P.AX_TOOL, "tree", P.APP, str(depth), timeout=40)
+    return (p.stdout or "") + (p.stderr or "")
+
+
+def app_running() -> bool:
+    # 进程名就是 bundle 可执行名（VideoFusion-macOS），窗口标题才是「剪映专业版」。
+    # osascript 数进程要辅助功能授权、还会被自动化拦截，直接用 pgrep。
+    return sh("pgrep", "-x", P.APP).returncode == 0
+
+
+def launch() -> None:
+    if not APP_PATH.exists():
+        raise SystemExit("找不到剪映：%s" % APP_PATH)
+    sh("open", "-a", str(APP_PATH))
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        if app_running():
+            return
+        time.sleep(1.0)
+    raise SystemExit("剪映没起来")
+
+
+def editor_open() -> bool:
+    t = tree_text(1)
+    return any(m in t for m in EDITOR_MARKERS)
+
+
+def _rects(t: str):
+    """把 ax_tool tree 的每行拆成 (标识, (x,y,w,h))，坐标解析不了的行跳过。"""
+    out = []
+    for line in t.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 8:
+            continue
+        try:
+            xy, wh = parts[7].strip().split()[0], parts[7].strip().split()[1]
+            x, y = (int(v) for v in xy.split(","))
+            w, h = (int(v) for v in wh.split(","))
+        except Exception:
+            continue
+        out.append((line, (x, y, w, h)))
+    return out
+
+
+def on_screen_windows(pid: str) -> int:
+    """当前桌面上的窗口数。0 表示窗口在别的 Space / 已最小化。
+
+    这条必须查：AX 树能读到别的 Space 的窗口，坐标看着正常，但真实鼠标点会落在
+    **当前** Space 的别的 App 上（实测把点击打给了正在打字的编辑器）。宁可不点。
+    """
+    p = sh(P.AX_TOOL, "wins", pid, timeout=20)
+    try:
+        return int((p.stderr or "").strip().rsplit(":", 1)[-1].strip())
+    except Exception:
+        return -1
+
+
+def card_rect(name: str):
+    """草稿卡：卡片节点本身不带草稿名，标题节点才带。
+
+    所以先定位标题文字矩形，再取同一列、位于标题上方的那张卡（`HomePageDraft`）。
+    拿标题矩形去点会点在文字上——Qt 列表单击文字只选中不打开，必须点缩略图卡片。
+    """
+    rows = _rects(tree_text(1))
+    title = next((r for line, r in rows
+                  if "HomePageDraftTitle:" in line and name in line), None)
+    if not title:
+        return None
+    tx, ty = title[0], title[1]
+    cards = [(line, r) for line, r in rows
+             if "HomePageDraft" in line and "HomePageDraftTitle:" not in line]
+    best = None
+    for line, (x, y, w, h) in cards:
+        # 标题文字落在卡片矩形内部（剪映的卡片比标题高，底部会越过标题）
+        if x <= tx <= x + w and y <= ty < y + h and h > 20:
+            if best is None or h < best[1][3]:
+                best = (line, (x, y, w, h))
+    return best[1] if best else title
+
+
+def open_draft(name: str, wait: float = 25.0) -> int:
+    if not app_running():
+        print("启动剪映…")
+        launch()
+        time.sleep(6.0)
+    P.front()
+    time.sleep(0.8)
+    if editor_open() and name in tree_text(1):
+        # 已经在这张草稿的编辑器里（标题栏带草稿名）就别重复点
+        print("草稿已在编辑器：%s" % name)
+        return 0
+    # 不在首页就先回首页（编辑器里点返回，Esc 关掉可能的弹层）
+    if not any("HomePageDraftTitle:" in l for l in tree_text(1).splitlines()):
+        P.run([P.AX_TOOL, "key", "esc"])
+        time.sleep(0.5)
+        P.run([P.AX_TOOL, "key", "cmd+shift+h"])  # 无副作用：剪映首页快捷键不中也不报错
+        time.sleep(1.0)
+    rect = card_rect(name)
+    if not rect:
+        print("首页里没有这张草稿：%s" % name, file=sys.stderr)
+        print(tree_text(1)[:2000], file=sys.stderr)
+        return 2
+    pids = (sh("pgrep", "-x", P.APP).stdout or "").split()
+    n = on_screen_windows(pids[0]) if pids else 0
+    if n <= 0:
+        print("剪映窗口不在当前桌面（可见窗口数=%d），拒绝盲点坐标："
+              "先切到剪映所在桌面，或把窗口拖过来再跑" % n, file=sys.stderr)
+        return 2
+    x, y, w, h = rect
+    cx, cy = x + w // 2, y + h // 2
+    print("双击草稿卡 %s @ %d,%d（%dx%d）" % (name, cx, cy, w, h))
+    P.run([P.AX_TOOL, "click-at", str(cx), str(cy), "--count", "2"], timeout=30)
+    deadline = time.time() + wait
+    while time.time() < deadline:
+        if editor_open():
+            print("已进编辑器")
+            return 0
+        time.sleep(1.0)
+    print("点了但没进编辑器（导出按钮始终没出现）", file=sys.stderr)
+    return 2
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--name", required=True, help="草稿名（草稿目录的 basename）")
+    ap.add_argument("--wait-idle", type=float, default=0.0)
+    ap.add_argument("--wait", type=float, default=25.0)
+    args = ap.parse_args(argv)
+    if not P.quiet_start(args.wait_idle, restore=False, strict=True):
+        print("排队：用户未空闲，这轮不点草稿", file=sys.stderr)
+        return 9
+    if args.name not in tree_text(1) and not (DRAFT_ROOT / args.name).is_dir():
+        print("草稿目录不存在：%s" % (DRAFT_ROOT / args.name), file=sys.stderr)
+        return 2
+    return open_draft(args.name, wait=args.wait)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

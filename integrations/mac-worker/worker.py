@@ -65,6 +65,7 @@ REASON_CODES = (
     "export_aspect_mismatch",
     "export_param_not_applied",
     "export_panel_unavailable",
+    "export_draft_not_open",
     "export_probe_failed",
 )
 
@@ -546,6 +547,24 @@ class Worker:
 
         if not draft_path:
             raise JianyingError("jianying_export 需要 draftPath（草稿目录），不猜最新草稿")
+
+        progress(15, "jianying:open_draft")
+        # 导出驱动只认「导出面板已经能开出来」，而面板只存在于已打开的草稿里；
+        # 剪映没有「按路径打开草稿」的入口，草稿必须从首页草稿箱点进去。这一步以前靠人，
+        # 于是 allowGui 也总在 open_panel 处 rc=2。这里先把它点开，失败就明确报原因。
+        opener = Path(__file__).with_name("export") / "open_draft.py"
+        draft_name = Path(draft_path).name
+        opened = subprocess.run(
+            [sys.executable, str(opener), "--name", draft_name,
+             "--wait-idle", str(float(payload.get("waitIdle") or 30.0))],
+            capture_output=True, text=True, timeout=600,
+        )
+        open_tail = ((opened.stdout or "") + (opened.stderr or "")).strip()[-600:]
+        if opened.returncode != 0:
+            reason = {9: "export_user_busy", 2: "export_draft_not_open"}.get(
+                opened.returncode, "export_draft_not_open")
+            raise JianyingError(reason_text(
+                reason, "草稿没能打开（rc=%d）：%s" % (opened.returncode, open_tail or "无输出")))
 
         progress(20, "jianying:export")
         script = Path(__file__).with_name("export") / "jianying_export.py"

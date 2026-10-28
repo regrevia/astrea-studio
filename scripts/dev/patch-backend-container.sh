@@ -44,9 +44,18 @@ fi
 
 echo "== 4/4 重启并等健康检查"
 docker restart "$CONTAINER" >/dev/null
-for _ in $(seq 1 30); do
+# 判据要宽、窗口要长：容器重启后 nginx 上游先 502 再恢复，实测约 60~90s 才稳定，
+# 30×2s 会在刚起来时判死。这里看容器自身 health 状态 + 走 nginx 的 /healthz，
+# 任一为 200 即通过，最多等 180s，并打印实际耗时。
+started="$(date +%s)"
+for _ in $(seq 1 90); do
+  health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$CONTAINER" 2>/dev/null || echo unknown)"
   code="$(curl -s -m 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/healthz || true)"
-  if [ "$code" = "200" ]; then echo "健康检查通过"; exit 0; fi
+  # 两个信号都要：容器自身 health 还在 starting 时 nginx 可能仍指向旧进程，那不算通过。
+  if [ "$code" = "200" ] && { [ "$health" = "healthy" ] || [ "$health" = "none" ]; }; then
+    echo "健康检查通过（${health} / nginx ${code}，$(( $(date +%s) - started ))s）"
+    exit 0
+  fi
   sleep 2
 done
 echo "健康检查未通过，查看容器日志：docker logs --tail 80 $CONTAINER" >&2
