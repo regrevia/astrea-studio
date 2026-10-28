@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 
 import pylocator
 from dataclasses import dataclass, field
@@ -225,6 +226,7 @@ def capabilities() -> dict:
             "jianying": jianying_voices(),
             "edge": edge_voices(),
         },
+        "materials": _materials(),
         "tools": {
             "ffmpeg": _which_version("ffmpeg", ["-version"]),
             "vhs": _which_version("vhs", ["--version"]),
@@ -232,6 +234,28 @@ def capabilities() -> dict:
         },
     }
 
+
+
+def _materials() -> dict:
+    """素材包清单：spec 里写 ``pack:<slug>/<name>`` 就能引用，模型得知道有哪些。
+
+    只读目录，不联网；包不存在时返回空清单，不抛异常拖垮整个能力接口。
+    """
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "tools"))
+        import material_packs  # noqa: PLC0415
+        root = material_packs.packs_root()
+        packs = []
+        for slug in material_packs.list_packs():
+            shots = material_packs.list_shots(slug)
+            packs.append({
+                "slug": slug,
+                "shots": len(shots),
+                "refs": [f"pack:{slug}/{name}" for name in shots[:6]],
+            })
+        return {"root": str(root), "packs": packs}
+    except Exception:  # noqa: BLE001
+        return {"root": "", "packs": []}
 
 def _which_version(cmd: str, args: list[str]) -> dict:
     import shutil

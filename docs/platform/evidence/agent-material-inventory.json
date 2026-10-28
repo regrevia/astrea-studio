@@ -1,0 +1,34 @@
+{
+  "capturedAt": "2026-10-28T20:02:07+08:00",
+  "why": "指挥台要能自己发现素材包，spec 里才会写对 pack 引用；这条记录是能力清单把素材包暴露给模型的实测。",
+  "inventoryUrl": "http://127.0.0.1:8899/inventory (容器内经 host.docker.internal:8899)",
+  "materials": {
+    "root": "/Users/apple/CreatorStudio/materials/packs",
+    "packs": [
+      {
+        "slug": "envoy-demo",
+        "shots": 2,
+        "refs": [
+          "pack:envoy-demo/github-com-regrevia-envoy-1",
+          "pack:envoy-demo/github-com-regrevia-envoy-2"
+        ]
+      }
+    ]
+  },
+  "assistant": {
+    "sessionId": "6ae1e42b7b71a2b56d60bff4",
+    "message": "本机有哪些素材包可以直接引用？只要清单",
+    "reply": "本机只有 1 个素材包：**envoy-demo**，含 2 张图——`pack:envoy-demo/github-com-regrevia-envoy-1`、`pack:envoy-demo/github-com-regrevia-envoy-2`。\n\n下一步：确认用这两张出片，还是直接纯卡面讲 Envoy？",
+    "action": {
+      "type": "info",
+      "status": "ok",
+      "label": "已读取 16 个平台",
+      "detail": "就绪 8 个 · 剪映 14 / Edge 9 音色 · 1 个素材包"
+    }
+  },
+  "checks": {
+    "backendTsc": "tsc -p apps/aitoearn-server/tsconfig.app.json --noEmit → 0",
+    "backendTests": "nx test aitoearn-server -- production-assistant → 成功（含 list_platforms 素材包、get_run 本地路径两条新用例）",
+    "workerTests": "python3 -m unittest tests.test_capabilities_materials → 3 passed"
+  }
+}

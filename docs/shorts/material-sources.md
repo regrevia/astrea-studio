@@ -259,6 +259,10 @@ python3 integrations/mac-worker/tools/grab_material.py --pack <主题slug> --top
 素材包不进 git（`materials/` 在 `~/CreatorStudio/` 下，仓库外）；要留档就留 `index.json`，
 它记着每张图的原始 URL 和抓取时间，能重抓。
 
+不记得有哪些包就问指挥台：`list_platforms` 会连宿主机能力清单，把每个包的 slug、张数和前几个
+`pack:` 引用一起返回（`curl -s http://127.0.0.1:8899/inventory | jq .materials` 是同一份数据）。
+模型拿到引用就能直接写进 spec，不用先试错。
+
 两种写法共用同一段解析：spec 字段那条用坏引用试过，会立刻 `素材引用有问题：素材包不存在：nope（现有包：envoy-demo）`
 退出、不出片；命令行那条整条链路出过成片（见上）。
 

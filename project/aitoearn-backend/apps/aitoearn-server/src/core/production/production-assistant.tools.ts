@@ -155,7 +155,7 @@ export const ASSISTANT_TOOLS: AssistantToolDefinition[] = [
     type: 'function',
     function: {
       name: AssistantToolName.LIST_PLATFORMS,
-      description: '查询当前本机已就绪的发布平台账号、可用音色和 worker 支持的能力。回答「能发哪里/有没有声音」之前先调它。',
+      description: '查询当前本机已就绪的发布平台账号、可用音色、素材包（可用 pack:<包名>/<名字> 引用）和 worker 支持的能力。回答「能发哪里/有没有声音/有什么素材」之前先调它。',
       parameters: { type: 'object', properties: {}, additionalProperties: false },
     },
   },

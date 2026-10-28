@@ -59,7 +59,7 @@ const SYSTEM_PROMPT = [
   '4. 不确定就查工具：平台与音色用 list_platforms，任务状态用 get_run/list_runs，失败原因用 list_events。',
   '5. 发布只能登记意向（plan_publication），绝不能说已经发出，必须提醒用户在面板人工确认。',
   '6. 工具结果是唯一事实来源：拿到结果后直接引用里面的任务名、状态、链接作答，禁止说“没想好”“不知道”，也不要再问一遍已经查到的信息。',
-  '7. 本工作台能凭空出片：卡面、字幕、配音、鲸鱼娘「阿斯特」的立绘都由流水线自己生成，create_run 只给 script 就能跑，materials 是可选项，只有用户明确要用图片/视频时才需要。想控制卡面就把 points 写成「标题::卡面正文::口播」三段，三段都要有字，卡面正文留空就只剩标题；卡面正文一行短句（可以放数字），口播写完整说法；hook 是首屏反差，cta 用最后一句口播收尾。',
+  '7. 本工作台能凭空出片：卡面、字幕、配音、鲸鱼娘「阿斯特」的立绘都由流水线自己生成，create_run 只给 script 就能跑，materials 是可选项，只有用户明确要用图片/视频时才需要。想控制卡面就把 points 写成「标题::卡面正文::口播」三段，三段都要有字，卡面正文留空就只剩标题；卡面正文一行短句（可以放数字），口播写完整说法；hook 是首屏反差，cta 用最后一句口播收尾。要用现成素材时先 list_platforms 看素材包，spec 里写 pack:<包名>/<名字>；用户给了绝对路径就原样用，别自己拼路径。',
   '8. 「Envoy」指用户本机 ~/Desktop/2026/Envoy 这个项目：给 AI 一个链接，它把整篇读完、抽帧、记时间戳，再交给模型写作。envoyproxy.io 是同名的云原生代理，题材完全不同，research_web 返回它一律丢掉，别写 L7、服务网格、xDS、Wasm、mTLS 那套。能用的数字就这些：7.0 MB 原片 216 秒 109 段中文 ASR；690 秒长片 354 段；抓 25 个素材包只认 14 个，小红书 4 条全挂也照实标；每条结论都带时间戳能点回去核对。数字之外不编。',
   '9. 文案要像人说话：短句、有观点、有反差，不写说明书。结尾固定加一句「本期视频全程由大肥鱼制作完成，没有任何一个 token 受到伤害」，只放进最后一句口播，不占卡面。回应用户时说清这一步做了什么、下一步等他给什么。',
   '10. 任务排队和渲染是正常的：渲染要几分钟，最多查两次 get_run 就如实汇报阶段和进度，别说队列卡死，也不要让用户去重启服务。',
@@ -475,8 +475,15 @@ export class ProductionAssistantService {
     const inventory = await this.readInventory()
     const platforms = inventory?.platforms ?? []
     const voices = inventory?.voices ?? { jianying: 0, edge: 0 }
+    const materials = inventory?.materials ?? []
+    const materialText = materials.length
+      ? materials.map(item => `${item.slug}（${item.shots} 张${item.refs.length ? `：${item.refs.slice(0, 3).join('、')}` : ''}）`).join('；')
+      : '无（可以给绝对路径，或先用抓取脚本收成素材包）'
     const platformText = platforms.length
-      ? platforms.map(item => `${item.platform}${item.ready ? `（${item.accounts.length} 个账号）` : '（未就绪，缺 cookie）'}`).join('、')
+      ? platforms.map((item) => {
+          const name = item.label && item.label !== item.platform ? `${item.label}（${item.platform}）` : item.platform
+          return `${name}${item.ready ? `（${item.accounts.length} 个账号）` : '（未就绪，缺 cookie）'}`
+        }).join('、')
       : '未读取到'
     const workerText = workers.length
       ? workers.map(item => `${item.name}（${item.online ? '在线' : '离线'}）`).join('、')
@@ -485,6 +492,7 @@ export class ProductionAssistantService {
       text: [
         `平台：${platformText}`,
         `音色：剪映 ${voices.jianying} 个、Edge ${voices.edge} 个`,
+        `素材包：${materialText}`,
         `渲染 worker：${workerText}`,
         inventory ? '' : '能力清单服务不可达：需要先在宿主机启动 mac worker 的 capabilities server（--host 0.0.0.0）。',
       ].filter(Boolean).join('\n'),
@@ -493,7 +501,7 @@ export class ProductionAssistantService {
         status: platforms.length ? ProductionAssistantActionStatus.OK : ProductionAssistantActionStatus.FAILED,
         label: platforms.length ? `已读取 ${platforms.length} 个平台` : '平台清单不可达',
         detail: platforms.length
-          ? `就绪 ${platforms.filter(item => item.ready).length} 个 · 剪映 ${voices.jianying} / Edge ${voices.edge} 音色`
+          ? `就绪 ${platforms.filter(item => item.ready).length} 个 · 剪映 ${voices.jianying} / Edge ${voices.edge} 音色 · ${materials.length} 个素材包`
           : `worker 在线 ${workers.filter(item => item.online).length} 个；需在宿主机启动 capabilities server`,
         link: '/studio',
       })],
@@ -921,6 +929,7 @@ export class ProductionAssistantService {
   private async readInventory(): Promise<{
     platforms: Array<{ platform: string, label: string, ready: boolean, accounts: string[] }>
     voices: { jianying: number, edge: number }
+    materials: Array<{ slug: string, shots: number, refs: string[] }>
   } | null> {
     const url = `${config.studioAssistant.inventoryUrl.replace(/\/+$/, '')}/inventory`
     try {
@@ -945,6 +954,7 @@ export class ProductionAssistantService {
       const payload = await response.json() as {
         platforms?: unknown
         voices?: Record<string, unknown>
+        materials?: { packs?: unknown }
       } | null
       const rows = Array.isArray(payload?.platforms) ? payload.platforms : []
       const platforms = rows.flatMap((row) => {
@@ -970,9 +980,21 @@ export class ProductionAssistantService {
         }]
       })
       const voiceCount = (key: string) => Array.isArray(payload?.voices?.[key]) ? (payload.voices[key] as unknown[]).length : 0
+      const materialRows = Array.isArray(payload?.materials?.packs) ? payload.materials.packs : []
+      const materials = materialRows.flatMap((row) => {
+        if (!row || typeof row !== 'object')
+          return []
+        const item = row as Record<string, unknown>
+        const slug = typeof item['slug'] === 'string' ? item['slug'] : ''
+        if (!slug)
+          return []
+        const refs = Array.isArray(item['refs']) ? item['refs'].filter((ref): ref is string => typeof ref === 'string') : []
+        return [{ slug, shots: Number(item['shots']) || refs.length, refs }]
+      })
       return {
         platforms,
         voices: { jianying: voiceCount('jianying'), edge: voiceCount('edge') },
+        materials,
       }
     }
     catch {

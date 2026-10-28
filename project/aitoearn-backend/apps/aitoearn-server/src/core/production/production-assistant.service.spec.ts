@@ -331,6 +331,61 @@ describe('productionAssistantService', () => {
     expect(renderAction?.detail).toBe('douyin 1080x1920 · 1.7 MB')
   })
 
+  it('list_platforms 把素材包和可引用的 pack 写法一起交给模型', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        platforms: [{ platform: 'douyin', label: '抖音', ready: true, accounts: [{ account: 'main' }] }],
+        voices: { jianying: [{ id: '1' }], edge: [{ id: '2' }, { id: '3' }] },
+        materials: {
+          packs: [{ slug: 'envoy-demo', shots: 2, refs: ['pack:envoy-demo/hero', 'pack:envoy-demo/dash'] }],
+        },
+      }),
+    })))
+    client.chat
+      .mockResolvedValueOnce({ content: '', toolCalls: [toolCall('list_platforms', {})] })
+      .mockResolvedValueOnce({ content: '抖音能发，素材包也有。', toolCalls: [] })
+
+    await service.sendMessage('user-1', SESSION_ID, '能发哪里，有什么素材')
+
+    const toolMessage = client.chat.mock.calls[1][0].find((item: { role: string }) => item.role === 'tool')
+    expect(toolMessage.content).toContain('素材包：envoy-demo（2 张')
+    expect(toolMessage.content).toContain('pack:envoy-demo/hero')
+    expect(toolMessage.content).toContain('抖音')
+  })
+
+  it('get_run 把成片本地路径、时长和 md5 一起交给模型', async () => {
+    production.runDetail.mockResolvedValue({
+      run: {
+        id: RUN_ID,
+        title: '30 秒竖屏',
+        status: 'succeeded',
+        currentStage: 'done',
+        lastError: '',
+        output: {
+          videoUrl: 'http://127.0.0.1:9001/out.mp4',
+          libraryPath: '/Users/apple/CreatorStudio/library/studio/2026-10/20261028-183224__studio__001__x__douyin__r1.mp4',
+          duration: 30,
+          md5: 'abc123',
+          platforms: {},
+        },
+      },
+      jobs: [{ progress: 100, stage: 'done', lastError: '' }],
+      events: [],
+    })
+    client.chat
+      .mockResolvedValueOnce({ content: '', toolCalls: [toolCall('get_run', { runId: RUN_ID })] })
+      .mockResolvedValueOnce({ content: '片子已经进素材库了。', toolCalls: [] })
+
+    await service.sendMessage('user-1', SESSION_ID, '片子在哪')
+
+    const toolMessage = client.chat.mock.calls[1][0].find((item: { role: string }) => item.role === 'tool')
+    expect(toolMessage.content).toContain('本地文件：/Users/apple/CreatorStudio/library/studio/')
+    expect(toolMessage.content).toContain('30.0s')
+    expect(toolMessage.content).toContain('md5 abc123')
+  })
+
   it('推理服务不可用时降级成可读中文，仍然 200 返回并落库', async () => {
     client.chat.mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:11434'))
 
