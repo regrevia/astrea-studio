@@ -1,0 +1,53 @@
+{
+  "project": "批量出片验收",
+  "projectId": "6ae2294523fdf914233849e9",
+  "entrypoint": "工作区「片子素材」卡点「出 3 版」——前端 POST /api/production/runs/batch",
+  "input": "3 条真实素材 + demo-120.m4a 配乐 + 按鼓点切 + 标题「一杯好咖啡」/副标题「三分钟送到家」",
+  "runs": [
+    {
+      "index": 1,
+      "runId": "6ae2295423fdf91423384a42",
+      "md5": "ed590190446dde00381f6ff34542759a",
+      "library": "20261029-005710__studio__001__批量出片验收-30-秒-1-3__douyin__r1.mp4",
+      "status": "succeeded",
+      "seconds": 30,
+      "segments": 15,
+      "texts": 2,
+      "videoQa": []
+    },
+    {
+      "index": 2,
+      "runId": "6ae2295423fdf91423384a4b",
+      "md5": "d8503c6df0ca3e45d0b3c663dcbf1f1c",
+      "library": "20261029-005726__studio__001__批量出片验收-30-秒-2-3__douyin__r1.mp4",
+      "status": "succeeded",
+      "seconds": 30,
+      "segments": 15,
+      "texts": 2,
+      "videoQa": []
+    },
+    {
+      "index": 3,
+      "runId": "6ae2295423fdf91423384a54",
+      "md5": "2ea4eb6cd211e0053aaa566f0d6826c1",
+      "library": "20261029-005736__studio__001__批量出片验收-30-秒-3-3__douyin__r1.mp4",
+      "status": "succeeded",
+      "seconds": 30,
+      "segments": 15,
+      "texts": 2,
+      "videoQa": []
+    }
+  ],
+  "music": {
+    "bpm": 60.09,
+    "offset": 0,
+    "volume": 0.32,
+    "loop": true
+  },
+  "ssim": {
+    "v1_vs_v2": 0.96509,
+    "v1_vs_v3": 0.925821,
+    "v2_vs_v3": 0.925763
+  },
+  "note": "第 1 版与单独提交那条 md5 相同，批量不改原稿；后两版错开素材入点与推拉方向，拍点网格与文字层不变"
+}

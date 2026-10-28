@@ -9,7 +9,7 @@
 import type { MaterialMusic, MaterialShot } from '@/api/production/production.types'
 import { Clapperboard, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createRun, fetchMaterialFrameUrl, getMaterialShots, getMaterialMusic, getMusicBeats } from '@/api/production/production.api'
+import { createRun, createRunBatch, fetchMaterialFrameUrl, getMaterialShots, getMaterialMusic, getMusicBeats } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
 import { buildMaterialTimeline, TARGET_SECONDS, type MaterialBeatPlan, type TargetSeconds } from '@/app/[lng]/studio/utils/material-timeline'
 import { Badge } from '@/components/ui/badge'
@@ -115,7 +115,7 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
 
   const pickedTrack = useMemo(() => tracks.find(track => track.rel === musicRel), [tracks, musicRel])
 
-  const submit = useCallback(async () => {
+  const submit = useCallback(async (count = 1) => {
     let beatPlan: MaterialBeatPlan | null = null
     if (pickedTrack) {
       beatPlan = { src: pickedTrack.path, bpm: 0, offset: 0, beats: [] }
@@ -146,20 +146,34 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
     setSubmitting(true)
     setError('')
     try {
-      const res = await createRun({
+      const body = {
         projectId,
         title: `${projectName} · ${target} 秒`,
         brief: pickedTrack
           ? `${target} 秒竖屏：${pickedClips.length} 条素材${beatOn ? '，按鼓点切' : ''}`
           : `${target} 秒竖屏：${pickedClips.length} 条素材`,
         spec,
-      })
-      const runId = res?.data?.runId
-      if (res?.code !== 0 || !runId) {
-        setError(res?.message || t('project.clipFailed'))
-        return
       }
-      onCreated([runId])
+      // 出 3 版走批量接口：同一份排布入队三次，后两版自动错开运镜与开场。
+      const runIds: string[] = []
+      if (count > 1) {
+        const res = await createRunBatch({ ...body, count })
+        if (res?.code !== 0 || !res?.data?.runIds?.length) {
+          setError(res?.message || t('project.clipFailed'))
+          return
+        }
+        runIds.push(...res.data.runIds)
+      }
+      else {
+        const res = await createRun(body)
+        const runId = res?.data?.runId
+        if (res?.code !== 0 || !runId) {
+          setError(res?.message || t('project.clipFailed'))
+          return
+        }
+        runIds.push(runId)
+      }
+      onCreated(runIds)
     }
     catch {
       setError(t('project.clipFailed'))
@@ -249,9 +263,18 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
                 </Select>
                 <Button
                   size="sm"
+                  variant="secondary"
                   className="cursor-pointer"
                   disabled={submitting || pickedClips.length === 0}
-                  onClick={submit}
+                  onClick={() => submit(3)}
+                >
+                  {t('project.clipBatch')}
+                </Button>
+                <Button
+                  size="sm"
+                  className="cursor-pointer"
+                  disabled={submitting || pickedClips.length === 0}
+                  onClick={() => submit(1)}
                 >
                   {submitting && <Loader2 className="size-3.5 animate-spin" />}
                   {t('project.clipSubmit')}
