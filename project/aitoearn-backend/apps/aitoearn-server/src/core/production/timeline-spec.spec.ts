@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyRunBatchVariant, buildTimelineSpec, mirrorKeyframes, rotateOpening, RunBatchVariant, TimelineCanvasPreset, varyHook } from './timeline-spec'
+import { applyRunBatchVariant, applyVerticalShortVariant, buildTimelineSpec, mirrorKeyframes, rotateOpening, RunBatchVariant, TimelineCanvasPreset, varyHook } from './timeline-spec'
 
 const FRIENDLY_INPUT = {
   engine: 'timeline',
@@ -351,5 +351,61 @@ describe('applyRunBatchVariant 选择分版维度', () => {
 
   it('variants 为空时保持原稿', () => {
     expect(applyRunBatchVariant(spec as Record<string, unknown>, 1, [])).toBe(spec)
+  })
+})
+
+describe('只勾一维时多条也要两两不同', () => {
+  const spec = {
+    video: [
+      { src: 'a.mp4', keyframes: [{ at: 0, zoom: 1 }, { at: 3, zoom: 1.12 }] },
+      { src: 'b.mp4', keyframes: [{ at: 0, zoom: 1.1 }, { at: 4, zoom: 1 }] },
+    ],
+    text: [{ text: 'A' }],
+  }
+
+  it('只选 mirror 时第 2 条镜像、第 3 条回原稿，不会两条一模一样', () => {
+    const second = applyRunBatchVariant(spec as Record<string, unknown>, 1, ['mirror'])
+    const third = applyRunBatchVariant(spec as Record<string, unknown>, 2, ['mirror'])
+    expect(second['video']).not.toEqual(third['video'])
+    expect(third['video']).toEqual(spec.video)
+  })
+
+  it('mirror 和别的维度一起选时每条都镜像', () => {
+    const second = applyRunBatchVariant(spec as Record<string, unknown>, 1, ['mirror', 'hook'])
+    const third = applyRunBatchVariant(spec as Record<string, unknown>, 2, ['mirror', 'hook'])
+    expect(second['video']).toEqual(third['video'])
+  })
+})
+
+describe('applyVerticalShortVariant 竖屏口播稿分版', () => {
+  const spec = {
+    mode: 'vertical_short',
+    points: ['一', '二', '三'],
+    materials: ['a.png', 'b.png', 'c.png'],
+    hook: '原钩子',
+    hook_variants: ['钩子甲', '钩子乙'],
+  }
+
+  it('第 1 条永远是原稿', () => {
+    expect(applyVerticalShortVariant(spec, 0, ['opening', 'hook'])).toBe(spec)
+  })
+
+  it('opening 按条轮转 points，素材跟着屏一起转', () => {
+    const out = applyVerticalShortVariant(spec, 1, ['opening'])
+    expect(out['points']).toEqual(['二', '三', '一'])
+    expect(out['materials']).toEqual(['b.png', 'c.png', 'a.png'])
+    expect(out['hook']).toBe('原钩子')
+  })
+
+  it('hook 有变体文案时按条换，没有变体就保持原钩子', () => {
+    expect(applyVerticalShortVariant(spec, 1, ['hook'])['hook']).toBe('钩子乙')
+    const noVariants = { ...spec, hook_variants: [] }
+    expect(applyVerticalShortVariant(noVariants, 1, ['hook'])['hook']).toBe('原钩子')
+  })
+
+  it('没选到的维度一个字都不动', () => {
+    const out = applyVerticalShortVariant(spec, 2, ['opening'])
+    expect(out['hook']).toBe('原钩子')
+    expect(out['points']).toEqual(['三', '一', '二'])
   })
 })

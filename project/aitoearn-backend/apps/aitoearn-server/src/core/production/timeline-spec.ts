@@ -318,8 +318,45 @@ export function applyRunBatchVariant(
 ): Record<string, unknown> {
   if (index <= 0 || variants.length === 0) return spec
   let out = spec
-  if (variants.includes('mirror')) out = mirrorKeyframes(out)
+  // 只勾 mirror 时镜像要和原稿交替（第 2 条镜像、第 3 条回原稿），
+  // 否则第 2 和第 3 条渲出来会是同一个文件；有别的维度错开时每条都镜像。
+  const mirrorEvery = variants.length === 1 ? index % 2 === 1 : true
+  if (variants.includes('mirror') && mirrorEvery) out = mirrorKeyframes(out)
   if (variants.includes('opening')) out = rotateOpening(out, index)
   if (variants.includes('hook')) out = varyHook(out, index)
   return out
+}
+
+/**
+ * 竖屏口播稿（mode=vertical_short）没有 timeline 字段：卡面、配音、时间轴都由
+ * worker 现场算，所以批量分版只能落在稿子本身。
+ *
+ * - opening：按序号轮转 points（素材跟着屏走，长度一致时一起转），换开场那屏
+ * - hook：spec 带 hook_variants 时按序号取一条换掉开场字幕，没有变体文案就不动
+ * 表演层（手势/运镜）由 worker 的 _variant_seed 决定，交由 createRunBatch 处理。
+ */
+export function applyVerticalShortVariant(
+  spec: Record<string, unknown>,
+  index: number,
+  variants: RunBatchVariant[],
+): Record<string, unknown> {
+  if (index <= 0 || variants.length === 0) return spec
+  let out = spec
+  if (variants.includes('opening')) {
+    const points = Array.isArray(spec['points']) ? (spec['points'] as unknown[]) : []
+    if (points.length > 1) out = { ...out, points: rotateList(points, index) }
+    const materials = Array.isArray(spec['materials']) ? (spec['materials'] as unknown[]) : []
+    if (materials.length > 1) out = { ...out, materials: rotateList(materials, index) }
+  }
+  if (variants.includes('hook')) {
+    const hooks = Array.isArray(spec['hook_variants']) ? (spec['hook_variants'] as unknown[]) : []
+    if (hooks.length > 1) out = { ...out, hook: hooks[index % hooks.length] }
+  }
+  return out
+}
+
+/** 按序号左移；序号对长度取模，多条时循环回到原序。 */
+function rotateList(items: unknown[], times: number): unknown[] {
+  const shift = ((Math.trunc(times) % items.length) + items.length) % items.length
+  return [...items.slice(shift), ...items.slice(0, shift)]
 }

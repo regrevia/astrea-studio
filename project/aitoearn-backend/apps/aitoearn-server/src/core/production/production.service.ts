@@ -23,7 +23,7 @@ import {
 } from '@yikart/mongodb'
 import { MaterialGroupService } from '../content/material-group.service'
 import { MaterialService } from '../content/material.service'
-import { applyRunBatchVariant, buildTimelineSpec, RUN_BATCH_VARIANTS, RunBatchVariant } from './timeline-spec'
+import { applyRunBatchVariant, applyVerticalShortVariant, buildTimelineSpec, RUN_BATCH_VARIANTS, RunBatchVariant } from './timeline-spec'
 
 export const LEASE_MS = 60_000
 export const RENDER_LANE = 'render'
@@ -283,6 +283,9 @@ export class ProductionService {
     variants: RunBatchVariant[] = RUN_BATCH_VARIANTS,
   ): Promise<ProductionRun[]> {
     const runs: ProductionRun[] = []
+    // 竖屏口播稿没有 timeline（worker 现场展开），分版落在稿子与表演种子上。
+    const shortMode = input.spec?.['mode'] === 'vertical_short'
+    const varyGesture = variants.includes('mirror')
     for (let i = 0; i < count; i += 1) {
       // 第 1 条按原稿；后面的按 variants 逐条错开（默认换运镜 + 换开场 + 换钩子），
       // 多条两两不同才叫多版，否则批到第三条又撞回第一条。
@@ -291,6 +294,14 @@ export class ProductionService {
       if (i > 0 && timeline) {
         const variant = applyRunBatchVariant(timeline as Record<string, unknown>, i, variants)
         spec = { ...input.spec, timeline: variant }
+      }
+      else if (i > 0 && shortMode) {
+        spec = applyVerticalShortVariant(input.spec as Record<string, unknown>, i, variants)
+      }
+      // 表演层：worker 默认拿 runId 当种子，几条手势/运镜自然不同；不要这一维时
+      // 把种子钉死成同一个，几条表演完全一致（文案差异仍由上面两维给）。
+      if (shortMode && !varyGesture && spec) {
+        spec = { ...spec, _variant_seed: 'same-performance' }
       }
       runs.push(await this.createRun(userId, {
         ...input,
