@@ -1,0 +1,917 @@
+{
+  "run": {
+    "_id": "6ae20a3cb2886cd834c8b67b",
+    "userId": "6ad9e38c8d350ba17d570e2b",
+    "projectId": "6adc2161656a13996166bbfc",
+    "title": "认领 UI 验收 · 手动导出 C",
+    "brief": "剪映手动导出后由平台认领入库",
+    "revision": 1,
+    "spec": {
+      "topic": "认领入口验收",
+      "hook": "你自己导，平台来入库",
+      "kicker": "手动导出",
+      "points": [
+        "先体检::按草稿时长画布帧率核对",
+        "对不上就退回::不入库，给出差在哪",
+        "过了才入库::落到素材库并记账"
+      ],
+      "cta": "去试试",
+      "voice": "sami:BV405_streaming",
+      "narration": "这一步看认领入口好不好用",
+      "character": true,
+      "engine": "jianying",
+      "template": "factcard"
+    },
+    "materialId": "",
+    "status": "succeeded",
+    "currentStage": "done",
+    "progress": 100,
+    "lastError": "",
+    "checkpoints": [
+      {
+        "at": "2026-10-28T14:44:12.165Z",
+        "stage": "queued",
+        "note": "run created"
+      }
+    ],
+    "createdAt": "2026-10-28T14:44:12.185Z",
+    "updatedAt": "2026-10-28T14:47:38.037Z",
+    "output": {
+      "draftPath": "/Users/apple/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6ae20a3cb2886cd834c8b67e__r1",
+      "requiresManualExport": false,
+      "duration": 11.234,
+      "copyCheck": {
+        "findings": [],
+        "metrics": {
+          "sentences": 6,
+          "avg_len": 7.8,
+          "min_len": 3,
+          "max_len": 11,
+          "spread": 8
+        },
+        "ok": true
+      },
+      "claimed": true,
+      "videoPath": "/Users/apple/CreatorStudio/out/6ae20b09b2886cd834c8b9e5/r1/6ae20b09b2886cd834c8b9e5__r1__douyin.mp4",
+      "libraryPath": "/Users/apple/CreatorStudio/library/6adc2161656a13996166bbfc/2026-10/20261028-224738__6adc2161656a13996166bbfc__001__认领-ui-验收-手动导出-c__douyin__r1.mp4",
+      "libraryAssetId": "20261028-224738__6adc2161656a13996166bbfc__001__认领-ui-验收-手动导出-c__douyin__r1",
+      "md5": "197fa3684e33e8dbb4f97141e3e3ad84"
+    },
+    "id": "6ae20a3cb2886cd834c8b67b"
+  },
+  "jobs": [
+    {
+      "_id": "6ae20a3cb2886cd834c8b67e",
+      "userId": "6ad9e38c8d350ba17d570e2b",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "kind": "jianying_draft",
+      "attempt": 1,
+      "revision": 1,
+      "status": "succeeded",
+      "payload": {
+        "runId": "6ae20a3cb2886cd834c8b67b",
+        "revision": 1,
+        "spec": {
+          "topic": "认领入口验收",
+          "hook": "你自己导，平台来入库",
+          "kicker": "手动导出",
+          "points": [
+            "先体检::按草稿时长画布帧率核对",
+            "对不上就退回::不入库，给出差在哪",
+            "过了才入库::落到素材库并记账"
+          ],
+          "cta": "去试试",
+          "voice": "sami:BV405_streaming",
+          "narration": "这一步看认领入口好不好用",
+          "character": true,
+          "engine": "jianying",
+          "template": "factcard"
+        },
+        "brief": "剪映手动导出后由平台认领入库",
+        "libraryTitle": "认领 UI 验收 · 手动导出 C"
+      },
+      "lane": "render",
+      "leaseOwner": "6ad9ee47437a9be7260961a6",
+      "leaseVersion": 1,
+      "leaseExpiresAt": null,
+      "heartbeatAt": "2026-10-28T14:44:35.286Z",
+      "externalTaskId": "",
+      "progress": 100,
+      "stage": "jianying:done",
+      "message": "",
+      "lastError": "",
+      "startedAt": "2026-10-28T14:44:14.027Z",
+      "finishedAt": "2026-10-28T14:44:35.369Z",
+      "createdAt": "2026-10-28T14:44:12.216Z",
+      "updatedAt": "2026-10-28T14:44:35.370Z",
+      "result": {
+        "draftPath": "/Users/apple/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6ae20a3cb2886cd834c8b67e__r1",
+        "draftName": "studio_6ae20a3cb2886cd834c8b67e__r1",
+        "draftId": "dfd_cat_1793198654_b2b0f838",
+        "runId": "6ae20a3cb2886cd834c8b67b",
+        "revision": 1,
+        "sourceSpecHash": "2218a57afca1a569",
+        "adapterVersion": "jianying-engine/2",
+        "expectedDuration": 11.234,
+        "duration": 11.234,
+        "stats": {
+          "images": 5,
+          "texts": 9,
+          "effects": 4,
+          "audios": 4,
+          "transitions": 4,
+          "text_anims": 8,
+          "fonts": 4,
+          "keyframes": 20,
+          "characters": 19,
+          "videos": 0,
+          "audio_tracks": 0,
+          "subtitles": 5,
+          "poses": [
+            "0:wave",
+            "1:approve",
+            "2:think",
+            "3:point",
+            "4:happy"
+          ]
+        },
+        "report": {
+          "applied": [
+            {
+              "kind": "image",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/s00.png",
+              "reason": "静帧 3.51s",
+              "scene": 0,
+              "seconds": 3.514
+            },
+            {
+              "kind": "subtitle",
+              "value": "text_sub",
+              "reason": "逐句字幕 1 条",
+              "scene": 0,
+              "segments": 1
+            },
+            {
+              "kind": "effect",
+              "value": "电影感",
+              "reason": "氛围特效 3.51s",
+              "scene": 0,
+              "seconds": 3.514
+            },
+            {
+              "kind": "audio:narration",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/tts_00.mp3",
+              "reason": "配音 3.51s",
+              "scene": 0,
+              "track": "audio_main",
+              "seconds": 3.514
+            },
+            {
+              "kind": "image",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/s01.png",
+              "reason": "静帧 2.45s",
+              "scene": 1,
+              "seconds": 2.454
+            },
+            {
+              "kind": "subtitle",
+              "value": "text_sub",
+              "reason": "逐句字幕 1 条",
+              "scene": 1,
+              "segments": 1
+            },
+            {
+              "kind": "effect",
+              "value": "哈苏胶片",
+              "reason": "氛围特效 2.45s",
+              "scene": 1,
+              "seconds": 2.454
+            },
+            {
+              "kind": "image",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/s02.png",
+              "reason": "静帧 1.87s",
+              "scene": 2,
+              "seconds": 1.873
+            },
+            {
+              "kind": "subtitle",
+              "value": "text_sub",
+              "reason": "逐句字幕 1 条",
+              "scene": 2,
+              "segments": 1
+            },
+            {
+              "kind": "effect",
+              "value": "画质清晰",
+              "reason": "氛围特效 1.87s",
+              "scene": 2,
+              "seconds": 1.873
+            },
+            {
+              "kind": "audio:narration",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/tts_02.mp3",
+              "reason": "配音 1.87s",
+              "scene": 2,
+              "track": "audio_main",
+              "seconds": 1.873
+            },
+            {
+              "kind": "image",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/s03.png",
+              "reason": "静帧 1.79s",
+              "scene": 3,
+              "seconds": 1.793
+            },
+            {
+              "kind": "subtitle",
+              "value": "text_sub",
+              "reason": "逐句字幕 1 条",
+              "scene": 3,
+              "segments": 1
+            },
+            {
+              "kind": "effect",
+              "value": "法式暖调",
+              "reason": "氛围特效 1.79s",
+              "scene": 3,
+              "seconds": 1.793
+            },
+            {
+              "kind": "audio:narration",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/tts_03.mp3",
+              "reason": "配音 1.79s",
+              "scene": 3,
+              "track": "audio_main",
+              "seconds": 1.793
+            },
+            {
+              "kind": "image",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/s04.png",
+              "reason": "静帧 1.60s",
+              "scene": 4,
+              "seconds": 1.6
+            },
+            {
+              "kind": "subtitle",
+              "value": "text_sub",
+              "reason": "逐句字幕 1 条",
+              "scene": 4,
+              "segments": 1
+            },
+            {
+              "kind": "audio:narration",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/tts_04.mp3",
+              "reason": "配音 1.60s",
+              "scene": 4,
+              "track": "audio_main",
+              "seconds": 1.6
+            }
+          ],
+          "unsupported": [
+            {
+              "kind": "audio:narration",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/tts_01.mp3",
+              "reason": "配音没进草稿: /add_audio failed: Error occurred while processing audio: New segment overlaps with existing segment [start: 3513500, end: 5967500].",
+              "scene": 1
+            }
+          ],
+          "missing": [],
+          "requires_user": [],
+          "counts": {
+            "applied": 18,
+            "unsupported": 1,
+            "missing": 0,
+            "requires_user": 0
+          },
+          "ok": false,
+          "complete": false
+        },
+        "capabilities": {
+          "applied": 18,
+          "unsupported": 1,
+          "missing": 0,
+          "requires_user": 0
+        },
+        "copyCheck": {
+          "findings": [],
+          "metrics": {
+            "sentences": 6,
+            "avg_len": 7.8,
+            "min_len": 3,
+            "max_len": 11,
+            "spread": 8
+          },
+          "ok": true
+        },
+        "stage": "draft_ready",
+        "output": {
+          "videoPath": null,
+          "requiresManualExport": true
+        },
+        "note": "草稿已就绪。macOS 无法自动导出，请在剪映打开草稿并点导出。",
+        "jobId": "6ae20a3cb2886cd834c8b67e",
+        "engine": "jianying",
+        "degraded": true,
+        "degradedReason": "部分原生效果未写入草稿，明细见 report"
+      },
+      "id": "6ae20a3cb2886cd834c8b67e"
+    },
+    {
+      "_id": "6ae20b09b2886cd834c8b9e5",
+      "userId": "6ad9e38c8d350ba17d570e2b",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "kind": "jianying_export",
+      "attempt": 1,
+      "revision": 1,
+      "status": "succeeded",
+      "payload": {
+        "runId": "6ae20a3cb2886cd834c8b67b",
+        "revision": 1,
+        "draftPath": "/Users/apple/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6ae20a3cb2886cd834c8b67e__r1",
+        "allowGui": false,
+        "claimPath": "/tmp/claim-test/ok11.mp4",
+        "libraryProject": "6adc2161656a13996166bbfc",
+        "libraryTitle": "认领 UI 验收 · 手动导出 C",
+        "platform": "douyin"
+      },
+      "lane": "render",
+      "leaseOwner": "6ad9ee47437a9be7260961a6",
+      "leaseVersion": 1,
+      "leaseExpiresAt": null,
+      "heartbeatAt": "2026-10-28T14:47:37.877Z",
+      "externalTaskId": "",
+      "progress": 100,
+      "stage": "jianying:claim",
+      "message": "",
+      "lastError": "",
+      "startedAt": "2026-10-28T14:47:37.833Z",
+      "finishedAt": "2026-10-28T14:47:38.035Z",
+      "createdAt": "2026-10-28T14:47:37.278Z",
+      "updatedAt": "2026-10-28T14:47:38.035Z",
+      "result": {
+        "jobId": "6ae20b09b2886cd834c8b9e5",
+        "runId": "6ae20a3cb2886cd834c8b67b",
+        "revision": 1,
+        "platform": "douyin",
+        "draftPath": "/Users/apple/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6ae20a3cb2886cd834c8b67e__r1",
+        "stage": "exported",
+        "output": {
+          "videoPath": "/Users/apple/CreatorStudio/out/6ae20b09b2886cd834c8b9e5/r1/6ae20b09b2886cd834c8b9e5__r1__douyin.mp4",
+          "requiresManualExport": false,
+          "claimed": true,
+          "libraryPath": "/Users/apple/CreatorStudio/library/6adc2161656a13996166bbfc/2026-10/20261028-224738__6adc2161656a13996166bbfc__001__认领-ui-验收-手动导出-c__douyin__r1.mp4",
+          "libraryAssetId": "20261028-224738__6adc2161656a13996166bbfc__001__认领-ui-验收-手动导出-c__douyin__r1",
+          "md5": "197fa3684e33e8dbb4f97141e3e3ad84"
+        },
+        "videoPath": "/Users/apple/CreatorStudio/library/6adc2161656a13996166bbfc/2026-10/20261028-224738__6adc2161656a13996166bbfc__001__认领-ui-验收-手动导出-c__douyin__r1.mp4",
+        "log": "认领: /private/tmp/claim-test/ok11.mp4 (0.03 MB)\n  校验 has_duration  OK  实测 11.233333\n  校验 has_width     OK  实测 1080\n  校验 has_height    OK  实测 1920\n  校验 has_fps       OK  实测 30.0\n  校验 duration      OK  11.23s vs 期望 11.23s (±0.40)\n  校验 resolution    OK  1080x1920 vs 期望 1080x1920\n  校验 fps           OK  30.000 vs 期望 30.000\n已归位 → /Users/apple/CreatorStudio/out/6ae20b09b2886cd834c8b9e5/r1/6ae20b09b2886cd834c8b9e5__r1__douyin.mp4\n证据 → /Users/apple/CreatorStudio/runtime/docs/probe/export-panel/runs/6ae20b09b2886cd834c8b9e5/r1__douyin.json"
+      },
+      "id": "6ae20b09b2886cd834c8b9e5"
+    }
+  ],
+  "attempts": [],
+  "events": [
+    {
+      "_id": "6ae20a3cb2886cd834c8b681",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "",
+      "seq": 1,
+      "kind": "run.created",
+      "stage": "queued",
+      "progress": 0,
+      "message": "run 认领 UI 验收 · 手动导出 C queued (revision 1)",
+      "createdAt": "2026-10-28T14:44:12.236Z",
+      "updatedAt": "2026-10-28T14:44:12.236Z",
+      "id": "6ae20a3cb2886cd834c8b681"
+    },
+    {
+      "_id": "6ae20a3eb2886cd834c8b68a",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "",
+      "seq": 2,
+      "kind": "job.claimed",
+      "stage": "starting",
+      "progress": 0,
+      "message": "claimed by 6ad9ee47437a9be7260961a6 (attempt 1)",
+      "createdAt": "2026-10-28T14:44:14.039Z",
+      "updatedAt": "2026-10-28T14:44:14.039Z",
+      "id": "6ae20a3eb2886cd834c8b68a"
+    },
+    {
+      "_id": "6ae20a3eb2886cd834c8b692",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 3,
+      "kind": "job.progress",
+      "stage": "factcard:expanded",
+      "progress": 8,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:14.318Z",
+      "updatedAt": "2026-10-28T14:44:14.318Z",
+      "id": "6ae20a3eb2886cd834c8b692"
+    },
+    {
+      "_id": "6ae20a3eb2886cd834c8b699",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 4,
+      "kind": "job.progress",
+      "stage": "jianying:ensure-service",
+      "progress": 5,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:14.337Z",
+      "updatedAt": "2026-10-28T14:44:14.337Z",
+      "id": "6ae20a3eb2886cd834c8b699"
+    },
+    {
+      "_id": "6ae20a3eb2886cd834c8b6a0",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 5,
+      "kind": "job.progress",
+      "stage": "jianying:build",
+      "progress": 10,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:14.436Z",
+      "updatedAt": "2026-10-28T14:44:14.436Z",
+      "id": "6ae20a3eb2886cd834c8b6a0"
+    },
+    {
+      "_id": "6ae20a3eb2886cd834c8b6a7",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 6,
+      "kind": "job.progress",
+      "stage": "jianying:tts1/5",
+      "progress": 5,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:14.482Z",
+      "updatedAt": "2026-10-28T14:44:14.482Z",
+      "id": "6ae20a3eb2886cd834c8b6a7"
+    },
+    {
+      "_id": "6ae20a42b2886cd834c8b6af",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 7,
+      "kind": "job.progress",
+      "stage": "jianying:tts2/5",
+      "progress": 11,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:18.633Z",
+      "updatedAt": "2026-10-28T14:44:18.633Z",
+      "id": "6ae20a42b2886cd834c8b6af"
+    },
+    {
+      "_id": "6ae20a44b2886cd834c8b6ba",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 8,
+      "kind": "job.progress",
+      "stage": "jianying:tts3/5",
+      "progress": 17,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:20.777Z",
+      "updatedAt": "2026-10-28T14:44:20.777Z",
+      "id": "6ae20a44b2886cd834c8b6ba"
+    },
+    {
+      "_id": "6ae20a46b2886cd834c8b6c1",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 9,
+      "kind": "job.progress",
+      "stage": "jianying:tts4/5",
+      "progress": 23,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:22.534Z",
+      "updatedAt": "2026-10-28T14:44:22.534Z",
+      "id": "6ae20a46b2886cd834c8b6c1"
+    },
+    {
+      "_id": "6ae20a48b2886cd834c8b6d0",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 10,
+      "kind": "job.progress",
+      "stage": "jianying:tts5/5",
+      "progress": 29,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:24.591Z",
+      "updatedAt": "2026-10-28T14:44:24.591Z",
+      "id": "6ae20a48b2886cd834c8b6d0"
+    },
+    {
+      "_id": "6ae20a4ab2886cd834c8b6d8",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 11,
+      "kind": "job.progress",
+      "stage": "jianying:scene1/5",
+      "progress": 35,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:26.208Z",
+      "updatedAt": "2026-10-28T14:44:26.208Z",
+      "id": "6ae20a4ab2886cd834c8b6d8"
+    },
+    {
+      "_id": "6ae20a4eb2886cd834c8b6e4",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 12,
+      "kind": "job.progress",
+      "stage": "jianying:scene2/5",
+      "progress": 46,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:30.405Z",
+      "updatedAt": "2026-10-28T14:44:30.405Z",
+      "id": "6ae20a4eb2886cd834c8b6e4"
+    },
+    {
+      "_id": "6ae20a4fb2886cd834c8b6f0",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 13,
+      "kind": "job.progress",
+      "stage": "jianying:scene3/5",
+      "progress": 57,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:31.376Z",
+      "updatedAt": "2026-10-28T14:44:31.376Z",
+      "id": "6ae20a4fb2886cd834c8b6f0"
+    },
+    {
+      "_id": "6ae20a50b2886cd834c8b6f7",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 14,
+      "kind": "job.progress",
+      "stage": "jianying:scene4/5",
+      "progress": 68,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:32.276Z",
+      "updatedAt": "2026-10-28T14:44:32.276Z",
+      "id": "6ae20a50b2886cd834c8b6f7"
+    },
+    {
+      "_id": "6ae20a51b2886cd834c8b6fe",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 15,
+      "kind": "job.progress",
+      "stage": "jianying:scene5/5",
+      "progress": 79,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:33.131Z",
+      "updatedAt": "2026-10-28T14:44:33.131Z",
+      "id": "6ae20a51b2886cd834c8b6fe"
+    },
+    {
+      "_id": "6ae20a51b2886cd834c8b705",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 16,
+      "kind": "job.progress",
+      "stage": "jianying:save",
+      "progress": 75,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:33.870Z",
+      "updatedAt": "2026-10-28T14:44:33.870Z",
+      "id": "6ae20a51b2886cd834c8b705"
+    },
+    {
+      "_id": "6ae20a52b2886cd834c8b70d",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 17,
+      "kind": "job.progress",
+      "stage": "jianying:deploy",
+      "progress": 90,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:34.491Z",
+      "updatedAt": "2026-10-28T14:44:34.491Z",
+      "id": "6ae20a52b2886cd834c8b70d"
+    },
+    {
+      "_id": "6ae20a53b2886cd834c8b717",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 18,
+      "kind": "job.progress",
+      "stage": "jianying:copy-check",
+      "progress": 96,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:35.141Z",
+      "updatedAt": "2026-10-28T14:44:35.141Z",
+      "id": "6ae20a53b2886cd834c8b717"
+    },
+    {
+      "_id": "6ae20a53b2886cd834c8b71e",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 19,
+      "kind": "job.progress",
+      "stage": "jianying:done",
+      "progress": 100,
+      "message": "",
+      "createdAt": "2026-10-28T14:44:35.311Z",
+      "updatedAt": "2026-10-28T14:44:35.311Z",
+      "id": "6ae20a53b2886cd834c8b71e"
+    },
+    {
+      "_id": "6ae20a53b2886cd834c8b727",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20a3cb2886cd834c8b67e",
+      "seq": 20,
+      "kind": "job.succeeded",
+      "stage": "done",
+      "progress": 100,
+      "message": "",
+      "data": {
+        "draftPath": "/Users/apple/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6ae20a3cb2886cd834c8b67e__r1",
+        "draftName": "studio_6ae20a3cb2886cd834c8b67e__r1",
+        "draftId": "dfd_cat_1793198654_b2b0f838",
+        "runId": "6ae20a3cb2886cd834c8b67b",
+        "revision": 1,
+        "sourceSpecHash": "2218a57afca1a569",
+        "adapterVersion": "jianying-engine/2",
+        "expectedDuration": 11.234,
+        "duration": 11.234,
+        "stats": {
+          "images": 5,
+          "texts": 9,
+          "effects": 4,
+          "audios": 4,
+          "transitions": 4,
+          "text_anims": 8,
+          "fonts": 4,
+          "keyframes": 20,
+          "characters": 19,
+          "videos": 0,
+          "audio_tracks": 0,
+          "subtitles": 5,
+          "poses": [
+            "0:wave",
+            "1:approve",
+            "2:think",
+            "3:point",
+            "4:happy"
+          ]
+        },
+        "report": {
+          "applied": [
+            {
+              "kind": "image",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/s00.png",
+              "reason": "静帧 3.51s",
+              "scene": 0,
+              "seconds": 3.514
+            },
+            {
+              "kind": "subtitle",
+              "value": "text_sub",
+              "reason": "逐句字幕 1 条",
+              "scene": 0,
+              "segments": 1
+            },
+            {
+              "kind": "effect",
+              "value": "电影感",
+              "reason": "氛围特效 3.51s",
+              "scene": 0,
+              "seconds": 3.514
+            },
+            {
+              "kind": "audio:narration",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/tts_00.mp3",
+              "reason": "配音 3.51s",
+              "scene": 0,
+              "track": "audio_main",
+              "seconds": 3.514
+            },
+            {
+              "kind": "image",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/s01.png",
+              "reason": "静帧 2.45s",
+              "scene": 1,
+              "seconds": 2.454
+            },
+            {
+              "kind": "subtitle",
+              "value": "text_sub",
+              "reason": "逐句字幕 1 条",
+              "scene": 1,
+              "segments": 1
+            },
+            {
+              "kind": "effect",
+              "value": "哈苏胶片",
+              "reason": "氛围特效 2.45s",
+              "scene": 1,
+              "seconds": 2.454
+            },
+            {
+              "kind": "image",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/s02.png",
+              "reason": "静帧 1.87s",
+              "scene": 2,
+              "seconds": 1.873
+            },
+            {
+              "kind": "subtitle",
+              "value": "text_sub",
+              "reason": "逐句字幕 1 条",
+              "scene": 2,
+              "segments": 1
+            },
+            {
+              "kind": "effect",
+              "value": "画质清晰",
+              "reason": "氛围特效 1.87s",
+              "scene": 2,
+              "seconds": 1.873
+            },
+            {
+              "kind": "audio:narration",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/tts_02.mp3",
+              "reason": "配音 1.87s",
+              "scene": 2,
+              "track": "audio_main",
+              "seconds": 1.873
+            },
+            {
+              "kind": "image",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/s03.png",
+              "reason": "静帧 1.79s",
+              "scene": 3,
+              "seconds": 1.793
+            },
+            {
+              "kind": "subtitle",
+              "value": "text_sub",
+              "reason": "逐句字幕 1 条",
+              "scene": 3,
+              "segments": 1
+            },
+            {
+              "kind": "effect",
+              "value": "法式暖调",
+              "reason": "氛围特效 1.79s",
+              "scene": 3,
+              "seconds": 1.793
+            },
+            {
+              "kind": "audio:narration",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/tts_03.mp3",
+              "reason": "配音 1.79s",
+              "scene": 3,
+              "track": "audio_main",
+              "seconds": 1.793
+            },
+            {
+              "kind": "image",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/s04.png",
+              "reason": "静帧 1.60s",
+              "scene": 4,
+              "seconds": 1.6
+            },
+            {
+              "kind": "subtitle",
+              "value": "text_sub",
+              "reason": "逐句字幕 1 条",
+              "scene": 4,
+              "segments": 1
+            },
+            {
+              "kind": "audio:narration",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/tts_04.mp3",
+              "reason": "配音 1.60s",
+              "scene": 4,
+              "track": "audio_main",
+              "seconds": 1.6
+            }
+          ],
+          "unsupported": [
+            {
+              "kind": "audio:narration",
+              "value": "/Users/apple/CreatorStudio/jianying/6ae20a3cb2886cd834c8b67e/tts_01.mp3",
+              "reason": "配音没进草稿: /add_audio failed: Error occurred while processing audio: New segment overlaps with existing segment [start: 3513500, end: 5967500].",
+              "scene": 1
+            }
+          ],
+          "missing": [],
+          "requires_user": [],
+          "counts": {
+            "applied": 18,
+            "unsupported": 1,
+            "missing": 0,
+            "requires_user": 0
+          },
+          "ok": false,
+          "complete": false
+        },
+        "capabilities": {
+          "applied": 18,
+          "unsupported": 1,
+          "missing": 0,
+          "requires_user": 0
+        },
+        "copyCheck": {
+          "findings": [],
+          "metrics": {
+            "sentences": 6,
+            "avg_len": 7.8,
+            "min_len": 3,
+            "max_len": 11,
+            "spread": 8
+          },
+          "ok": true
+        },
+        "stage": "draft_ready",
+        "output": {
+          "videoPath": null,
+          "requiresManualExport": true
+        },
+        "note": "草稿已就绪。macOS 无法自动导出，请在剪映打开草稿并点导出。",
+        "jobId": "6ae20a3cb2886cd834c8b67e",
+        "engine": "jianying",
+        "degraded": true,
+        "degradedReason": "部分原生效果未写入草稿，明细见 report"
+      },
+      "createdAt": "2026-10-28T14:44:35.395Z",
+      "updatedAt": "2026-10-28T14:44:35.395Z",
+      "id": "6ae20a53b2886cd834c8b727"
+    },
+    {
+      "_id": "6ae20b09b2886cd834c8b9e9",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20b09b2886cd834c8b9e5",
+      "seq": 21,
+      "kind": "job.queued",
+      "stage": "export_queued",
+      "progress": 0,
+      "message": "jianying export attempt 1",
+      "createdAt": "2026-10-28T14:47:37.286Z",
+      "updatedAt": "2026-10-28T14:47:37.286Z",
+      "id": "6ae20b09b2886cd834c8b9e9"
+    },
+    {
+      "_id": "6ae20b09b2886cd834c8b9ff",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "",
+      "seq": 22,
+      "kind": "job.claimed",
+      "stage": "starting",
+      "progress": 0,
+      "message": "claimed by 6ad9ee47437a9be7260961a6 (attempt 1)",
+      "createdAt": "2026-10-28T14:47:37.839Z",
+      "updatedAt": "2026-10-28T14:47:37.839Z",
+      "id": "6ae20b09b2886cd834c8b9ff"
+    },
+    {
+      "_id": "6ae20b09b2886cd834c8ba07",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20b09b2886cd834c8b9e5",
+      "seq": 23,
+      "kind": "job.progress",
+      "stage": "jianying:claim",
+      "progress": 20,
+      "message": "",
+      "createdAt": "2026-10-28T14:47:37.883Z",
+      "updatedAt": "2026-10-28T14:47:37.883Z",
+      "id": "6ae20b09b2886cd834c8ba07"
+    },
+    {
+      "_id": "6ae20b0ab2886cd834c8ba10",
+      "runId": "6ae20a3cb2886cd834c8b67b",
+      "jobId": "6ae20b09b2886cd834c8b9e5",
+      "seq": 24,
+      "kind": "job.succeeded",
+      "stage": "done",
+      "progress": 100,
+      "message": "",
+      "data": {
+        "jobId": "6ae20b09b2886cd834c8b9e5",
+        "runId": "6ae20a3cb2886cd834c8b67b",
+        "revision": 1,
+        "platform": "douyin",
+        "draftPath": "/Users/apple/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6ae20a3cb2886cd834c8b67e__r1",
+        "stage": "exported",
+        "output": {
+          "videoPath": "/Users/apple/CreatorStudio/out/6ae20b09b2886cd834c8b9e5/r1/6ae20b09b2886cd834c8b9e5__r1__douyin.mp4",
+          "requiresManualExport": false,
+          "claimed": true,
+          "libraryPath": "/Users/apple/CreatorStudio/library/6adc2161656a13996166bbfc/2026-10/20261028-224738__6adc2161656a13996166bbfc__001__认领-ui-验收-手动导出-c__douyin__r1.mp4",
+          "libraryAssetId": "20261028-224738__6adc2161656a13996166bbfc__001__认领-ui-验收-手动导出-c__douyin__r1",
+          "md5": "197fa3684e33e8dbb4f97141e3e3ad84"
+        },
+        "videoPath": "/Users/apple/CreatorStudio/library/6adc2161656a13996166bbfc/2026-10/20261028-224738__6adc2161656a13996166bbfc__001__认领-ui-验收-手动导出-c__douyin__r1.mp4",
+        "log": "认领: /private/tmp/claim-test/ok11.mp4 (0.03 MB)\n  校验 has_duration  OK  实测 11.233333\n  校验 has_width     OK  实测 1080\n  校验 has_height    OK  实测 1920\n  校验 has_fps       OK  实测 30.0\n  校验 duration      OK  11.23s vs 期望 11.23s (±0.40)\n  校验 resolution    OK  1080x1920 vs 期望 1080x1920\n  校验 fps           OK  30.000 vs 期望 30.000\n已归位 → /Users/apple/CreatorStudio/out/6ae20b09b2886cd834c8b9e5/r1/6ae20b09b2886cd834c8b9e5__r1__douyin.mp4\n证据 → /Users/apple/CreatorStudio/runtime/docs/probe/export-panel/runs/6ae20b09b2886cd834c8b9e5/r1__douyin.json"
+      },
+      "createdAt": "2026-10-28T14:47:38.040Z",
+      "updatedAt": "2026-10-28T14:47:38.040Z",
+      "id": "6ae20b0ab2886cd834c8ba10"
+    }
+  ]
+}

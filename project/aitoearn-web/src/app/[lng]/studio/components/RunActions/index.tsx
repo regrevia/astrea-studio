@@ -143,7 +143,8 @@ export function RunActions({ run, onChanged, compact = false }: RunActionsProps)
           {t('run.action.exportGui')}
         </Button>
       )}
-      {run.status === 'waiting_user' && draftPath && (
+      {draftPath && run.output?.claimed !== true
+        && (run.status === 'waiting_user' || run.status === 'succeeded') && (
         <Button
           size={size}
           variant="outline"
