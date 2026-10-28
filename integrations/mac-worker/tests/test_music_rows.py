@@ -60,8 +60,10 @@ if __name__ == "__main__":
 class VolumeCurveTest(unittest.TestCase):
     def test_later_step_wins(self):
         curve = render._volume_curve([(0.0, 0.34), (10.0, 0.24), (20.0, 0.4)])
-        self.assertEqual(curve,
-                         "if(gte(t,20),0.4,if(gte(t,10),0.24,0.34))")
+        self.assertTrue(curve.startswith("if(gte(t,20),0.4,"))
+        self.assertIn("if(gte(t,10),0.24,if(gte(t,9.85),", curve)
+        self.assertIn("(0.34+(0.24-0.34)*(t-9.85)/0.15)", curve)
+        self.assertTrue(curve.endswith(",0.34))))"))
 
     def test_single_step_is_a_constant(self):
         self.assertEqual(render._volume_curve([(0.0, 0.3)]), "0.3")

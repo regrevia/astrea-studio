@@ -83,11 +83,21 @@ def _keys_at(keys: list[tuple[float, float]], at: float) -> float:
     return keys[-1][1]
 
 
-def _volume_curve(steps: list[tuple[float, float]]) -> str:
-    """分段音量变成 ffmpeg volume 表达式：越靠后的时间点套在外层，时间点 >= at 就取那一档。"""
-    expr = f"{steps[0][1]:g}"
+def _volume_curve(steps: list[tuple[float, float]], ramp: float = 0.15) -> str:
+    """分段音量变成 ffmpeg volume 表达式：切点前 0.15 秒线性过渡，之后才是新一档。
+
+    越靠后的切点套在外层，所以 60 秒的片子也不会被前面的分支抢先命中。
+    """
+    prev = steps[0][1]
+    expr = f"{prev:g}"
     for at, volume in steps[1:]:
-        expr = f"if(gte(t,{at:g}),{volume:g},{expr})"
+        start = max(0.0, at - ramp)
+        if start >= at:
+            expr = f"if(gte(t,{at:g}),{volume:g},{expr})"
+        else:
+            slide = (f"({prev:g}+({volume:g}-{prev:g})*(t-{start:g})/{ramp:g})")
+            expr = f"if(gte(t,{at:g}),{volume:g},if(gte(t,{start:g}),{slide},{expr}))"
+        prev = volume
     return expr
 
 
