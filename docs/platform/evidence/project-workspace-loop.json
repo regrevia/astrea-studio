@@ -1,0 +1,53 @@
+{
+  "capturedAt": "2026-10-28T20:52:00+08:00",
+  "what": "项目工作区闭环：按项目过滤任务 + 工作区页面（任务/素材/排片）+ 页内出片回到同项目",
+  "changes": [
+    "GET /api/production/runs 支持 projectId 过滤（空串等于不传）",
+    "MCP listProductionRuns 增加 projectId 参数",
+    "Studio「项目工作区」按钮 → /zh-CN/studio/projects/<id>",
+    "工作区页面：项目任务（最近 12 条）、可用素材包与镜头按钮、整宽排片表单"
+  ],
+  "api": {
+    "filteredTotal": 531,
+    "filteredProjects": [
+      "6adc2161656a13996166bbfc"
+    ],
+    "unknownProjectTotal": 0,
+    "mcp": "listProductionRuns {projectId, pageSize:3} 返回 3 条，projectId 全部为 6adc2161656a13996166bbfc"
+  },
+  "ui": {
+    "url": "http://127.0.0.1:8080/zh-CN/studio/projects/6adc2161656a13996166bbfc",
+    "screenshots": [
+      "project-workspace.png",
+      "project-workspace-new-run.png"
+    ],
+    "entries": {
+      "任务": 12,
+      "可用素材包": 1,
+      "pack shots": 2
+    },
+    "submittedFromWorkspace": "项目工作区闭环验收"
+  },
+  "run": {
+    "id": "6ae1ef09cab2ef2cccd5883c",
+    "projectId": "6adc2161656a13996166bbfc",
+    "status": "succeeded",
+    "progress": 100,
+    "durationSeconds": 17.038,
+    "videoPath": "studio/runs/6ae1ef09cab2ef2cccd5883c/r1/master.mp4",
+    "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261028-204916__studio__003__项目工作区闭环验收-03__douyin__r1.mp4",
+    "bytes": 5065728,
+    "md5": "fd7b8b970ca64795e9a9feee744934fa",
+    "probe": {
+      "width": 1080,
+      "height": 1920,
+      "fps": "30/1",
+      "hasAudio": false
+    }
+  },
+  "tests": {
+    "backendSpec": "src/core/production/production.service.spec.ts → 29 passed（新增 2 条：带 projectId / 空串不带）",
+    "tsc": "backend tsc -p apps/aitoearn-server/tsconfig.app.json --noEmit 0；web npx tsc --noEmit 0",
+    "lints": "ui-copy-lint 0 error；zh-lint 0 error；style-lint 0 硬编码"
+  }
+}

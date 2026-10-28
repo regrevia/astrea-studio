@@ -45,7 +45,7 @@ export function updateProject(id: string, data: { name?: string, sourceRepo?: st
 }
 
 /** 任务列表。 */
-export function getRuns(params: { pageNo?: number, pageSize?: number, status?: string } = {}) {
+export function getRuns(params: { pageNo?: number, pageSize?: number, status?: string, projectId?: string } = {}) {
   return http.get<PageResult<ProductionRun>>('production/runs', params)
 }
 

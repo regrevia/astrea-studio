@@ -394,8 +394,20 @@ export class ProductionService {
     return run
   }
 
-  async listRuns(userId: string, pageNo = 1, pageSize = 20, status?: string | undefined) {
-    const [list, total] = await this.runRepo.listByUser(userId, pageNo, pageSize, status ? { status } : {})
+  async listRuns(
+    userId: string,
+    pageNo = 1,
+    pageSize = 20,
+    status?: string | undefined,
+    projectId?: string | undefined,
+  ) {
+    const filter: Record<string, unknown> = {}
+    if (status)
+      filter['status'] = status
+    // 项目工作区只关心自己名下的任务；空串当没传，免得前端清空筛选后查不到任何东西。
+    if (projectId)
+      filter['projectId'] = projectId
+    const [list, total] = await this.runRepo.listByUser(userId, pageNo, pageSize, filter)
     return { list, total, pageNo, pageSize }
   }
 

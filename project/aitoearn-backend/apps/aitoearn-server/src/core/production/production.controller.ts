@@ -197,8 +197,9 @@ export class ProductionController {
     @Query('pageNo') pageNo = '1',
     @Query('pageSize') pageSize = '20',
     @Query('status') status?: string,
+    @Query('projectId') projectId?: string,
   ) {
-    return await this.production.listRuns(token.id, Number(pageNo) || 1, Number(pageSize) || 20, status)
+    return await this.production.listRuns(token.id, Number(pageNo) || 1, Number(pageSize) || 20, status, projectId)
   }
 
   @ApiDoc({ summary: '新建任务（立即返回 runId）', body: CreateRunDto.schema })

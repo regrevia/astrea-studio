@@ -87,6 +87,7 @@ function createService() {
     getById: vi.fn(),
     getByIdForUser: vi.fn(),
     updateById: vi.fn().mockImplementation(async (id: string, update: Record<string, unknown>) => ({ id, ...update })),
+    listByUser: vi.fn().mockResolvedValue([[], 0]),
     updateByRevision: vi.fn().mockImplementation(async (id: string, revision: number, update: Record<string, unknown>) => ({
       id,
       revision: (update['revision'] as number | undefined) ?? revision,
@@ -713,5 +714,22 @@ describe('failJob', () => {
     const runUpdate = runRepo.updateByRevision.mock.calls[0][2] as Record<string, unknown>
     expect(runUpdate.status).toBe('failed')
     expect(jobRepo.create).not.toHaveBeenCalled()
+  })
+})
+
+describe('listRuns', () => {
+  it('按项目过滤时把 projectId 带进查询条件', async () => {
+    const { service, runRepo } = createService()
+    await service.listRuns('user-1', 2, 10, 'succeeded', '6adc2161656a13996166bbfc')
+    expect(runRepo.listByUser).toHaveBeenCalledWith('user-1', 2, 10, {
+      status: 'succeeded',
+      projectId: '6adc2161656a13996166bbfc',
+    })
+  })
+
+  it('没有项目过滤时条件里不出现 projectId，空串也一样', async () => {
+    const { service, runRepo } = createService()
+    await service.listRuns('user-1', 1, 20, undefined, '')
+    expect(runRepo.listByUser).toHaveBeenCalledWith('user-1', 1, 20, {})
   })
 })

@@ -268,5 +268,17 @@
     "workerOnline": "online",
     "workerOffline": "offline",
     "workerAllOffline": "All renderers are offline; runs stay queued"
+  },
+  "project": {
+    "title": "Project workspace",
+    "runs": "Tasks",
+    "materials": "Available materials",
+    "materialsShots": "{{count}} shots",
+    "materialsEmpty": "Material service unreachable — restart it and refresh",
+    "newRun": "Queue a new task",
+    "emptyRuns": "No tasks in this project yet",
+    "back": "Back to studio",
+    "sourceRepo": "Source repo",
+    "notFound": "Project not found"
   }
 }

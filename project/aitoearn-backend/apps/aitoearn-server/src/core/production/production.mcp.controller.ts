@@ -63,6 +63,7 @@ const ListRunsSchema = z.object({
   pageNo: z.number().int().min(1).default(1).describe('页码'),
   pageSize: z.number().int().min(1).max(100).default(20).describe('每页条数'),
   status: z.string().optional().describe('按状态过滤：queued/running/succeeded/failed/canceled'),
+  projectId: z.string().optional().describe('只看某个项目名下的任务'),
 })
 
 const ReviseRunSchema = z.object({
@@ -201,6 +202,7 @@ export class ProductionMcpController {
       params.pageNo,
       params.pageSize,
       params.status,
+      params.projectId,
     )
     return toYamlTextResult(this.normalize(page))
   }

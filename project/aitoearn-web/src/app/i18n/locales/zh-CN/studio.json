@@ -268,5 +268,17 @@
     "workerOnline": "在线",
     "workerOffline": "离线",
     "workerAllOffline": "渲染机器都离线了，任务会排队等着"
+  },
+  "project": {
+    "title": "项目工作区",
+    "runs": "任务",
+    "materials": "可用素材",
+    "materialsShots": "{{count}} 张",
+    "materialsEmpty": "素材服务没连上，重启后刷新",
+    "newRun": "排一条新任务",
+    "emptyRuns": "这个项目还没有任务",
+    "back": "返回制作台",
+    "sourceRepo": "源码仓库",
+    "notFound": "没找到这个项目"
   }
 }

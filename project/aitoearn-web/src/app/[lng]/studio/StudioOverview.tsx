@@ -16,6 +16,8 @@
 
 import type { CharacterInfo, Inventory, ProductionRun, ProductionWorker, PublicationAttempt, RenderJob } from '@/api/production/production.types'
 import { AlertCircle, CheckCircle2, ChevronDown, Loader2, Mic, Plus, QrCode, UserRound } from 'lucide-react'
+import Link from 'next/link'
+import { useParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiGetMaterialGroupList } from '@/api/materials/material.api'
 import { getCharacters, getHealth, getInventory, getProjects, getPublications, getRenderJobs, getRuns, updateProject } from '@/api/production/production.api'
@@ -431,6 +433,7 @@ export default function StudioOverview() {
   }, [refresh, syncUrl])
 
   const projectOptions = useMemo(() => Object.entries(projects), [projects])
+  const { lng } = useParams<{ lng: string }>()
   const onlineMachines = workers.filter(w => w.online)
 
   /** 队列里还在排队/渲染的任务：只有这两种状态算「进行中」，历史任务堆多了没人看。 */
@@ -472,6 +475,11 @@ export default function StudioOverview() {
               ))}
             </SelectContent>
           </Select>
+          {projectId && (
+            <Button asChild variant="outline" size="sm" className="h-8 text-xs">
+              <Link href={`/${lng ?? 'zh-CN'}/studio/projects/${projectId}`}>{t('project.title')}</Link>
+            </Button>
+          )}
           {projectId && (
             <Select value={projectGroups[projectId] || DEFAULT_DRAFT_GROUP} onValueChange={changeDraftGroup}>
               <SelectTrigger className="h-8 w-[160px] text-xs" aria-label={t('overview.draftGroup')}>
