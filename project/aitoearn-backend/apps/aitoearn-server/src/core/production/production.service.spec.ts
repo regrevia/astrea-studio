@@ -138,7 +138,7 @@ function createService() {
 
 describe('createRun', () => {
   it('入库前把友好输入展开成时间轴规格', async () => {
-    const { service, projectRepo, runRepo } = createService()
+    const { service, projectRepo, runRepo, jobRepo } = createService()
     projectRepo.getByIdForUser.mockResolvedValue({ id: '6adc2161656a13996166bbfc' })
 
     await service.createRun('user-1', {
@@ -154,6 +154,9 @@ describe('createRun', () => {
     expect((spec.timeline as Record<string, unknown>).canvas).toEqual({ width: 1080, height: 1920, fps: 30 })
     expect((spec.timeline as Record<string, unknown>).video).toEqual([{ src: 'a.mp4', in: 0, out: 3 }])
     expect((spec.timeline as Record<string, unknown>).text).toHaveLength(1)
+    // 渲染任务带上项目 id：不带的话 worker 一律入库到 studio/，所有项目混在一起。
+    const payload = jobRepo.create.mock.calls[0][0].payload as Record<string, unknown>
+    expect(payload.libraryProject).toBe('6adc2161656a13996166bbfc')
   })
 })
 
@@ -178,6 +181,25 @@ describe('createRunBatch', () => {
     const update = projectRepo.updateById.mock.calls[0][1] as { recentBatches: Array<{ runIds: string[] }> }
     expect(update.recentBatches).toHaveLength(1)
     expect(update.recentBatches[0].runIds).toEqual(['run-1', 'run-2', 'run-3'])
+  })
+
+  it('标题里已经有序号时先摘掉再补，不出现两遍 3/3', async () => {
+    const { service, projectRepo, runRepo } = createService()
+    projectRepo.getByIdForUser.mockResolvedValue({ id: '6adc2161656a13996166bbfc' })
+    runRepo.create.mockImplementation(async (data: Record<string, unknown>) => ({ id: `run-${runRepo.create.mock.calls.length}`, ...data }))
+
+    const runs = await service.createRunBatch('user-1', {
+      projectId: '6adc2161656a13996166bbfc',
+      title: '端到端验收 · 30 秒 · 3/3',
+      brief: '三秒一句',
+      spec: { ...FRIENDLY_INPUT },
+    }, 3)
+
+    expect(runs.map(r => r.title)).toEqual([
+      '端到端验收 · 30 秒 · 1/3',
+      '端到端验收 · 30 秒 · 2/3',
+      '端到端验收 · 30 秒 · 3/3',
+    ])
   })
 
   it('timeline 稿按条错开：原稿、镜像推拉、换开场，engine 一直保留', async () => {

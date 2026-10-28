@@ -1,0 +1,50 @@
+{
+  "project": "端到端验收 · 一体化宣发工作台",
+  "projectId": "6ae235e6aa561aad282987e0",
+  "runs": [
+    {
+      "title": "端到端验收 · 30 秒 · 3/3 · 3/3",
+      "status": "succeeded",
+      "duration": 30,
+      "libraryPath": "/Users/apple/CreatorStudio/library/6ae235e6aa561aad282987e0/2026-10/20261029-015051__6ae235e6aa561aad282987e0__001__端到端验收-30-秒-3-3-3-3__douyin__r1.mp4",
+      "exists": true,
+      "probe": {
+        "width": 1080,
+        "height": 1920,
+        "fps": "30/1",
+        "duration": 30.0
+      }
+    },
+    {
+      "title": "端到端验收 · 30 秒 · 3/3 · 2/3",
+      "status": "succeeded",
+      "duration": 30,
+      "libraryPath": "/Users/apple/CreatorStudio/library/6ae235e6aa561aad282987e0/2026-10/20261029-015045__6ae235e6aa561aad282987e0__001__端到端验收-30-秒-3-3-2-3__douyin__r1.mp4",
+      "exists": true,
+      "probe": {
+        "width": 1080,
+        "height": 1920,
+        "fps": "30/1",
+        "duration": 30.0
+      }
+    },
+    {
+      "title": "端到端验收 · 30 秒 · 3/3 · 1/3",
+      "status": "succeeded",
+      "duration": 30,
+      "libraryPath": "/Users/apple/CreatorStudio/library/6ae235e6aa561aad282987e0/2026-10/20261029-015036__6ae235e6aa561aad282987e0__001__端到端验收-30-秒-3-3-1-3__douyin__r1.mp4",
+      "exists": true,
+      "probe": {
+        "width": 1080,
+        "height": 1920,
+        "fps": "30/1",
+        "duration": 30.0
+      }
+    }
+  ],
+  "fix": {
+    "before": "/Users/apple/CreatorStudio/library/studio/2026-10/…（所有项目混在 studio/）",
+    "after": "/Users/apple/CreatorStudio/library/<projectId>/<YYYY-MM>/<ts>__<projectId>__<NNN>__<slug>__<platform>__r<rev>.mp4"
+  },
+  "titleDedupe": "标题已带 · n/N 时先摘掉再补，实测「冲标题检查 · 2/2」「· 1/2」各只出现一次"
+}

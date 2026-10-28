@@ -332,7 +332,10 @@ export class ProductionService {
       runs.push(await this.createRun(userId, {
         ...input,
         spec,
-        title: count > 1 ? `${input.title} · ${i + 1}/${count}` : input.title,
+        // 标题里已经有「· 3/3」时先摘掉再补：否则同一句话会出现两遍序号。
+        title: count > 1
+          ? `${input.title.replace(/ · \d+\/\d+$/, '')} · ${i + 1}/${count}`
+          : input.title,
       }))
     }
     // 记下这一批，工作区刷新后还能把并排版本卡摆出来；只留 id，成片仍以任务为准。
@@ -669,6 +672,8 @@ export class ProductionService {
         brief: run.brief,
         // 入库命名要用人看得懂的标题，worker 回退到 runId 只会得到一串十六进制
         libraryTitle: run.title,
+        // 库里按项目分目录：不带项目时 worker 一律落到 studio/，所有项目的成片会混在一起。
+        libraryProject: run.projectId,
       },
     } as unknown as Partial<ProductionJob>)
     return job
