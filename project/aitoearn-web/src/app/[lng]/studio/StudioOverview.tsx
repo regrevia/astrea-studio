@@ -17,7 +17,8 @@
 import type { CharacterInfo, Inventory, ProductionRun, ProductionWorker, PublicationAttempt, RenderJob } from '@/api/production/production.types'
 import { AlertCircle, CheckCircle2, ChevronDown, Loader2, Mic, Plus, QrCode, UserRound } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { getCharacters, getHealth, getInventory, getProjects, getPublications, getRenderJobs, getRuns } from '@/api/production/production.api'
+import { apiGetMaterialGroupList } from '@/api/materials/material.api'
+import { getCharacters, getHealth, getInventory, getProjects, getPublications, getRenderJobs, getRuns, updateProject } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -40,6 +41,9 @@ const LOGIN_DOCK = 'http://127.0.0.1:8898/'
 
 /** Radix Select 不接受空字符串值，用哨兵表示「全部项目」。 */
 const ALL_PROJECTS = '__all__'
+
+/** 草稿箱的「跟默认」也是一个空字符串，同样得用哨兵占住选项值。 */
+const DEFAULT_DRAFT_GROUP = '__default__'
 
 function PublicationRow({ row }: { row: PublicationAttempt }) {
   const { t } = useTransClient('studio')
@@ -267,6 +271,9 @@ export default function StudioOverview() {
   // 手动出片是给不想对话的人留的备用路径，默认收起，别让它挡住列表。
   const [showManual, setShowManual] = useState(false)
   const [projects, setProjects] = useState<Record<string, string>>({})
+  /** 项目 → 草稿箱：留着给选择器回显当前绑定，不用每次再查一遍项目。 */
+  const [projectGroups, setProjectGroups] = useState<Record<string, string>>({})
+  const [draftGroups, setDraftGroups] = useState<{ id: string, name: string }[]>([])
   const [inventory, setInventory] = useState<Inventory | null>(null)
   const [characters, setCharacters] = useState<CharacterInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -340,9 +347,23 @@ export default function StudioOverview() {
     getProjects()
       .then((res) => {
         const map: Record<string, string> = {}
-        for (const p of res?.data ?? [])
+        const groups: Record<string, string> = {}
+        for (const p of res?.data ?? []) {
           map[p.id] = p.name
+          groups[p.id] = p.materialGroupId ?? ''
+        }
         setProjects(map)
+        setProjectGroups(groups)
+      })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    // 草稿箱清单：绑到项目上以后成片直接落这个箱子，列表不长，取一页够用。
+    apiGetMaterialGroupList(1, 50)
+      .then((res) => {
+        const list = res?.data?.list ?? []
+        setDraftGroups(list.map(group => ({ id: group.id, name: group.name })))
       })
       .catch(() => {})
   }, [])
@@ -368,6 +389,25 @@ export default function StudioOverview() {
     setSelectedRunId(runId)
     syncUrl({ runId })
   }, [syncUrl])
+
+  /**
+   * 成片进哪个草稿箱：绑在项目上，一次选好以后每次出片都落同一个箱子。
+   * 不选就是后端的默认箱，所以这里允许空值。
+   */
+  const changeDraftGroup = useCallback(async (value: string) => {
+    if (!projectId)
+      return
+    const groupId = value === DEFAULT_DRAFT_GROUP ? '' : value
+    const prev = projectGroups[projectId] ?? ''
+    setProjectGroups(groups => ({ ...groups, [projectId]: groupId }))
+    try {
+      await updateProject(projectId, { materialGroupId: groupId })
+    }
+    catch (e) {
+      setProjectGroups(groups => ({ ...groups, [projectId]: prev }))
+      setError(e instanceof Error ? e.message : t('overview.draftGroupFailed'))
+    }
+  }, [projectId, projectGroups, t])
 
   const changeProject = useCallback((value: string) => {
     const next = value === ALL_PROJECTS ? '' : value
@@ -432,6 +472,19 @@ export default function StudioOverview() {
               ))}
             </SelectContent>
           </Select>
+          {projectId && (
+            <Select value={projectGroups[projectId] || DEFAULT_DRAFT_GROUP} onValueChange={changeDraftGroup}>
+              <SelectTrigger className="h-8 w-[160px] text-xs" aria-label={t('overview.draftGroup')}>
+                <SelectValue placeholder={t('overview.draftGroupDefault')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={DEFAULT_DRAFT_GROUP}>{t('overview.draftGroupDefault')}</SelectItem>
+                {draftGroups.map(group => (
+                  <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Button variant="outline" size="sm" className="h-8 cursor-pointer" onClick={() => setShowManual(v => !v)}>
             <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', showManual && 'rotate-180')} />
             {t('overview.manual')}

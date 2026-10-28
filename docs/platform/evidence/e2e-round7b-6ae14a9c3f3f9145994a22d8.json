@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-28T01:07:42.315Z",
+  "runId": "6ae14a9c3f3f9145994a22d8",
+  "projectId": "6adc2161656a13996166bbfc",
+  "revision": 1,
+  "videoUrl": "/oss/studio/runs/6ae14a9c3f3f9145994a22d8/r1/master.mp4",
+  "bytes": 8410987,
+  "width": 1080,
+  "height": 1920,
+  "fps": "30/1",
+  "duration": 28.69,
+  "audio": true,
+  "jobs": []
+}

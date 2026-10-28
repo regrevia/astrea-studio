@@ -35,8 +35,32 @@
 
 `failJob` 收到缺模块 / 缺文件 / 缺权限这类报错时，把 run 放回 `queued` 并补一条同 kind 的 job（最多 3 次），不再让用户看到一个「渲染失败」去手动重试；已出片或被取消的 run 不会被迟到的失败结果拉回队列。`production.service.spec.ts` 23 项通过，其中 3 项专门盯这条分支。
 
-## 5. 还没验收的
+## 5. 一条命令重跑验收
+
+```
+node scripts/verify/e2e-promo.mjs --project <项目 ID>
+```
+
+脚本只走平台公开路径：`POST /api/production/runs` 起一条 `timeline/vertical_short` 任务 → 轮询 `GET .../runs/:id` 到终态 → 从 `output.videoUrl` 取回母版 → ffprobe 核对。核对项是「能不能直接发」的硬指标：**1080×1920**、**26–36 秒（约 30 秒）**、**有音轨**、`videoUrl` 必须存在。任一项不达标就以非零码退出，并把失败证据写成 `docs/platform/evidence/e2e-<tag>-failed.json`；通过则写 `e2e-<tag>-<runId>.json`。
+
+最近一次跑（tag `round7b`，run `6ae14a9c3f3f9145994a22d8`）：
+
+| 项 | 实测 |
+| --- | --- |
+| 分辨率 | 1080×1920 |
+| 帧率 | 30/1 |
+| 时长 | 28.69 s |
+| 音轨 | 有 |
+| 母版 | `/oss/studio/runs/6ae14a9c3f3f9145994a22d8/r1/master.mp4`（8,410,987 B） |
+
+第一版稿子念下来 40.05 s，超出「约 30 秒」，把每屏口播压短后重跑才落到 28.69 s——说明时长是被真实配音驱动的，不是写死的。
+
+## 6. 成片落到哪个草稿箱
+
+制作台的项目选择器右侧新增「草稿箱」下拉：选中项目后可以直接把它绑到一个草稿箱（不选即后端默认箱），改动落到项目的 `materialGroupId` 上。后端 `attachMaterialForWorker` 早就按 `项目.materialGroupId → 用户默认分组` 的顺序解析，缺的是界面这一端——在此之前所有项目的 `materialGroupId` 都是空串。
+## 7. 还没验收的
 
 - 真机解锁后走 `allowGui: true` 的成功导出（面板代点 → `exported` + 真实 `videoPath`）。当前屏幕是锁的，属于人工前置条件。
 - GUI 自动化的辅助功能授权（编译出的辅助工具尚未被授予 Accessibility）。
 - 环境类失败自动重排目前只有单测证据，还没在一次真实渲染里注入失败验证过。
+

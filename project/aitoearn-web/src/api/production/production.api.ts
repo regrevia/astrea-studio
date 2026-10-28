@@ -39,6 +39,11 @@ export function createProject(data: { name: string, sourceRepo?: string, materia
   return http.post<ProductionProject>('production/projects', data)
 }
 
+/** 更新项目；`materialGroupId` 决定这个项目的成片进哪个草稿箱。 */
+export function updateProject(id: string, data: { name?: string, sourceRepo?: string, materialGroupId?: string }) {
+  return http.post<ProductionProject>(`production/projects/${id}`, data)
+}
+
 /** 任务列表。 */
 export function getRuns(params: { pageNo?: number, pageSize?: number, status?: string } = {}) {
   return http.get<PageResult<ProductionRun>>('production/runs', params)
