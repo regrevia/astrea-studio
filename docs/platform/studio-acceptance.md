@@ -190,3 +190,28 @@ PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib \
 - 点完导出立刻 `restore_front(return_pid)`：前台还给用户原来的 App（实测 `pid=1313 Google Chrome`）。
 - `waitIdle>0` 时，用户一直在用机器就整轮不动鼠标（退出码 9 `export_user_busy`）；`waitIdle=0` 才允许立刻开始。
 - 想零打扰出片就走内置引擎（`TIMELINE_RENDER` / `RENDER_FFMPEG`），那一路完全不碰 GUI。
+
+## 9. 任务书七项：当前状态与证据
+
+| 项 | 状态 | 可复跑的凭据 |
+| --- | --- | --- |
+| P0 生产状态（revision/attempt/取消/租约/reaper/worker 用户范围） | 完成 | `production.service.spec.ts` 45 项通过，覆盖过期租约不覆盖 run、连续丢 3 次租约判失败、reaper 续约后不动 run、取消推进 leaseVersion、按项目过滤带 userId；实机取消一条排队任务：`{"cancelled":1}`，run 变 `cancelled / cancelled` |
+| project/run 绑定 + 前端工作区 | 完成 | 工作区按项目列任务、批量卡片带批次时间、素材与工具面板；截图 [e2e-workspace.png](evidence/library-project/e2e-workspace.png) |
+| 真实素材选择 | 完成 | 素材选择器只列已入库素材，缩略图走 `/oss/…`；[project-workspace-materials.png](evidence/project-workspace-materials.png) |
+| 类型化工具 | 完成 | MCP 18 个工具带 schema（[mcp-production-tools.md](mcp-production-tools.md)、[mcp-studio-capabilities.json](evidence/mcp-studio-capabilities.json)） |
+| 可验证 scene patch | 完成 | 补丁落新 revision、可连续叠加、底稿仍可审计；[scene-patch-accumulate.json](evidence/scene-patch-accumulate.json)、[scene-patch-ui.png](evidence/scene-patch-ui.png) |
+| 剪映工程 + 独立导出任务 | 完成 | 导出与渲染拆成两条 job，认领只排任务不驱动面板，`claimPath`/`allowGui` 互斥；[claim-export-branches](evidence/claim-export-branches) |
+| 约 30 秒 1080×1920 端到端 | 完成 | 新项目 `6ae237a72a5e71e140145c45` 跑 3 版：全部 succeeded，ffprobe 1080×1920 / 30 fps / 30.0 s / 4.4 MB，落点在 `library/端到端验收-一体化宣发工作台__6ae237a7/`（[result.json](evidence/library-project/result.json) 的 `finalCheck`） |
+
+本轮还补齐了成片库的目录规范：目录与文件名统一 `<项目名slug>__<id8>`，历史 `studio/` 与纯 id 目录用 `library.py migrate` 一次搬完 121 个文件，`library.py verify` 对账干净（见 [asset-library.md](asset-library.md)、[library-project/README.md](evidence/library-project/README.md)）。
+
+复核命令：
+
+```
+bash scripts/dev/patch-backend-container.sh          # 后端热补丁
+cd integrations/mac-worker && PYTHONPATH=$PWD <venv-python> -m unittest discover -s tests -p 'test_*.py'
+cd project/aitoearn-backend && ./node_modules/.bin/tsc -p apps/aitoearn-server/tsconfig.app.json --noEmit
+cd project/aitoearn-web && npx tsc --noEmit
+```
+
+最后一次全绿：spec 45/45、worker 31/31、两个 tsc 退出 0、`web=200 api=200`。已分批推 `astrea/studio/integration`，最新提交见 `git log --oneline -5`。

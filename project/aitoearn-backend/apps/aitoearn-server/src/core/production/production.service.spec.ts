@@ -539,6 +539,37 @@ describe('completeJob', () => {
   })
 })
 
+describe('cancelRun', () => {
+  it('取消时把排队/执行中的 job 翻成 cancelled 并推进租约，worker 随后回报全部落空', async () => {
+    const { service, runRepo, jobRepo, eventRepo } = createService()
+    runRepo.getByIdForUser.mockResolvedValue({ id: 'run-1', revision: 3, status: 'running', projectId: 'project-1' })
+    jobRepo.listByRun.mockResolvedValue([
+      { id: 'job-1', status: 'queued', stage: 'render' },
+      { id: 'job-2', status: 'running', stage: 'render' },
+      { id: 'job-3', status: 'succeeded', stage: 'render' },
+    ])
+    // 第 2 条更新落空：worker 恰好在同一刻把 job 交掉了，不能重复记一次取消。
+    jobRepo.updateByStatusIn.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+
+    const result = await service.cancelRun('user-1', 'run-1')
+
+    expect(result).toEqual({ cancelled: 1 })
+    expect(jobRepo.updateByStatusIn).toHaveBeenCalledTimes(2)
+    expect(jobRepo.updateByStatusIn.mock.calls[0][2]).toMatchObject({
+      $set: { status: 'cancelled' },
+      $inc: { leaseVersion: 1 },
+    })
+    expect(jobRepo.updateByStatusIn.mock.calls[1][0]).toBe('job-2')
+    expect(eventRepo.append).toHaveBeenCalledTimes(1)
+    expect(eventRepo.append.mock.calls[0][0]).toMatchObject({ runId: 'run-1', kind: 'job.cancelled', jobId: 'job-1' })
+    expect(runRepo.updateByRevision).toHaveBeenCalledWith(
+      'run-1', 3,
+      expect.objectContaining({ status: 'cancelled', currentStage: 'cancelled' }),
+      { status: { $ne: 'cancelled' } },
+    )
+  })
+})
+
 describe('planPublication', () => {
   const SUCCEEDED_RUN = {
     id: 'run-1',
