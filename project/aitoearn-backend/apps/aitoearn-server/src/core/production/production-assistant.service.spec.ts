@@ -65,6 +65,7 @@ describe('productionAssistantService', () => {
     appendMessage: ReturnType<typeof vi.fn>
     appendResearch: ReturnType<typeof vi.fn>
     updateById: ReturnType<typeof vi.fn>
+    listByUser: ReturnType<typeof vi.fn>
   }
   let production: {
     listProjects: ReturnType<typeof vi.fn>
@@ -79,6 +80,7 @@ describe('productionAssistantService', () => {
     planPublication: ReturnType<typeof vi.fn>
     submitPublication: ReturnType<typeof vi.fn>
     workerHealth: ReturnType<typeof vi.fn>
+    startJianyingExport: ReturnType<typeof vi.fn>
   }
   let client: { chat: ReturnType<typeof vi.fn> }
   let researchFetcher: { fetch: ReturnType<typeof vi.fn> }
@@ -94,6 +96,7 @@ describe('productionAssistantService', () => {
       })),
       appendResearch: vi.fn(async () => session),
       updateById: vi.fn(async () => session),
+      listByUser: vi.fn(async () => []),
     }
     production = {
       listProjects: vi.fn(async () => [{ id: 'project-1', name: '默认项目', isDefault: true }]),
@@ -108,6 +111,7 @@ describe('productionAssistantService', () => {
       planPublication: vi.fn(async () => ({ attempt: { id: 'attempt-1' }, deduped: false })),
       submitPublication: vi.fn(),
       workerHealth: vi.fn(async () => []),
+      startJianyingExport: vi.fn(async () => ({ jobId: 'job-export-1', attempt: 2, draftPath: '/draft/studio_1' })),
     }
     client = { chat: vi.fn() }
     researchFetcher = { fetch: vi.fn() }
@@ -330,6 +334,45 @@ describe('productionAssistantService', () => {
       title: 'Studio 指挥台会话',
       createdAt: '2026-01-02T03:04:05.000Z',
     })
+  })
+
+
+  it('listSessions 只列自己的会话并带消息条数', async () => {
+    sessionRepo.listByUser.mockResolvedValue([
+      {
+        _id: SESSION_ID,
+        title: '改一版文案',
+        createdAt: new Date('2026-01-02T03:04:05.000Z'),
+        updatedAt: new Date('2026-01-03T00:00:00.000Z'),
+        messages: [{ id: 'm1' }, { id: 'm2' }],
+      },
+    ])
+
+    const list = await service.listSessions('user-1', 10)
+
+    expect(sessionRepo.listByUser).toHaveBeenCalledWith('user-1', 10)
+    expect(list).toEqual([
+      {
+        id: SESSION_ID,
+        title: '改一版文案',
+        createdAt: '2026-01-02T03:04:05.000Z',
+        updatedAt: '2026-01-03T00:00:00.000Z',
+        messageCount: 2,
+      },
+    ])
+  })
+
+  it('start_jianying_export 交给 production 排导出任务，并区分人工导出', async () => {
+    client.chat
+      .mockResolvedValueOnce({
+        content: '',
+        toolCalls: [toolCall('start_jianying_export', { runId: RUN_ID })],
+      })
+      .mockResolvedValueOnce({ content: '已排队等你在剪映点导出。', toolCalls: [] })
+
+    await service.sendMessage('user-1', SESSION_ID, '导出成片')
+
+    expect(production.startJianyingExport).toHaveBeenCalledWith('user-1', RUN_ID, { allowGui: false })
   })
 
   it('submit_render 把出片任务下到本机渲染队列，并把任务号回给模型和面板', async () => {

@@ -232,6 +232,31 @@ describe('completeJob', () => {
     })
   })
 
+  it('剪映导出还要人点面板时把 run 记成等人，不造假成片', async () => {
+    const { service, jobRepo, runRepo } = createService()
+    jobRepo.getById.mockResolvedValue({ id: 'job-1', runId: 'run-1', attempt: 1, progress: 90 })
+    runRepo.getById.mockResolvedValue({ id: 'run-1', output: { draftPath: '/draft/studio_1' } })
+
+    // worker 把「要人导出」埋在 result.output 里，老结果也可能只写在 stage 上。
+    const result = await service.completeJob('worker-1', 'job-1', 1, {
+      stage: 'awaiting_manual_export',
+      reasonCode: 'screen_locked',
+      draftPath: '/draft/studio_1',
+      output: { videoPath: null, requiresManualExport: true },
+    })
+
+    expect(result).toEqual({ ok: true })
+    const update = runRepo.updateByRevision.mock.calls[0][2] as Record<string, unknown>
+    expect(update.status).toBe('waiting_user')
+    expect(update.currentStage).toBe('awaiting_manual_export')
+    expect(update.progress).toBe(90)
+    expect(update.output).toEqual({
+      draftPath: '/draft/studio_1',
+      requiresManualExport: true,
+      manualExportReason: 'screen_locked',
+    })
+  })
+
   it('发布作业完成时没有渲染产物，保留已有 output', async () => {
     const { service, jobRepo, runRepo } = createService()
     jobRepo.getById.mockResolvedValue({ id: 'job-2', runId: 'run-1', attempt: 1 })

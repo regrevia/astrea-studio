@@ -87,6 +87,11 @@ export interface AssistantSessionVo {
   createdAt: string
 }
 
+export interface AssistantSessionSummaryVo extends AssistantSessionVo {
+  updatedAt: string
+  messageCount: number
+}
+
 export interface AssistantSessionDetailVo {
   id: string
   title: string
@@ -208,6 +213,18 @@ export class ProductionAssistantService {
       title: session.title,
       messages: (session.messages ?? []).map(message => this.toMessageVo(message)),
     }
+  }
+
+  /** 最近会话：只列创建者自己的，按更新时间倒序，带上消息条数供面板排序。 */
+  async listSessions(userId: string, limit: number): Promise<AssistantSessionSummaryVo[]> {
+    const sessions = await this.sessionRepo.listByUser(userId, limit)
+    return sessions.map(session => ({
+      id: String(session._id),
+      title: session.title,
+      createdAt: this.toIso(session.createdAt),
+      updatedAt: this.toIso(session.updatedAt ?? session.createdAt),
+      messageCount: (session.messages ?? []).length,
+    }))
   }
 
   /** 发一条消息：先落库用户消息，再跑工具循环，最后落库助手回复。 */

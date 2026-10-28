@@ -21,6 +21,16 @@ export class ProductionAssistantSessionRepository extends BaseRepository<Product
     return await this.findOne({ _id: id, userId })
   }
 
+  /** 最近会话列表：只按创建者过滤，按更新时间倒序。 */
+  async listByUser(userId: string, limit: number) {
+    return await this.model
+      .find({ userId })
+      .sort({ updatedAt: -1 })
+      .limit(limit)
+      .lean()
+      .exec()
+  }
+
   async appendMessage(id: string, userId: string, message: ProductionAssistantMessage) {
     return await this.updateOne({ _id: id, userId }, { $push: { messages: message } } as never)
   }

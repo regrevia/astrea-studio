@@ -128,6 +128,11 @@ function normalizeRunOutput(
   if (requiresManualExport || typeof result['requiresManualExport'] === 'boolean') {
     output['requiresManualExport'] = requiresManualExport
   }
+  // 为什么停下要能传到界面上：锁屏和「用户忙」给的动作不一样。
+  const manualReason = typeof result['reasonCode'] === 'string' ? result['reasonCode'] : ''
+  if (requiresManualExport && manualReason) {
+    output['manualExportReason'] = manualReason
+  }
   if (videoKey) {
     output['videoPath'] = videoKey
   }

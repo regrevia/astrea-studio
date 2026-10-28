@@ -44,6 +44,12 @@ export class ProductionAssistantController {
     return await this.assistant.listRenderJobs(Number(limit) || 20)
   }
 
+  @ApiDoc({ summary: '最近会话列表（面板侧栏用）' })
+  @Get('sessions')
+  async listSessions(@GetToken() token: TokenInfo, @Query('limit') limit = '20') {
+    return await this.assistant.listSessions(token.id, Number(limit) || 20)
+  }
+
   @ApiDoc({ summary: '会话详情（含全部消息）' })
   @Get('sessions/:id')
   async getSession(@GetToken() token: TokenInfo, @Param('id') id: string) {
