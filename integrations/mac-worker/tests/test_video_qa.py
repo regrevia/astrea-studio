@@ -32,6 +32,15 @@ class TextBandTest(unittest.TestCase):
         self.assertLess(y0, 0.86 * 1920)
         self.assertGreater(y1, 0.86 * 1920)
 
+    def test_band_follows_longest_row_not_the_average(self):
+        # 常驻标题在 0.2，钩子在 0.66：平均 y 落在中间画面，那一带本来就没字
+        meta = {"canvas": {"width": 1080, "height": 1920},
+                "text": [{"text": "标题", "start": 0.3, "end": 29.6, "y": 0.2, "size": 0.062},
+                         {"text": "钩子", "start": 0.2, "end": 9.85, "y": 0.66, "size": 0.056}]}
+        _, y0, _, y1 = qa._text_band(meta)
+        self.assertLess(y1, 0.4 * 1920)
+        self.assertGreater(y0, 0.0)
+
     def test_band_clamps_at_frame_edge(self):
         meta = {"canvas": {"width": 1080, "height": 1920},
                 "text": [{"text": "贴边", "start": 0, "end": 1, "y": 0.98, "size": 0.052}]}

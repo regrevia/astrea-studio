@@ -26,10 +26,20 @@ export interface MaterialBeatPlan {
   beats: number[]
 }
 
-/** 成片上的两层文字：标题常驻，副标题稍后进场。 */
+/** 三段钩子：开场抛问题、中段给卖点、收尾给行动。 */
+export interface MaterialHooks {
+  open: string
+  mid?: string
+  end?: string
+}
+
+/** 成片上的文字层：标题/副标题常驻，三段钩子各占三分之一时长。 */
 export interface MaterialTextPlan {
   title: string
   subtitle?: string
+  hooks?: MaterialHooks
+  /** 批量出片时第 1 行钩子的备选文案，第 n 条取第 n 个。 */
+  hookVariants?: string[]
 }
 
 /** 一段视频最少 1 秒，再短的关键帧推拉肉眼看不出，也让字幕/拍点没有落点。 */
@@ -54,6 +64,28 @@ function cutBoundaries(plan: MaterialBeatPlan, targetSeconds: number): number[] 
   for (let t = start; t < targetSeconds; t = round(t + step))
     cuts.push(round(t))
   return cuts
+}
+
+/** 工作区里那几行文字拼成渲染用的文字层；全空就返回 null，不占帧。 */
+export function composeTextPlan(input: {
+  title: string
+  subtitle: string
+  hookOpen: string
+  hookMid: string
+  hookEnd: string
+}): MaterialTextPlan | null {
+  // 开场一行写多个钩子时用「｜」隔开，批量出片按条轮换开场文案。
+  const openLines = input.hookOpen.split(/[｜|]/).map(line => line.trim()).filter(Boolean)
+  const hooks: MaterialHooks = { open: openLines[0] ?? '', mid: input.hookMid.trim(), end: input.hookEnd.trim() }
+  const hasText = [input.title.trim(), input.subtitle.trim(), hooks.open, hooks.mid, hooks.end].some(Boolean)
+  if (!hasText)
+    return null
+  return {
+    title: input.title.trim(),
+    subtitle: input.subtitle.trim(),
+    ...(hooks.open || hooks.mid || hooks.end ? { hooks } : {}),
+    ...(openLines.length > 1 ? { hookVariants: openLines } : {}),
+  }
 }
 
 export function buildMaterialTimeline(
@@ -167,6 +199,43 @@ export function buildMaterialTimeline(
       stroke_color: '#000000',
       fade: 0.3,
       align: 'center',
+    })
+  }
+
+  // 三段钩子按三段等宽排，各自留 0.2 s 呼吸，避免两行字在同一帧里换掉。
+  const thirds = targetSeconds / 3
+  const hookRows: Array<{ text: string, start: number, end: number, size: number }> = []
+  if (textPlan?.hooks) {
+    const slots: Array<{ text?: string, size: number }> = [
+      { text: textPlan.hooks.open, size: 0.056 },
+      { text: textPlan.hooks.mid, size: 0.048 },
+      { text: textPlan.hooks.end, size: 0.052 },
+    ]
+    slots.forEach((slot, index) => {
+      const text = slot.text?.trim()
+      if (!text)
+        return
+      const start = round(index * thirds + 0.2)
+      const end = index === 2 ? round(targetSeconds - 0.5) : round((index + 1) * thirds - 0.15)
+      if (end - start < 0.6)
+        return
+      hookRows.push({ text, start, end, size: slot.size })
+    })
+    hookRows.forEach((row, index) => {
+      texts.push({
+        text: row.text,
+        start: row.start,
+        end: row.end,
+        x: 0.5,
+        y: 0.66,
+        size: row.size,
+        color: '#ffffff',
+        stroke: 2,
+        stroke_color: '#000000',
+        fade: 0.25,
+        align: 'center',
+        ...(index === 0 && (textPlan.hookVariants?.length ?? 0) > 1 ? { hookVariants: textPlan.hookVariants } : {}),
+      })
     })
   }
 

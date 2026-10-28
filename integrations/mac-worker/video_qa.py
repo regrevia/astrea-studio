@@ -66,12 +66,17 @@ def _text_band(meta: dict) -> tuple[int, int, int, int] | None:
     """字幕版式的取样带：按字幕行的 y 与字号现算，返回设计分辨率（1080×1920）下的框。
     没有显式字幕行时返回 None，调用方退回卡面版式的固定框。"""
     rows = _text_rows(meta)
-    ys = [float(r["y"]) for r in rows if isinstance(r.get("y"), (int, float))]
-    if not ys:
+    # 一条片子可能同时有常驻标题和中下位置的钩子，两个 y 平均出来的取样带会落在
+    # 中间的画面上，那一段本来就没字。按在屏时间最长的那一行取样，等价于看主字幕。
+    def coverage(row: dict) -> float:
+        return float(row.get("end") or 0) - float(row.get("start") or 0)
+
+    timed = [r for r in rows if isinstance(r.get("y"), (int, float))]
+    if not timed:
         return None
-    sizes = [float(r["size"]) for r in rows if isinstance(r.get("size"), (int, float))]
-    size = sum(sizes) / len(sizes) if sizes else 0.052
-    y = max(0.0, min(1.0, sum(ys) / len(ys)))
+    main = max(timed, key=coverage)
+    size = float(main["size"]) if isinstance(main.get("size"), (int, float)) else 0.052
+    y = max(0.0, min(1.0, float(main["y"])))
     half = max(0.045, min(0.10, size * 0.9))
     return (int(0.04 * 1080), int(max(0.0, y - half) * 1920),
             int(0.96 * 1080), int(min(1.0, y + half) * 1920))

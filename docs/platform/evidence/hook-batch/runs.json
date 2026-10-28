@@ -1,0 +1,40 @@
+[
+  {
+    "runId": "6ae22cbdd4961ac32cc56fef",
+    "status": "succeeded",
+    "seconds": 30,
+    "md5": "b2c4dfa1ef6509f6785b8523c67d9b5b",
+    "library": "/Users/apple/CreatorStudio/library/studio/2026-10/20261029-011135__studio__001__钩子终验-30-秒-1-3__douyin__r1.mp4",
+    "firstText": "一杯好咖啡",
+    "hooks": [
+      "还在排队买咖啡？",
+      "三分钟送到家",
+      "点下方领 20 元券"
+    ],
+    "qa": []
+  },
+  {
+    "runId": "6ae22cbdd4961ac32cc56ffd",
+    "status": "succeeded",
+    "seconds": 30,
+    "md5": "995a5853b30750acadac1e44ef6ff217",
+    "library": "/Users/apple/CreatorStudio/library/studio/2026-10/20261029-011145__studio__001__钩子终验-30-秒-2-3__douyin__r1.mp4",
+    "firstText": "一杯好咖啡",
+    "hooks": [
+      "咖啡凉了才到家",
+      "三分钟送到家",
+      "点下方领 20 元券"
+    ],
+    "qa": []
+  },
+  {
+    "runId": "6ae22cbdd4961ac32cc57009",
+    "status": "running",
+    "firstText": "一杯好咖啡",
+    "hooks": [
+      "还在排队买咖啡？",
+      "三分钟送到家",
+      "点下方领 20 元券"
+    ]
+  }
+]

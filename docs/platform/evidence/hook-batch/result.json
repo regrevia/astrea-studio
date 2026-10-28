@@ -1,0 +1,47 @@
+{
+  "project": "钩子终验",
+  "projectId": "6ae22cb2d4961ac32cc56fa6",
+  "entrypoint": "工作区：标题/副标题 + 开场（两个钩子用｜隔开）/中段/收尾 → 点「出 3 版」",
+  "spec": "5 条文字行 = 常驻标题 y0.2 + 副标题 y0.29 + 三段钩子 y0.66（0–10 / 10–20 / 20–30 s）",
+  "hookRotation": "开场一行写两个钩子，批量时按条轮换（第 3 条回到第 1 个，运镜与开场镜头仍不同）",
+  "runs": [
+    {
+      "index": 1,
+      "runId": "6ae22cbdd4961ac32cc56fef",
+      "hook": "还在排队买咖啡？",
+      "md5": "b2c4dfa1ef6509f6785b8523c67d9b5b",
+      "status": "succeeded",
+      "seconds": 30,
+      "texts": 5,
+      "library": "20261029-011135__studio__001__钩子终验-30-秒-1-3__douyin__r1.mp4",
+      "videoQa": []
+    },
+    {
+      "index": 2,
+      "runId": "6ae22cbdd4961ac32cc56ffd",
+      "hook": "咖啡凉了才到家",
+      "md5": "995a5853b30750acadac1e44ef6ff217",
+      "status": "succeeded",
+      "seconds": 30,
+      "texts": 5,
+      "library": "20261029-011145__studio__001__钩子终验-30-秒-2-3__douyin__r1.mp4",
+      "videoQa": []
+    },
+    {
+      "index": 3,
+      "runId": "6ae22cbdd4961ac32cc57009",
+      "hook": "还在排队买咖啡？",
+      "md5": "905d0c60729d468dcf37819ba8888f58",
+      "status": "succeeded",
+      "seconds": 30,
+      "texts": 5,
+      "library": "20261029-011209__studio__001__钩子终验-30-秒-3-3__douyin__r1.mp4",
+      "videoQa": []
+    }
+  ],
+  "ssim": {
+    "v1_vs_v2": 0.957976,
+    "v1_vs_v3": 0.926664
+  },
+  "qa": "三条 videoQa.findings 全空；顺带修了取样带把不同 y 的平均后报假 text_gap 的问题"
+}

@@ -289,7 +289,14 @@ export function rotateOpening(spec: Record<string, unknown>, times = 1): Record<
 export function varyHook(spec: Record<string, unknown>, index: number): Record<string, unknown> {
   const text = spec['text']
   if (!Array.isArray(text) || text.length === 0) return spec
-  const head = text[0]
+  // 钩子行不一定排在第一条（标题行通常常驻在最前），按 hookVariants 定位它。
+  const at = text.findIndex((row) => {
+    if (!row || typeof row !== 'object') return false
+    const variants = (row as Record<string, unknown>)['hookVariants']
+    return Array.isArray(variants) && variants.length > 0
+  })
+  if (at < 0) return spec
+  const head = text[at]
   if (!head || typeof head !== 'object') return spec
   const item = head as Record<string, unknown>
   const variants = item['hookVariants']
@@ -297,7 +304,7 @@ export function varyHook(spec: Record<string, unknown>, index: number): Record<s
   const picked = String(variants[index % variants.length] ?? '')
   if (!picked) return spec
   const { hookVariants: _drop, ...rest } = item
-  return { ...spec, text: [{ ...rest, text: picked }, ...text.slice(1)] }
+  return { ...spec, text: [...text.slice(0, at), { ...rest, text: picked }, ...text.slice(at + 1)] }
 }
 
 /** 批量分版可用的一维：mirror 换运镜方向、opening 换开场镜头、hook 换开头字幕。 */

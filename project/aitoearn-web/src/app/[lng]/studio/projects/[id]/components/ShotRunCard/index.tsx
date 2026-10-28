@@ -11,7 +11,7 @@ import { Clapperboard, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createRun, createRunBatch, fetchMaterialFrameUrl, getMaterialShots, getMaterialMusic, getMusicBeats } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
-import { buildMaterialTimeline, TARGET_SECONDS, type MaterialBeatPlan, type TargetSeconds } from '@/app/[lng]/studio/utils/material-timeline'
+import { buildMaterialTimeline, composeTextPlan, TARGET_SECONDS, type MaterialBeatPlan, type TargetSeconds } from '@/app/[lng]/studio/utils/material-timeline'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -41,6 +41,9 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
   const [musicRel, setMusicRel] = useState('')
   const [title, setTitle] = useState('')
   const [subtitle, setSubtitle] = useState('')
+  const [hookOpen, setHookOpen] = useState('')
+  const [hookMid, setHookMid] = useState('')
+  const [hookEnd, setHookEnd] = useState('')
   const [beatOn, setBeatOn] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -115,6 +118,11 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
 
   const pickedTrack = useMemo(() => tracks.find(track => track.rel === musicRel), [tracks, musicRel])
 
+  const buildTextPlan = useCallback(
+    () => composeTextPlan({ title, subtitle, hookOpen, hookMid, hookEnd }),
+    [hookEnd, hookMid, hookOpen, subtitle, title],
+  )
+
   const submit = useCallback(async (count = 1) => {
     let beatPlan: MaterialBeatPlan | null = null
     if (pickedTrack) {
@@ -137,7 +145,7 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
       pickedClips.map(clip => ({ src: clip.path, duration: clip.duration ?? 0 })),
       target,
       beatPlan,
-      title.trim() || subtitle.trim() ? { title: title.trim(), subtitle: subtitle.trim() } : null,
+      buildTextPlan(),
     )
     if (!spec) {
       setError(t('project.clipFailed'))
@@ -181,7 +189,7 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
     finally {
       setSubmitting(false)
     }
-  }, [beatOn, onCreated, pickedClips, pickedTrack, projectId, projectName, subtitle, t, target, title])
+  }, [beatOn, buildTextPlan, onCreated, pickedClips, pickedTrack, projectId, projectName, t, target])
 
   return (
     <Card>
@@ -245,6 +253,32 @@ export function ShotRunCard({ projectId, projectName, onCreated }: ShotRunCardPr
                 placeholder={t('project.clipSubtitlePlaceholder')}
                 onChange={event => setSubtitle(event.target.value)}
               />
+              <div className="grid grid-cols-3 gap-1.5">
+                <Input
+                  className="h-8 text-xs"
+                  value={hookOpen}
+                  maxLength={24}
+                  aria-label={t('project.clipHookOpen')}
+                  placeholder={t('project.clipHookOpenPlaceholder')}
+                  onChange={event => setHookOpen(event.target.value)}
+                />
+                <Input
+                  className="h-8 text-xs"
+                  value={hookMid}
+                  maxLength={24}
+                  aria-label={t('project.clipHookMid')}
+                  placeholder={t('project.clipHookMid')}
+                  onChange={event => setHookMid(event.target.value)}
+                />
+                <Input
+                  className="h-8 text-xs"
+                  value={hookEnd}
+                  maxLength={24}
+                  aria-label={t('project.clipHookEnd')}
+                  placeholder={t('project.clipHookEnd')}
+                  onChange={event => setHookEnd(event.target.value)}
+                />
+              </div>
             </div>
             <div className="flex items-center justify-between gap-2">
               <Badge variant="secondary">{t('project.clipsPicked', { count: pickedClips.length })}</Badge>
