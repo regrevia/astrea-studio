@@ -65,6 +65,8 @@ export const createRunArgsSchema = z.object({
 /** 一次出多条：同一套文案/素材，标题自动带 1/N 后缀，用来做同题多版 A/B。 */
 export const createRunBatchArgsSchema = createRunArgsSchema.extend({
   count: z.number().int().min(2).max(10).describe('一次出几条，2~10'),
+  variants: z.array(z.enum(['mirror', 'opening', 'hook'])).optional()
+    .describe('逐条怎么不同：mirror 换运镜、opening 换开场、hook 换开头字幕；不传就三维全用，第 1 条永远是原稿'),
 })
 
 export const getRunArgsSchema = z.object({

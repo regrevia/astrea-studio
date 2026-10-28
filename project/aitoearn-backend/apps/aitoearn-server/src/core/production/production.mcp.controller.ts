@@ -51,6 +51,8 @@ const CreateRunSchema = z.object({
 
 const BatchRunSchema = CreateRunSchema.extend({
   count: z.number().int().min(1).max(8).default(2).describe('排几条：同一份稿子出多个母版，每条独立入队'),
+  variants: z.array(z.enum(['mirror', 'opening', 'hook'])).optional()
+    .describe('逐条错开哪几维：mirror 换运镜方向、opening 换开场镜头、hook 换开头字幕。不传则三维全用；第 1 条永远是原稿'),
 })
 
 const RunIdSchema = z.object({
@@ -158,14 +160,14 @@ export class ProductionMcpController {
   })
   async createProductionBatch(params: z.infer<typeof BatchRunSchema>) {
     const user = getUser()
-    const { count, ...one } = params
+    const { count, variants, ...one } = params
     const runs = await this.production.createRunBatch(user.id, {
       projectId: one.projectId,
       title: one.title,
       brief: one.brief ?? '',
       spec: normalizeRunSpec(one),
       facts: one.facts,
-    }, count)
+    }, count, variants)
     return toTextResult(
       `Queued ${runs.length} run(s): ${runs.map(r => r.id).join(', ')}. `
       + 'Do not block; poll getProductionRun per runId.',

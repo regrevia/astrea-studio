@@ -271,11 +271,12 @@ export function mirrorKeyframes(spec: Record<string, unknown>): Record<string, u
  * 首段素材挪到最后、原第二段顶上开场——镜头清单不变、总时长不变，但开头三秒
  * 是另一个画面，信息流里第一眼就不一样。只动 video 顺序，不碰 keyframes/音频。
  */
-export function rotateOpening(spec: Record<string, unknown>): Record<string, unknown> {
+export function rotateOpening(spec: Record<string, unknown>, times = 1): Record<string, unknown> {
   const video = spec['video']
   if (!Array.isArray(video) || video.length < 2) return spec
-  const [first, ...rest] = video
-  return { ...spec, video: [...rest, first] }
+  const shift = ((Math.trunc(times) % video.length) + video.length) % video.length
+  if (shift === 0) return spec
+  return { ...spec, video: [...video.slice(shift), ...video.slice(0, shift)] }
 }
 
 /**
@@ -297,4 +298,28 @@ export function varyHook(spec: Record<string, unknown>, index: number): Record<s
   if (!picked) return spec
   const { hookVariants: _drop, ...rest } = item
   return { ...spec, text: [{ ...rest, text: picked }, ...text.slice(1)] }
+}
+
+/** 批量分版可用的一维：mirror 换运镜方向、opening 换开场镜头、hook 换开头字幕。 */
+export type RunBatchVariant = 'mirror' | 'opening' | 'hook'
+
+export const RUN_BATCH_VARIANTS: RunBatchVariant[] = ['mirror', 'opening', 'hook']
+
+/**
+ * 按第几条（0 为原稿）把选中的几维差异套到 timeline 规格上。
+ *
+ * 只选一维时也能保证每条不同：opening 按序号轮转位数，hook 按序号取变体，
+ * mirror 每条都镜像。全选就是默认的三档组合。
+ */
+export function applyRunBatchVariant(
+  spec: Record<string, unknown>,
+  index: number,
+  variants: RunBatchVariant[],
+): Record<string, unknown> {
+  if (index <= 0 || variants.length === 0) return spec
+  let out = spec
+  if (variants.includes('mirror')) out = mirrorKeyframes(out)
+  if (variants.includes('opening')) out = rotateOpening(out, index)
+  if (variants.includes('hook')) out = varyHook(out, index)
+  return out
 }

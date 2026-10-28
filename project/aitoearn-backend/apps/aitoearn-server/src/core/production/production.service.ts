@@ -23,7 +23,7 @@ import {
 } from '@yikart/mongodb'
 import { MaterialGroupService } from '../content/material-group.service'
 import { MaterialService } from '../content/material.service'
-import { buildTimelineSpec, mirrorKeyframes, rotateOpening, varyHook } from './timeline-spec'
+import { applyRunBatchVariant, buildTimelineSpec, RUN_BATCH_VARIANTS, RunBatchVariant } from './timeline-spec'
 
 export const LEASE_MS = 60_000
 export const RENDER_LANE = 'render'
@@ -276,18 +276,20 @@ export class ProductionService {
    * 批量出片：同一份稿子排 count 条。每条仍是独立的 run/job，worker 按队列逐条
    * 渲，互不覆盖；标题带序号，列表里能直接分清是哪一条。
    */
-  async createRunBatch(userId: string, input: CreateRunInput, count: number): Promise<ProductionRun[]> {
+  async createRunBatch(
+    userId: string,
+    input: CreateRunInput,
+    count: number,
+    variants: RunBatchVariant[] = RUN_BATCH_VARIANTS,
+  ): Promise<ProductionRun[]> {
     const runs: ProductionRun[] = []
     for (let i = 0; i < count; i += 1) {
-      // 第 1 条按原稿；第 2 条只镜像推拉；第 3 条起再换开场镜头，
-      // 三条两两不同才叫多版，否则批到第三条又撞回第一条。
+      // 第 1 条按原稿；后面的按 variants 逐条错开（默认换运镜 + 换开场 + 换钩子），
+      // 多条两两不同才叫多版，否则批到第三条又撞回第一条。
       let spec = input.spec
       const timeline = input.spec?.['timeline']
       if (i > 0 && timeline) {
-        let variant = mirrorKeyframes(timeline as Record<string, unknown>)
-        if (i > 1) variant = rotateOpening(variant)
-        // 有钩子变体时按条换开头那句，运镜再好文案一样也算同一支
-        variant = varyHook(variant, i)
+        const variant = applyRunBatchVariant(timeline as Record<string, unknown>, i, variants)
         spec = { ...input.spec, timeline: variant }
       }
       runs.push(await this.createRun(userId, {

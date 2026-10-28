@@ -589,7 +589,7 @@ export class ProductionAssistantService {
     const input = await this.runInput(userId, args.title, args)
     if (!input)
       return this.fail('找不到可用项目，先在面板创建一个项目。', '没有可用项目')
-    const runs = await this.production.createRunBatch(userId, input, args.count)
+    const runs = await this.production.createRunBatch(userId, input, args.count, args.variants)
     return {
       text: `已排 ${runs.length} 条任务：${runs.map(item => `${item.id}（${item.title}）`).join('；')}。`,
       actions: [action({

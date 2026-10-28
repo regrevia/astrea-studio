@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildTimelineSpec, mirrorKeyframes, rotateOpening, TimelineCanvasPreset, varyHook } from './timeline-spec'
+import { applyRunBatchVariant, buildTimelineSpec, mirrorKeyframes, rotateOpening, RunBatchVariant, TimelineCanvasPreset, varyHook } from './timeline-spec'
 
 const FRIENDLY_INPUT = {
   engine: 'timeline',
@@ -311,5 +311,45 @@ describe('varyHook 同题多版的钩子轮换', () => {
 
     expect(varyHook(plain as Record<string, unknown>, 2)).toBe(plain)
     expect(varyHook(noText as Record<string, unknown>, 2)).toBe(noText)
+  })
+})
+
+describe('applyRunBatchVariant 选择分版维度', () => {
+  const spec = {
+    video: [
+      { src: 'a.mp4', keyframes: [{ at: 0, zoom: 1 }, { at: 3, zoom: 1.12 }] },
+      { src: 'b.mp4', keyframes: [{ at: 0, zoom: 1.1 }, { at: 4, zoom: 1 }] },
+    ],
+    text: [{ text: '原钩子', start: 0.5, end: 3, hookVariants: ['A', 'B', 'C'] }],
+  }
+  const vars = ['mirror', 'opening', 'hook'] as RunBatchVariant[]
+
+  it('第 1 条永远原稿，不管选了哪几维', () => {
+    expect(applyRunBatchVariant(spec as Record<string, unknown>, 0, vars)).toBe(spec)
+  })
+
+  it('只选 mirror 时开场与钩子保持原样，只有 zoom 倒序', () => {
+    const out = applyRunBatchVariant(spec as Record<string, unknown>, 1, ['mirror']) as typeof spec
+    expect(out.video.map(v => v.src)).toEqual(['a.mp4', 'b.mp4'])
+    expect(out.video[0].keyframes).toEqual([{ at: 0, zoom: 1.12 }, { at: 3, zoom: 1 }])
+    expect(out.text[0]['text']).toBe('原钩子')
+  })
+
+  it('只选 opening 时按第几条轮转开场，且第 2 条就生效', () => {
+    const second = applyRunBatchVariant(spec as Record<string, unknown>, 1, ['opening']) as typeof spec
+    const third = applyRunBatchVariant(spec as Record<string, unknown>, 2, ['opening']) as typeof spec
+    expect(second.video.map(v => v.src)).toEqual(['b.mp4', 'a.mp4'])
+    expect(third.video.map(v => v.src)).toEqual(['a.mp4', 'b.mp4'])
+    expect(second.video[0].keyframes).toEqual(spec.video[1].keyframes)
+  })
+
+  it('只选 hook 时按条取变体，其它维度不动', () => {
+    const out = applyRunBatchVariant(spec as Record<string, unknown>, 2, ['hook']) as typeof spec
+    expect(out.text[0]['text']).toBe('C')
+    expect(out.video).toEqual(spec.video)
+  })
+
+  it('variants 为空时保持原稿', () => {
+    expect(applyRunBatchVariant(spec as Record<string, unknown>, 1, [])).toBe(spec)
   })
 })

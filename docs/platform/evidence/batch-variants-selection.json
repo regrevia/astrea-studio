@@ -1,0 +1,78 @@
+{
+  "checkedAt": "2026-10-28T19:18:30+08:00",
+  "tool": "createProductionBatch",
+  "params": {
+    "projectId": "6adc2161656a13996166bbfc",
+    "title": "同题两版-仅镜像",
+    "count": 2,
+    "variants": [
+      "mirror"
+    ]
+  },
+  "expectation": "只换运镜方向：镜头顺序、开场、钩子字幕都应与第 1 条一致",
+  "runs": [
+    {
+      "id": "6ae1d9d6478434ad269cff3f",
+      "title": "同题两版-仅镜像 · 1/2",
+      "status": "succeeded",
+      "md5": "ab26451375fc7ea59dea9ec6f6fdca79",
+      "clipOrder": [
+        "seg-a",
+        "seg-b",
+        "seg-c",
+        "draftbox"
+      ],
+      "clip0Keyframes": [
+        {
+          "at": 0,
+          "zoom": 1.0
+        },
+        {
+          "at": 7.13,
+          "zoom": 1.12
+        }
+      ],
+      "hookOcr": "这台咖啡机，让我戒了",
+      "duration": 30.0,
+      "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261028-191747__studio__001__同题两版-仅镜像-1-2__douyin__r1.mp4"
+    },
+    {
+      "id": "6ae1d9d6478434ad269cff48",
+      "title": "同题两版-仅镜像 · 2/2",
+      "status": "succeeded",
+      "md5": "d5017b1bd2f31d42636ce3b184043fc8",
+      "clipOrder": [
+        "seg-a",
+        "seg-b",
+        "seg-c",
+        "draftbox"
+      ],
+      "clip0Keyframes": [
+        {
+          "at": 0,
+          "zoom": 1.12
+        },
+        {
+          "at": 7.13,
+          "zoom": 1.0
+        }
+      ],
+      "hookOcr": "这台咖啡机，让我戒了",
+      "duration": 30.0,
+      "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261028-191752__studio__001__同题两版-仅镜像-2-2__douyin__r1.mp4"
+    }
+  ],
+  "checks": {
+    "md5Differ": true,
+    "clipOrderIdentical": true,
+    "hookIdenticalAfterOcr": true,
+    "durations": "30.000000 / 30.000000"
+  },
+  "tests": {
+    "nxTarget": "aitoearn-server",
+    "filter": "timeline-spec production.service production.mcp production-assistant",
+    "passed": 76,
+    "skipped": 1,
+    "exit": 0
+  }
+}
