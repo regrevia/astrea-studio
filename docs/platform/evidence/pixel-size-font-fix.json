@@ -1,0 +1,23 @@
+{
+  "capturedAt": "2026-10-28T20:36:00+08:00",
+  "problem": "外部 spec 把字幕 size 写成像素（72），渲染进程当成画布高度比例后 px=46080，PIL 抛 OSError: invalid pixel size，整条任务失败。",
+  "fix": "render_text_png 前统一换算：size>1 视为像素，除以画布高度；再夹到 ≤0.6 比例。非法值（≤0）给明确 spec 错误。",
+  "code": "integrations/mac-worker/export/timeline_render.py::_font_scale",
+  "e2e": {
+    "spec": "/tmp/pxcheck/spec.json（360×640，2s，一张素材图，字幕 size:72）",
+    "command": "python -m export.timeline_render --spec /tmp/pxcheck/spec.json --out /tmp/pxcheck/out.mp4 --json",
+    "exit": 0,
+    "ffprobe": {
+      "video": "360x640",
+      "audio": "有",
+      "duration": "2.000000"
+    },
+    "file": "/tmp/pxcheck/out.mp4",
+    "bytes": 311719
+  },
+  "unit": {
+    "file": "integrations/mac-worker/export/test_timeline_render.py::TestTextPng::test_pixel_size_is_converted",
+    "result": "3 tests OK（0.120s，含原透明底衬与像素字号两例）"
+  },
+  "runtimeSync": "scripts/dev/sync-mac-worker.sh → 0；launchctl kickstart 后 /healthz={ok:true}，/inventory 仍报 1 个素材包"
+}

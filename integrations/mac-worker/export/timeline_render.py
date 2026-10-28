@@ -448,6 +448,20 @@ def load_spec(path, base: Path | None = None) -> dict:
 
 
 # --------------------------------------------------------------- 文字图层
+def _font_scale(raw_size, canvas_height: int) -> float:
+    """字幕字号统一按画布高度的比例算。
+
+    有人把 size 写成像素（例如 72），直接乘画布高度会被 PIL 当成非法字号报
+    `invalid pixel size`；这里把 >1 的值按像素理解并换算回比例，再夹到合理区间。
+    """
+    size = float(raw_size)
+    if size <= 0:
+        raise SpecError("字幕字号必须大于 0")
+    if size > 1:
+        size = size / float(canvas_height)
+    return min(size, 0.6)
+
+
 def render_text_png(item: dict, canvas: dict, font_path: str, out: Path) -> tuple:
     """把一条字幕渲染成 RGBA PNG，返回 (路径, 宽, 高)。
 
@@ -457,7 +471,7 @@ def render_text_png(item: dict, canvas: dict, font_path: str, out: Path) -> tupl
     from PIL import Image, ImageDraw, ImageFont
 
     cw, ch = canvas["width"], canvas["height"]
-    px = max(8, int(round(ch * item["size"])))
+    px = max(8, int(round(ch * _font_scale(item["size"], ch))))
     font = ImageFont.truetype(font_path, px, index=0)
     lines = str(item["text"]).split("\n")
     stroke = max(0, int(round(px * item["stroke"] / 100.0)))

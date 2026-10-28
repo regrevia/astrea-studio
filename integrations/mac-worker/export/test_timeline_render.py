@@ -398,6 +398,23 @@ class TestTextPng(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_pixel_size_is_converted(self):
+        """size 写成像素（72）不该炸 PIL：按画布高度换算回比例。"""
+        from PIL import Image
+        tmp = Path(tempfile.mkdtemp(prefix="tl-px-"))
+        try:
+            item = {"text": "像素字号", "size": 72, "color": (255, 255, 255, 255),
+                    "stroke": 0, "stroke_color": (0, 0, 0, 255),
+                    "box": (0, 0, 0, 0), "radius": 0.0, "align": "center"}
+            p, w, h = T.render_text_png(item, {"width": 1920, "height": 1080},
+                                        self.font, tmp / "t.png")
+            img = Image.open(p).convert("RGBA")
+            self.assertIsNotNone(img.getchannel("A").getbbox(), "像素字号应正常出字")
+            self.assertLess(h, 200, "按 72px 算，图高不该超过 200")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
     def test_position_kept_inside_canvas(self):
         canvas = {"width": 1920, "height": 1080}
         x, y = T._text_position({"x": 0.0, "y": 0.0}, canvas, 400, 100)
