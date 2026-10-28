@@ -1,0 +1,57 @@
+{
+  "checkedAt": "2026-10-28T19:05:00+08:00",
+  "batch": {
+    "projectId": "6adc2161656a13996166bbfc",
+    "count": 2,
+    "tool": "createProductionBatch",
+    "title": "同题两版-推拉镜像"
+  },
+  "runs": [
+    {
+      "id": "6ae1d67a1d3cf55231116f3a",
+      "title": "同题两版-推拉镜像 · 1/2",
+      "status": "succeeded",
+      "progress": 100,
+      "keyframesClip0": [
+        {
+          "at": 0,
+          "zoom": 1.0
+        },
+        {
+          "at": 7.13,
+          "zoom": 1.12
+        }
+      ],
+      "md5": "7f250578fec55e68cce604f0cdb156ba",
+      "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261028-190328__studio__003__同题两版-推拉镜像-1-2-03__douyin__r1.mp4",
+      "duration": 30.0
+    },
+    {
+      "id": "6ae1d67a1d3cf55231116f43",
+      "title": "同题两版-推拉镜像 · 2/2",
+      "status": "succeeded",
+      "progress": 100,
+      "keyframesClip0": [
+        {
+          "at": 0,
+          "zoom": 1.12
+        },
+        {
+          "at": 7.13,
+          "zoom": 1.0
+        }
+      ],
+      "md5": "92d33f4aee701657cec6589bd2ab3ec9",
+      "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261028-190333__studio__002__同题两版-推拉镜像-2-2-02__douyin__r1.mp4",
+      "duration": 30.0
+    }
+  ],
+  "probe": {
+    "width": 1080,
+    "height": 1920,
+    "fps": "30/1",
+    "duration": "30.000000",
+    "psnrAverageDb": 23.28
+  },
+  "mechanism": "createRunBatch 第 2 条起把每段关键帧 zoom 值倒序（时间点不动），推镜变拉镜；第 1 条保持原稿"
+}

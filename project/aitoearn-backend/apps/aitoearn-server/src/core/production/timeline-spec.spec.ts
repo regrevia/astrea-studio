@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildTimelineSpec, TimelineCanvasPreset } from './timeline-spec'
+import { buildTimelineSpec, mirrorKeyframes, TimelineCanvasPreset } from './timeline-spec'
 
 const FRIENDLY_INPUT = {
   engine: 'timeline',
@@ -241,5 +241,32 @@ describe('buildTimelineSpec', () => {
     expect((expanded.timeline as Record<string, unknown>).audio).toEqual([
       { src: '/tmp/demo_c/asset/bgm.m4a', start: 0, volume: 0.35, loop: true },
     ])
+  })
+})
+
+describe('mirrorKeyframes 同题多版的运镜镜像', () => {
+  it('每段关键帧倒序，推镜变拉镜', () => {
+    const spec = {
+      video: [
+        { src: 'a.mp4', keyframes: [{ at: 0, zoom: 1 }, { at: 6, zoom: 1.12 }] },
+        { src: 'b.mp4', keyframes: [{ at: 0, zoom: 1.14 }, { at: 10, zoom: 1 }] },
+      ],
+    }
+
+    const mirrored = mirrorKeyframes(spec as Record<string, unknown>) as typeof spec
+
+    expect(mirrored.video[0].keyframes).toEqual([{ at: 0, zoom: 1.12 }, { at: 6, zoom: 1 }])
+    expect(mirrored.video[1].keyframes).toEqual([{ at: 0, zoom: 1 }, { at: 10, zoom: 1.14 }])
+    // 原稿不被就地改掉：批量里第 1 条还要用原序
+    expect(spec.video[0].keyframes[0].zoom).toBe(1)
+  })
+
+  it('没有关键帧的片段原样保留，时长等其它字段不受影响', () => {
+    const spec = { video: [{ src: 'still.png', in: 0, out: 3 }], music: { src: 'bgm.mp3' } }
+
+    const mirrored = mirrorKeyframes(spec as Record<string, unknown>)
+
+    expect(mirrored['video']).toEqual(spec.video)
+    expect(mirrored['music']).toEqual(spec.music)
   })
 })

@@ -23,7 +23,7 @@ import {
 } from '@yikart/mongodb'
 import { MaterialGroupService } from '../content/material-group.service'
 import { MaterialService } from '../content/material.service'
-import { buildTimelineSpec } from './timeline-spec'
+import { buildTimelineSpec, mirrorKeyframes } from './timeline-spec'
 
 export const LEASE_MS = 60_000
 export const RENDER_LANE = 'render'
@@ -279,8 +279,13 @@ export class ProductionService {
   async createRunBatch(userId: string, input: CreateRunInput, count: number): Promise<ProductionRun[]> {
     const runs: ProductionRun[] = []
     for (let i = 0; i < count; i += 1) {
+      // 第 1 条按原稿，后面的把推拉方向镜像，批出来的几条才有得挑
+      const spec = i > 0 && input.spec?.['timeline']
+        ? { ...input.spec, timeline: mirrorKeyframes(input.spec['timeline'] as Record<string, unknown>) }
+        : input.spec
       runs.push(await this.createRun(userId, {
         ...input,
+        spec,
         title: count > 1 ? `${input.title} · ${i + 1}/${count}` : input.title,
       }))
     }

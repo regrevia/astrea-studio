@@ -239,3 +239,27 @@ export function buildTimelineSpec(spec: Record<string, unknown>): Record<string,
   }
   return expanded
 }
+
+/**
+ * 同题多版：把镜头推拉方向镜像一份。
+ *
+ * 批量出片最容易同质化——同一份 spec 渲 N 条就是 N 个一模一样的文件，挑片没有意义。
+ * 这里只动「可感知但不动时长/不动拍点」的一维：把每段关键帧的 zoom 值顺序倒过来，
+ * 时间点不动。推镜变拉镜、拉镜变推镜，首尾 zoom 数值也跟着互换，所以渲染器排序
+ * 逻辑改了也不会把两条渲成一样。时长、beat 对齐、字幕和音频都不受影响。
+ */
+export function mirrorKeyframes(spec: Record<string, unknown>): Record<string, unknown> {
+  const video = spec['video']
+  if (!Array.isArray(video) || video.length === 0) return spec
+  const flipped = video.map((clip) => {
+    if (!clip || typeof clip !== 'object') return clip
+    const item = clip as Record<string, unknown>
+    const keys = item['keyframes']
+    if (!Array.isArray(keys) || keys.length < 2) return item
+    const sorted = [...keys].sort((a, b) => Number((a as Record<string, unknown>)['at']) - Number((b as Record<string, unknown>)['at']))
+    const zooms = sorted.map((k) => (k as Record<string, unknown>)['zoom']).reverse()
+    const mirrored = sorted.map((k, i) => ({ ...(k as Record<string, unknown>), zoom: zooms[i] }))
+    return { ...item, keyframes: mirrored }
+  })
+  return { ...spec, video: flipped }
+}
