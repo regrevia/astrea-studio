@@ -99,9 +99,13 @@ export function createRunBatch(data: {
   spec?: Record<string, unknown>
   facts?: Record<string, unknown>
   count: number
+  /** 逐条错开哪几维；不传后端三维全用，第 1 条永远是原稿 */
+  variants?: RunBatchVariant[]
 }) {
   return http.post<{ runIds: string[], count: number }>('production/runs/batch', data)
 }
+
+export type RunBatchVariant = 'mirror' | 'opening' | 'hook'
 
 /** 精确修改：合并 spec 补丁并重新渲染。 */
 export function reviseRun(id: string, data: { brief?: string, spec?: Record<string, unknown> }) {

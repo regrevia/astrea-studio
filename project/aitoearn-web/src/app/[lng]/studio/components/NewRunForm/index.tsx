@@ -11,6 +11,7 @@ import type { FormEvent } from 'react'
 import type { VoiceOption } from './utils'
 import { Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import type { RunBatchVariant } from '@/api/production/production.api'
 import { createRunBatch, createRun, getInventory } from '@/api/production/production.api'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -43,6 +44,13 @@ interface NewRunFormProps {
   onCreated: (runIds: string[]) => void
 }
 
+/** 多条母版可选的三维差异，和后端 createProductionBatch 的 variants 一一对应。 */
+const VARIANT_OPTIONS: { value: RunBatchVariant, label: string }[] = [
+  { value: 'mirror', label: '运镜方向' },
+  { value: 'opening', label: '开场镜头' },
+  { value: 'hook', label: '开头字幕' },
+]
+
 /** 表单里统一的小标签样式，避免每个字段重复写一遍提示。 */
 const hintClass = 'text-[11px] text-muted-foreground'
 
@@ -64,6 +72,8 @@ export default function NewRunForm({ projects, projectId: selectedProjectId, onC
   const [platforms, setPlatforms] = useState<string[]>(DEFAULT_PLATFORMS)
   /** 1 条=单条出片；2~3 条=同稿多母版，挑一条发。 */
   const [count, setCount] = useState('1')
+  /** 多条时哪几维逐条错开；默认全选，取消勾选就固定该维。 */
+  const [variants, setVariants] = useState<RunBatchVariant[]>(['mirror', 'opening', 'hook'])
   const [voices, setVoices] = useState<VoiceOption[]>(() => buildVoiceOptions())
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState('')
@@ -97,6 +107,10 @@ export default function NewRunForm({ projects, projectId: selectedProjectId, onC
     )
   }
 
+  const toggleVariant = (value: RunBatchVariant, checked: boolean) => {
+    setVariants(current => (checked ? [...current, value] : current.filter(item => item !== value)))
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (submitting)
@@ -124,7 +138,7 @@ export default function NewRunForm({ projects, projectId: selectedProjectId, onC
         spec: { ...buildVerticalShortSpec(values, parsed.lines) },
       }
       const res = wanted > 1
-        ? await createRunBatch({ ...payload, count: wanted })
+        ? await createRunBatch({ ...payload, count: wanted, variants })
         : await createRun(payload)
       // 只有 code === 0 且带回 runId/runIds 才算建成功，否则留在表单里让用户改。
       const data = res?.data as { runId?: string, runIds?: string[] } | undefined
@@ -271,6 +285,27 @@ export default function NewRunForm({ projects, projectId: selectedProjectId, onC
             </SelectContent>
           </Select>
         </div>
+
+        {Number(count) > 1 && (
+          <fieldset className="flex flex-col gap-2 sm:col-span-2">
+            <legend className="text-sm font-medium">多条之间怎么不同</legend>
+            <div className="flex flex-wrap gap-x-6 gap-y-2">
+              {VARIANT_OPTIONS.map(option => (
+                <div key={option.value} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`run-variant-${option.value}`}
+                    checked={variants.includes(option.value)}
+                    onCheckedChange={next => toggleVariant(option.value, next === true)}
+                  />
+                  <Label htmlFor={`run-variant-${option.value}`} className="cursor-pointer text-sm font-normal">
+                    {option.label}
+                  </Label>
+                </div>
+              ))}
+            </div>
+            <p className={hintClass}>第 1 条始终按原稿，勾选的维度从第 2 条起逐条错开</p>
+          </fieldset>
+        )}
 
         {formError && (
           <p role="alert" className="text-sm text-destructive sm:col-span-2">{formError}</p>
