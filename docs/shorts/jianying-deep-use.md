@@ -240,3 +240,10 @@ python3 -c "import json;d=json.load(open('~/CreatorStudio/deliver/jianying-draft
 平台侧 `POST /production/runs/:id/open-draft`（MCP `open_jianying_draft`）排一条 `jianying_open` 任务，
 worker 调 `export/open_draft.py --name <草稿目录名> --wait-idle`：只打开、不导出、不改 run 状态；
 屏幕锁定或剪映被占用时直接退避，不硬点面板。
+
+## 11. 打开工程这条分支的自检
+
+`jianying_open` 会把剪映带到前台，所以每个分支都要有测试兜住，不靠手工点：缺 `draftPath` 直接拒（不猜最新草稿）、
+目录不存在报 `draft_not_found`、屏幕锁着判 `screen_locked` 且完全不启 `open_draft.py`、rc=9 退避成 `export_user_busy`、
+rc=2 判 `export_draft_not_open`、成功落 `stage=draft_opened` 且命令行里带的正是草稿目录名。七个用例在
+`integrations/mac-worker/tests/test_jianying_open.py`，随 worker 套件一起跑（当前 49 个）。

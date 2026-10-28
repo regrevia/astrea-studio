@@ -232,7 +232,7 @@ MCP `openJianyingDraft`；worker `do_jianying_open`。省 `draftPath` 时用任�
 
 ```
 python integrations/mac-worker/tools/check_jianying.py --draft <草稿目录>     # 7/7 通过
-cd integrations/mac-worker && ... -m unittest discover -s tests -p 'test_*.py'  # 42 tests OK
+cd integrations/mac-worker && ... -m unittest discover -s tests -p 'test_*.py'  # 49 tests OK
 cd project/aitoearn-backend && pnpm exec vitest run apps/aitoearn-server/src/core/production/production.service.spec.ts   # 47 passed
                                               ... production-assistant.service.spec.ts   # 21 passed
 curl -s -X POST :8080/api/production/mcp -d '{"method":"tools/call","params":{"name":"openJianyingDraft",...}}'  # 工具已注册
