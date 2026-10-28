@@ -259,6 +259,35 @@ describe('reviseRun', () => {
   })
 })
 
+  it('连续按场景改稿时保留上一次改过的台词', async () => {
+    const { service, runRepo } = createService()
+    runRepo.getByIdForUser.mockResolvedValue({
+      id: 'run-3',
+      revision: 5,
+      brief: '需求',
+      spec: {
+        engine: 'timeline',
+        input: { ...FRIENDLY_INPUT, materials: ['a.mp4', 'b.mp4'], script: ['第一句', '第二句'] },
+        timeline: {
+          canvas: { width: 1080, height: 1920, fps: 30 },
+          video: [{ src: 'a.mp4', in: 0, out: 3 }, { src: 'b.mp4', in: 0, out: 3 }],
+          text: [
+            { text: '第一句改过', start: 0.2, end: 2.8 },
+            { text: '第二句改过', start: 3.2, end: 5.8 },
+          ],
+          audio: [],
+        },
+      },
+      status: 'succeeded',
+      checkpoints: [],
+    })
+
+    await service.reviseRun('user-1', 'run-3', { scenes: [{ index: 1, text: '再改第二句' }] })
+
+    const timeline = (runRepo.updateByRevision.mock.calls[0][2] as Record<string, any>).spec.timeline
+    expect(timeline.text.map((row: Record<string, unknown>) => row.text)).toEqual(['第一句改过', '再改第二句'])
+  })
+
   it('按场景改稿落在新 revision 的时间轴上，底稿仍能审计', async () => {
     const { service, runRepo } = createService()
     runRepo.getByIdForUser.mockResolvedValue({
@@ -268,7 +297,15 @@ describe('reviseRun', () => {
       spec: {
         engine: 'timeline',
         input: { ...FRIENDLY_INPUT, materials: ['a.mp4', 'b.mp4'], script: ['第一句', '第二句'] },
-        timeline: { canvas: { width: 1080, height: 1920, fps: 30 }, video: [], text: [], audio: [] },
+        timeline: {
+          canvas: { width: 1080, height: 1920, fps: 30 },
+          video: [{ src: 'a.mp4', in: 0, out: 3 }, { src: 'b.mp4', in: 0, out: 3 }],
+          text: [
+            { text: '第一句', start: 0.2, end: 2.8 },
+            { text: '第二句', start: 3.2, end: 5.8 },
+          ],
+          audio: [],
+        },
       },
       status: 'succeeded',
       checkpoints: [],

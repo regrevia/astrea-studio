@@ -1,0 +1,40 @@
+{
+  "round": 22,
+  "feature": "改稿语义修正：只按场景改时以当前展开稿为基线",
+  "bug": "只带 scenes 改稿时误用 run.spec.input 重新展开，导致之前改过的台词回退到原稿",
+  "fix": "scenes 非空且没有改 spec 时以 run.spec（当前展开结果）为基线；改 spec 才回到底稿重新展开",
+  "live": {
+    "runId": "6ae1f91afccd24d42cfc6b1d",
+    "steps": [
+      {
+        "revision": 6,
+        "texts": [
+          "第一句原稿",
+          "MCP 改的第二句"
+        ]
+      },
+      {
+        "revision": 7,
+        "action": "scenes index=0 -> 连续改第一句"
+      },
+      {
+        "revision": 8,
+        "action": "scenes index=1 -> 连续改第二句",
+        "texts": [
+          "连续改第一句",
+          "连续改第二句"
+        ],
+        "status": "succeeded"
+      }
+    ],
+    "evidence": "第一次改的台词在第 8 版仍在",
+    "output": "studio/runs/6ae1f91afccd24d42cfc6b1d/r8/master.mp4",
+    "md5": "c1139e7caa608ca6097a0b175d7f5076"
+  },
+  "tests": {
+    "production.service.spec.ts": "31 passed（含连续改稿回归）",
+    "timeline-spec.spec.ts": "46 passed",
+    "tsc": 0
+  },
+  "mcp": "reviseProductionRun 带 scenes 实测通过"
+}

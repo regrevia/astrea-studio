@@ -332,15 +332,19 @@ export class ProductionService {
     }
     const revision = run.revision + 1
     const patchSpec = patch.spec ?? {}
-    // 改 spec 时以友好输入的底稿为基线重新展开，避免把上一次的展开结果再展开一遍
-    const baseSpec = patchSpec['timeline'] === undefined && run.spec['input']
-      ? run.spec['input'] as Record<string, unknown>
-      : run.spec
+    const scenes = patch.scenes ?? []
+    // 只按场景改稿时以当前展开结果为准，不然每次改一句都会把之前改过的台词
+    // 带回原始底稿；改 spec 时才回到友好输入重新展开，避免二次展开。
+    const baseSpec = scenes.length > 0 && !patch.spec
+      ? run.spec
+      : patchSpec['timeline'] === undefined && run.spec['input']
+        ? run.spec['input'] as Record<string, unknown>
+        : run.spec
     // CAS：读到 revision N 就只能把 run 从 N 推到 N+1。并发改稿时后到的那次
     // 拿不到 CAS，不会把 revision 覆盖回去，也不会为同一 revision 建两条 job。
     const expanded = buildTimelineSpec({ ...baseSpec, ...patchSpec })
     // 逐场景补丁在展开之后落，作用在真正要渲染的那条时间轴上
-    const nextSpec = patch.scenes?.length ? applyScenePatches(expanded, patch.scenes) : expanded
+    const nextSpec = scenes.length ? applyScenePatches(expanded, scenes) : expanded
     const updated = await this.runRepo.updateByRevision(run.id, run.revision, {
       revision,
       brief: patch.brief ?? run.brief,
