@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import signal
+import shutil
 import subprocess
 import sys
 import threading
@@ -119,6 +120,45 @@ def load_s3_creds() -> dict[str, str]:
 # jianying_draft 出草稿（中间态），jianying_export 收导出产物，两步分开记。
 JOB_JIANYING_DRAFT = "jianying_draft"
 JOB_JIANYING_EXPORT = "jianying_export"
+
+
+def _wait_idle(payload: dict) -> float:
+    """waitIdle 允许显式 0（=现在就动手），不能因为 0 是假值就退回 30。"""
+    v = payload.get("waitIdle")
+    return 30.0 if v is None else max(0.0, float(v))
+
+
+def _land_export(video: str, payload: dict, job_id: str, revision: int,
+                 outdir: str) -> dict | None:
+    """成片入库：只认库里的落点，不留在 out/<jobId> 里当散件。"""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import library as lib  # noqa: WPS433
+        project = str(payload.get("libraryProject") or payload.get("project") or "studio")
+        title = str(payload.get("libraryTitle") or payload.get("title")
+                    or payload.get("runId") or job_id)
+        revision_meta = {}
+        ev = Path(outdir).expanduser().parent / "docs/probe/export-panel/runs" / job_id
+        for cand in sorted(ev.glob("*.json")) if ev.is_dir() else []:
+            try:
+                revision_meta = json.loads(cand.read_text(encoding="utf-8"))
+            except Exception:
+                revision_meta = {}
+            break
+        row = lib.land(video, project=project, title=title,
+                       platform=str(payload.get("platform") or "douyin"),
+                       revision=revision, run_id=str(payload.get("runId") or ""),
+                       job_id=job_id,
+                       draft=str(payload.get("draft") or ""),
+                       draft_path=str(payload.get("draftPath") or ""),
+                       duration=(revision_meta.get("probe") or {}).get("duration"),
+                       meta={"checks": revision_meta.get("checks") or {},
+                             "profile": revision_meta.get("profile") or {},
+                             "panel": revision_meta.get("panel") or ""})
+        return row
+    except Exception as exc:  # 入库失败不能吞掉成片，但也必须留痕
+        log.warning("成片入库失败（%s）：%s 仍留在 %s", job_id, exc, video)
+        return None
 
 
 def _foreground_pid() -> int:
@@ -572,8 +612,7 @@ class Worker:
         draft_name = Path(draft_path).name
         opened = subprocess.run(
             [sys.executable, str(opener), "--name", draft_name,
-             "--wait-idle", str(float(payload.get("waitIdle") or 30.0)),
-            "--return-pid", str(int(fore_pid or 0))],
+             "--wait-idle", str(float(_wait_idle(payload)))],
             capture_output=True, text=True, timeout=600,
         )
         open_tail = ((opened.stdout or "") + (opened.stderr or "")).strip()[-600:]
@@ -592,7 +631,8 @@ class Worker:
             "--platform", platform,
             "--outdir", outdir,
             "--draft-path", draft_path,
-            "--wait-idle", str(float(payload.get("waitIdle") or 30.0)),
+            "--wait-idle", str(float(_wait_idle(payload))),
+            "--return-pid", str(int(fore_pid or 0)),
             "--timeout", str(int(payload.get("exportTimeout") or 900)),
         ]
         if payload.get("canvas"):
@@ -611,9 +651,20 @@ class Worker:
             video = next((str(f) for f in made if f.suffix.lower() in (".mp4", ".mov")), None)
             if not video:
                 raise JianyingError(f"导出进程返回 0 但 {final_dir} 里没有产物")
+            landed = _land_export(video, payload, job_id, revision, outdir)
+            output = {"videoPath": video, "requiresManualExport": False}
+            if landed:
+                try:
+                    shutil.rmtree(final_dir, ignore_errors=True)
+                except Exception:
+                    pass
+                output["libraryPath"] = landed["path"]
+                output["libraryAssetId"] = landed["assetId"]
+                output["md5"] = landed["md5"]
+                video = landed["path"]
             return dict(base, **{
                 "stage": "exported",
-                "output": {"videoPath": video, "requiresManualExport": False},
+                "output": output,
                 "videoPath": video,
                 "log": tail,
             })

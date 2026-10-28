@@ -471,6 +471,8 @@ export class ProductionService {
         revision: run.revision,
         draftPath,
         allowGui: input.allowGui === true,
+        libraryProject: run.projectId,
+        libraryTitle: run.title,
         ...(typeof input.waitIdle === 'number' ? { waitIdle: input.waitIdle } : {}),
         platform: 'douyin',
       },
