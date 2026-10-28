@@ -21,12 +21,61 @@ import re
 import subprocess
 import atexit
 import time
+from pathlib import Path
 
 APP = "VideoFusion-macOS"
 PANEL_PREFIX = "导出-"
-AX_TOOL = os.environ.get("AX_TOOL", "/tmp/ax_tool")
-OCR_TOOL = os.environ.get("OCR_TOOL", "/tmp/ocr")
-WINLIST = os.environ.get("WINLIST", "/tmp/winlist")
+# 辅助工具是编译出来的小可执行文件。以前放在 /tmp，被系统清理过一次，
+# 导出任务就 FileNotFoundError 直接失败；改到稳定目录，并在缺失时自己编译。
+BIN_DIR = Path(os.environ.get("STUDIO_BIN") or os.path.expanduser("~/CreatorStudio/bin"))
+HERE = Path(__file__).resolve().parent
+AX_TOOL = os.environ.get("AX_TOOL") or str(BIN_DIR / "ax_tool")
+OCR_TOOL = os.environ.get("OCR_TOOL") or str(BIN_DIR / "ocr")
+WINLIST = os.environ.get("WINLIST") or str(BIN_DIR / "winlist")
+
+# 名字 → 源文件；ax_tool 是主要的 AX 读取器，ocr 读面板文字，winlist 找弹层窗口
+_TOOL_SOURCES = {"ax_tool": "ax_tool.swift", "ocr": "ocr.swift", "winlist": "winlist.swift"}
+
+
+def _swiftc():
+    """挑一个真能跑的 swiftc 加 SDK。
+
+    /usr/bin/swiftc 是 xcrun 的壳，Xcode 许可没同意就直接退出；所以直接调
+    Toolchain 里的二进制。SDK 必须显式给，否则报 unable to load standard library。
+    """
+    xc = "/Applications/Xcode.app/Contents/Developer"
+    tool = f"{xc}/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    sdk = f"{xc}/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+    if os.path.exists(tool) and os.path.exists(sdk):
+        return [tool, "-sdk", sdk], {"DEVELOPER_DIR": xc}
+    clt = "/Library/Developer/CommandLineTools"
+    tool = f"{clt}/usr/bin/swiftc"
+    sdk = f"{clt}/SDKs/MacOSX.sdk"
+    if os.path.exists(tool) and os.path.exists(sdk):
+        return [tool, "-sdk", sdk], {"DEVELOPER_DIR": clt}
+    return [], {}
+
+
+def ensure_tools() -> list:
+    """编译缺失的辅助工具，返回这次补上的名字。"""
+    missing = [n for n in _TOOL_SOURCES if not os.path.exists(str(BIN_DIR / n))]
+    if not missing:
+        return []
+    cmd, extra_env = _swiftc()
+    if not cmd:
+        return []
+    BIN_DIR.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ, **extra_env)
+    built = []
+    for name in missing:
+        src = HERE / _TOOL_SOURCES[name]
+        if not src.exists():
+            continue
+        proc = subprocess.run(cmd + [str(src), "-O", "-o", str(BIN_DIR / name)],
+                              capture_output=True, text=True, timeout=180, env=env)
+        if proc.returncode == 0 and os.path.exists(str(BIN_DIR / name)):
+            built.append(name)
+    return built
 
 # AX id → 我们内部的参数名。这里只做"命名"，不代表面板顺序。
 ID_NAME = {

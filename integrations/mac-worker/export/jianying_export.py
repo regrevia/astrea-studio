@@ -30,6 +30,9 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import panel as P  # noqa: E402
 
+# 面板辅助工具是编译出来的；缺了就现场补，别让导出卡在工具不存在上。
+P.ensure_tools()
+
 try:
     from platform_profiles import profile_for, resolution_option, fps_option
 except Exception:                                    # 平台矩阵未就绪时的兜底

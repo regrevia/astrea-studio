@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -117,6 +118,34 @@ def load_s3_creds() -> dict[str, str]:
 # jianying_draft 出草稿（中间态），jianying_export 收导出产物，两步分开记。
 JOB_JIANYING_DRAFT = "jianying_draft"
 JOB_JIANYING_EXPORT = "jianying_export"
+
+
+def screen_locked() -> bool:
+    """屏锁着的时候别去点剪映：锁屏下 GUI 自动化拿不到窗口，只会空转。
+
+    这里用 CoreGraphics 的会话字典判断，比读 assertions 稳；拿不到字典就当没锁。
+    """
+    try:
+        import ctypes
+        import ctypes.util
+
+        cg = ctypes.CDLL(ctypes.util.find_library("CoreGraphics"))
+        cf = ctypes.CDLL(ctypes.util.find_library("CoreFoundation"))
+        cg.CGSessionCopyCurrentDictionary.restype = ctypes.c_void_p
+        cf.CFStringCreateWithCString.restype = ctypes.c_void_p
+        cf.CFStringCreateWithCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
+        cf.CFDictionaryGetValue.restype = ctypes.c_void_p
+        cf.CFDictionaryGetValue.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        cf.CFBooleanGetValue.argtypes = [ctypes.c_void_p]
+        cf.CFBooleanGetValue.restype = ctypes.c_bool
+        session = cg.CGSessionCopyCurrentDictionary()
+        if not session:
+            return False
+        key = cf.CFStringCreateWithCString(None, b"CGSSessionScreenIsLocked", 0x08000100)
+        value = cf.CFDictionaryGetValue(session, key)
+        return bool(value and cf.CFBooleanGetValue(value))
+    except Exception:
+        return False
 
 
 class Worker:
@@ -503,6 +532,16 @@ class Worker:
                 "expectedOutputDir": str(Path(outdir) / job_id / f"r{revision}"),
                 "note": ("macOS 上剪映只能人工点导出。导出后带 allowGui=true 再跑一次本任务，"
                          "产物会绑到 out/<jobId>/r<rev>/ 并做体检。"),
+            })
+
+        if screen_locked():
+            # 锁屏时 GUI 自动化必然空转。不烧 1800 秒超时，直接交回人工。
+            return dict(base, **{
+                "stage": "awaiting_manual_export",
+                "reasonCode": "screen_locked",
+                "output": {"videoPath": None, "requiresManualExport": True},
+                "expectedOutputDir": str(Path(outdir) / job_id / f"r{revision}"),
+                "note": "屏幕锁着，这轮不开剪映；解锁后重新发起导出。",
             })
 
         if not draft_path:
