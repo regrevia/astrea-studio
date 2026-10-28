@@ -368,3 +368,93 @@ function rotateList(items: unknown[], times: number): unknown[] {
   const shift = ((Math.trunc(times) % items.length) + items.length) % items.length
   return [...items.slice(shift), ...items.slice(0, shift)]
 }
+
+/** 单场景补丁：只改一处，字段白名单固定，改完仍是可渲染的时间轴规格。 */
+export interface ScenePatch {
+  index: number
+  text?: string
+  duration?: number
+  src?: string
+}
+
+const SCENE_PATCH_FIELDS = ['index', 'text', 'duration', 'src'] as const
+
+/**
+ * 按场景序号改一条已经展开好的时间轴规格。
+ *
+ * 和整份 spec 重写相比，这里只允许动「第几屏的字幕/时长/素材」，
+ * 越界、不认识的字段、一次改多个字段都直接报错——批量改稿时
+ * 错的是第几条要能一眼看出来，不能静默丢改动。
+ */
+export function applyScenePatches(
+  spec: Record<string, unknown>,
+  patches: unknown[],
+): Record<string, unknown> {
+  const timeline = spec['timeline']
+  if (!timeline || typeof timeline !== 'object') {
+    throw new AppException(ResponseCode.ProductionInvalidState, '这份规格没有时间轴，不能按场景改')
+  }
+  const track = timeline as Record<string, unknown>
+  const video = Array.isArray(track['video']) ? track['video'] as Record<string, unknown>[] : []
+  const text = Array.isArray(track['text']) ? track['text'] as Record<string, unknown>[] : []
+  const sceneCount = Math.max(video.length, text.length)
+  if (sceneCount === 0)
+    throw new AppException(ResponseCode.ProductionInvalidState, '时间轴上还没有场景，不能按场景改')
+
+  const nextVideo = video.map(item => ({ ...item }))
+  const nextText = text.map(item => ({ ...item }))
+
+  patches.forEach((raw, position) => {
+    const patch = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+    const unknownKeys = Object.keys(patch).filter(key => !(SCENE_PATCH_FIELDS as readonly string[]).includes(key))
+    if (unknownKeys.length)
+      throw new AppException(ResponseCode.ProductionInvalidState, `第 ${position + 1} 个改动带了不支持的字段：${unknownKeys.join('、')}`)
+    const index = patch['index']
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= sceneCount)
+      throw new AppException(ResponseCode.ProductionInvalidState, `第 ${position + 1} 个改动的场景序号不在 0-${sceneCount - 1} 之间`)
+
+    const touches = ['text', 'duration', 'src'].filter(key => patch[key] !== undefined)
+    if (touches.length === 0)
+      throw new AppException(ResponseCode.ProductionInvalidState, `第 ${position + 1} 个改动没有要改的内容`)
+    if (touches.length > 1)
+      throw new AppException(ResponseCode.ProductionInvalidState, `第 ${position + 1} 个改动一次只能改一项：${touches.join('、')}`)
+
+    if (patch['text'] !== undefined) {
+      const line = nextText[index]
+      if (!line)
+        throw new AppException(ResponseCode.ProductionInvalidState, `第 ${index + 1} 屏没有字幕，不能改文案`)
+      const value = patch['text']
+      if (typeof value !== 'string' || !value.trim())
+        throw new AppException(ResponseCode.ProductionInvalidState, `第 ${index + 1} 屏的文案不能为空`)
+      nextText[index] = { ...line, text: value.trim() }
+    }
+
+    if (patch['src'] !== undefined) {
+      const clip = nextVideo[index]
+      if (!clip)
+        throw new AppException(ResponseCode.ProductionInvalidState, `第 ${index + 1} 屏没有素材，不能换素材`)
+      const value = patch['src']
+      if (typeof value !== 'string' || !value.trim())
+        throw new AppException(ResponseCode.ProductionInvalidState, `第 ${index + 1} 屏的素材路径不能为空`)
+      nextVideo[index] = { ...clip, src: value.trim() }
+    }
+
+    if (patch['duration'] !== undefined) {
+      const clip = nextVideo[index]
+      if (!clip)
+        throw new AppException(ResponseCode.ProductionInvalidState, `第 ${index + 1} 屏没有素材，不能改时长`)
+      const value = patch['duration']
+      if (typeof value !== 'number' || !(value >= 1))
+        throw new AppException(ResponseCode.ProductionInvalidState, `第 ${index + 1} 屏的时长不能小于 1 秒`)
+      const start = typeof clip['in'] === 'number' ? clip['in'] : 0
+      nextVideo[index] = { ...clip, out: Number((start + value).toFixed(3)) }
+      const line = nextText[index]
+      if (line) {
+        const textStart = typeof line['start'] === 'number' ? line['start'] : 0
+        nextText[index] = { ...line, end: Number((textStart + value - 0.4).toFixed(2)) }
+      }
+    }
+  })
+
+  return { ...spec, timeline: { ...track, video: nextVideo, text: nextText } }
+}

@@ -259,6 +259,30 @@ describe('reviseRun', () => {
   })
 })
 
+  it('按场景改稿落在新 revision 的时间轴上，底稿仍能审计', async () => {
+    const { service, runRepo } = createService()
+    runRepo.getByIdForUser.mockResolvedValue({
+      id: 'run-2',
+      revision: 3,
+      brief: '旧需求',
+      spec: {
+        engine: 'timeline',
+        input: { ...FRIENDLY_INPUT, materials: ['a.mp4', 'b.mp4'], script: ['第一句', '第二句'] },
+        timeline: { canvas: { width: 1080, height: 1920, fps: 30 }, video: [], text: [], audio: [] },
+      },
+      status: 'succeeded',
+      checkpoints: [],
+    })
+
+    await service.reviseRun('user-1', 'run-2', { scenes: [{ index: 1, text: '只改第二句' }] })
+
+    const updated = runRepo.updateByRevision.mock.calls[0][2] as Record<string, unknown>
+    expect(updated.revision).toBe(4)
+    const timeline = (updated.spec as Record<string, unknown>).timeline as Record<string, any>
+    expect(timeline.text.map((row: Record<string, unknown>) => row.text)).toEqual(['第一句', '只改第二句'])
+    expect(((updated.spec as Record<string, unknown>).input as Record<string, unknown>).script).toEqual(['第一句', '第二句'])
+  })
+
 describe('completeJob', () => {
   it('把 worker 结果归一成 output.videoPath/videoUrl/duration/canvas/platforms', async () => {
     const { service, jobRepo, runRepo } = createService()

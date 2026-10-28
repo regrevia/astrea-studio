@@ -23,7 +23,7 @@ import {
 } from '@yikart/mongodb'
 import { MaterialGroupService } from '../content/material-group.service'
 import { MaterialService } from '../content/material.service'
-import { applyRunBatchVariant, applyVerticalShortVariant, buildTimelineSpec, RUN_BATCH_VARIANTS, RunBatchVariant } from './timeline-spec'
+import { applyRunBatchVariant, applyScenePatches, applyVerticalShortVariant, buildTimelineSpec, RUN_BATCH_VARIANTS, RunBatchVariant, ScenePatch } from './timeline-spec'
 
 export const LEASE_MS = 60_000
 export const RENDER_LANE = 'render'
@@ -317,7 +317,7 @@ export class ProductionService {
    * do not carry over: any attempt bound to an older revision stays as-is and a
    * fresh intent must be created before publishing again.
    */
-  async reviseRun(userId: string, runId: string, patch: { brief?: string, spec?: Record<string, unknown> }) {
+  async reviseRun(userId: string, runId: string, patch: { brief?: string, spec?: Record<string, unknown>, scenes?: ScenePatch[] }) {
     const run = await this.getRun(userId, runId)
     // 只有已结束的 run 才能改稿：排队中/渲染中/待用户的 run 改稿会和正在跑的
     // job 抢同一个 runId，旧 revision 的结果回来时没人知道该写哪一版。
@@ -338,10 +338,13 @@ export class ProductionService {
       : run.spec
     // CAS：读到 revision N 就只能把 run 从 N 推到 N+1。并发改稿时后到的那次
     // 拿不到 CAS，不会把 revision 覆盖回去，也不会为同一 revision 建两条 job。
+    const expanded = buildTimelineSpec({ ...baseSpec, ...patchSpec })
+    // 逐场景补丁在展开之后落，作用在真正要渲染的那条时间轴上
+    const nextSpec = patch.scenes?.length ? applyScenePatches(expanded, patch.scenes) : expanded
     const updated = await this.runRepo.updateByRevision(run.id, run.revision, {
       revision,
       brief: patch.brief ?? run.brief,
-      spec: buildTimelineSpec({ ...baseSpec, ...patchSpec }),
+      spec: nextSpec,
       status: ProductionRunStatus.QUEUED,
       currentStage: 'queued',
       lastError: '',

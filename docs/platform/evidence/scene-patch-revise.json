@@ -1,0 +1,66 @@
+{
+  "round": 22,
+  "feature": "逐场景改稿（scenes patch）",
+  "api": {
+    "rest": "POST /api/production/runs/:id/revise { scenes:[{index,text|duration|src}] }",
+    "mcp": "reviseProductionRun 增加 scenes 参数",
+    "rules": [
+      "index 必须在 0..场景数-1",
+      "字段白名单 index/text/duration/src",
+      "一次只改一项",
+      "空文案/时长<1s/该屏没字幕都拒"
+    ]
+  },
+  "live": {
+    "runId": "6ae1f91afccd24d42cfc6b1d",
+    "createdStatus": {
+      "revision": 1,
+      "status": "succeeded"
+    },
+    "revised": {
+      "revision": 2,
+      "status": "queued -> succeeded"
+    },
+    "timelineTextBefore": [
+      "第一句原稿",
+      "第二句原稿"
+    ],
+    "timelineTextAfter": [
+      "第一句原稿",
+      "第二句改稿"
+    ],
+    "output": "studio/runs/6ae1f91afccd24d42cfc6b1d/r2/master.mp4",
+    "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261028-213114__studio__002__按场景改稿验收-02__douyin__r2.mp4",
+    "md5": "6edb757d423126c352c16632e6871735",
+    "duration": 4,
+    "canvas": "1080x1920@30",
+    "rejections": [
+      {
+        "input": [
+          {
+            "index": 9,
+            "text": "越界"
+          }
+        ],
+        "code": 12853,
+        "message": "第 1 个改动的场景序号不在 0-1 之间"
+      },
+      {
+        "input": [
+          {
+            "index": 0,
+            "text": "a",
+            "src": "b.mp4"
+          }
+        ],
+        "code": 12853,
+        "message": "第 1 个改动一次只能改一项：text、src"
+      }
+    ]
+  },
+  "tests": {
+    "timeline-spec.spec.ts": "46 passed",
+    "production.service.spec.ts": "30 passed",
+    "tsc": 0
+  }
+}

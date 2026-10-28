@@ -70,6 +70,12 @@ const ReviseRunSchema = z.object({
   runId: z.string().describe('要修改的任务 ID'),
   brief: z.string().optional().describe('修改后的需求'),
   spec: z.record(z.string(), z.unknown()).optional().describe('规格补丁，会与现有规格合并'),
+  scenes: z.array(z.object({
+    index: z.number().int().min(0).describe('第几屏，从 0 数'),
+    text: z.string().optional().describe('这一屏的字幕'),
+    duration: z.number().min(1).optional().describe('这一屏的时长（秒）'),
+    src: z.string().optional().describe('这一屏的素材路径'),
+  })).max(50).optional().describe('按场景逐条改，一次只改一项；适合只换一句字幕或一处素材'),
 })
 
 const SubmitRenderSchema = z.object({
@@ -217,6 +223,7 @@ export class ProductionMcpController {
     const run = await this.production.reviseRun(user.id, params.runId, {
       brief: params.brief,
       spec: params.spec,
+      scenes: params.scenes,
     })
     if (!run) {
       return toTextResult(`Run ${params.runId} could not be revised: it no longer exists.`)

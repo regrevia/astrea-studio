@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyRunBatchVariant, applyVerticalShortVariant, buildTimelineSpec, mirrorKeyframes, rotateOpening, RunBatchVariant, TimelineCanvasPreset, varyHook } from './timeline-spec'
+import { applyRunBatchVariant, applyScenePatches, applyVerticalShortVariant, buildTimelineSpec, mirrorKeyframes, rotateOpening, RunBatchVariant, TimelineCanvasPreset, varyHook } from './timeline-spec'
 
 const FRIENDLY_INPUT = {
   engine: 'timeline',
@@ -422,5 +422,61 @@ describe('applyVerticalShortVariant 竖屏口播稿分版', () => {
     const out = applyVerticalShortVariant(spec, 2, ['opening'])
     expect(out['hook']).toBe('原钩子')
     expect(out['points']).toEqual(['三', '一', '二'])
+  })
+})
+
+describe('applyScenePatches 按场景改稿', () => {
+  const expanded = () => buildTimelineSpec({ ...FRIENDLY_INPUT }) as Record<string, any>
+
+  it('只换指定屏的字幕，其它屏和原规格都不动', () => {
+    const spec = expanded()
+    const before = JSON.parse(JSON.stringify(spec))
+
+    const next = applyScenePatches(spec, [{ index: 1, text: '改过的第二句' }])
+    const text = (next.timeline as Record<string, any>).text as Array<Record<string, unknown>>
+
+    expect(text.map(row => row.text)).toEqual(['第一句', '改过的第二句'])
+    expect(spec).toEqual(before)
+    expect((next.timeline as Record<string, any>).video).toEqual((spec.timeline as Record<string, any>).video)
+  })
+
+  it('改时长时重算该屏出点与字幕结束点', () => {
+    const spec = expanded()
+    const next = applyScenePatches(spec, [{ index: 0, duration: 5 }])
+    const timeline = next.timeline as Record<string, any>
+
+    expect(timeline.video[0].out).toBe(5)
+    expect(timeline.video[1].out).toBe(3)
+    expect(timeline.text[0].end).toBe(4.8)
+    expect(timeline.text[1].end).toBe(5.8)
+  })
+
+  it('换素材只动该屏的 src', () => {
+    const spec = expanded()
+    const next = applyScenePatches(spec, [{ index: 1, src: 'c.mp4' }])
+    const video = (next.timeline as Record<string, any>).video as Array<Record<string, unknown>>
+
+    expect(video.map(row => row.src)).toEqual(['a.mp4', 'c.mp4'])
+  })
+
+  it('越界序号报错并指出第几个改动', () => {
+    expect(() => applyScenePatches(expanded(), [{ index: 5, text: 'x' }])).toThrow('第 1 个改动的场景序号不在 0-1 之间')
+  })
+
+  it('不认识的字段、空改动、一次改多项都报错', () => {
+    expect(() => applyScenePatches(expanded(), [{ index: 0, colour: 'red' }])).toThrow('不支持的字段：colour')
+    expect(() => applyScenePatches(expanded(), [{ index: 0 }])).toThrow('没有要改的内容')
+    expect(() => applyScenePatches(expanded(), [{ index: 0, text: 'x', src: 'y.mp4' }])).toThrow('一次只能改一项')
+  })
+
+  it('空文案、短时长、没有这一屏的字幕都不放过', () => {
+    expect(() => applyScenePatches(expanded(), [{ index: 0, text: '   ' }])).toThrow('文案不能为空')
+    expect(() => applyScenePatches(expanded(), [{ index: 0, duration: 0.5 }])).toThrow('时长不能小于 1 秒')
+    const spec = buildTimelineSpec({ ...FRIENDLY_INPUT, materials: ['a.mp4', 'b.mp4', 'c.mp4'] }) as Record<string, any>
+    expect(() => applyScenePatches(spec, [{ index: 2, text: '第三句' }])).toThrow('第 3 屏没有字幕')
+  })
+
+  it('没有时间轴的规格直接拒', () => {
+    expect(() => applyScenePatches({ engine: 'motion' }, [{ index: 0, text: 'x' }])).toThrow('没有时间轴')
   })
 })
