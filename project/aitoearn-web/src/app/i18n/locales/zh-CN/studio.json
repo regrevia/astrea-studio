@@ -123,7 +123,10 @@
       "parallel_points": "三张卡句式同构，换一种说法"
     },
     "count": "条数",
-    "batchSuccess": "{{count}} 条已排队"
+    "batchSuccess": "{{count}} 条已排队",
+    "batchVariants": "多条之间怎么不同",
+    "variantOpening": "换开场要点",
+    "variantOpeningHint": "第 1 条按原稿，后面几条把首条要点挪到最后"
   },
   "run": {
     "status": {

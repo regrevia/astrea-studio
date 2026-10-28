@@ -1,0 +1,81 @@
+{
+  "capturedAt": "2026-10-28T20:29:00+08:00",
+  "feature": "干货卡批量：多条之间换开场要点（第 1 条原稿，后两条轮转卡面）",
+  "backend": "applyVerticalShortVariant opening 同步轮转 spec.points 与 spec.narration.points；长度不一致时不转口播（timeline-spec.spec.ts 新增用例）",
+  "unit": {
+    "cmd": "nx test aitoearn-server -- src/core/production/timeline-spec.spec.ts",
+    "result": "EXIT=0"
+  },
+  "batch": {
+    "endpoint": "POST /api/production/runs/batch",
+    "projectId": "6adc2161656a13996166bbfc",
+    "request": {
+      "count": 3,
+      "variants": [
+        "opening"
+      ]
+    },
+    "runs": [
+      {
+        "id": "6ae1e9ab6b2dd37dec60e3a9",
+        "order": [
+          "窗口不是越大越好",
+          "先算清一次对话要装下多少",
+          "压缩比扩窗更划算"
+        ],
+        "md5": "c9235b59b830844340223b65cd670871",
+        "duration": 17.089,
+        "status": "succeeded"
+      },
+      {
+        "id": "6ae1e9ab6b2dd37dec60e3b2",
+        "order": [
+          "先算清一次对话要装下多少",
+          "压缩比扩窗更划算",
+          "窗口不是越大越好"
+        ],
+        "md5": "e6ef4f82c2c03b414d88e77ed72c7e68",
+        "duration": 17.089,
+        "status": "succeeded"
+      },
+      {
+        "id": "6ae1e9ab6b2dd37dec60e3bb",
+        "order": [
+          "压缩比扩窗更划算",
+          "窗口不是越大越好",
+          "先算清一次对话要装下多少"
+        ],
+        "md5": "b1583d11e6e428151ab5d547cbc63a7e",
+        "duration": 17.089,
+        "status": "succeeded"
+      }
+    ],
+    "distinctMd5": 3,
+    "narrationAligned": true,
+    "samples": [
+      "/Users/apple/CreatorStudio/library/studio/2026-10/20261028-202625__studio__001__干货卡批量分版-模型上下文窗口-1-3__douyin__r1.mp4",
+      "/Users/apple/CreatorStudio/library/studio/2026-10/20261028-202704__studio__001__干货卡批量分版-模型上下文窗口-2-3__douyin__r1.mp4",
+      "/Users/apple/CreatorStudio/library/studio/2026-10/20261028-202743__studio__001__干货卡批量分版-模型上下文窗口-3-3__douyin__r1.mp4"
+    ]
+  },
+  "ui": {
+    "page": "http://127.0.0.1:8080/zh-CN/studio",
+    "steps": [
+      "条数选 3",
+      "出现「多条之间怎么不同」与「换开场要点」"
+    ],
+    "legendCount": 1,
+    "checkboxCount": 1,
+    "checkboxChecked": true,
+    "screenshots": [
+      "docs/platform/evidence/studio-factcard-variants.png",
+      "docs/platform/evidence/studio-factcard-variants-crop.png"
+    ],
+    "tsc": "npx tsc --noEmit → 0",
+    "lints": {
+      "ui-copy-lint": "0 error",
+      "zh-lint": "0 error",
+      "style-lint": "0 error"
+    }
+  }
+}

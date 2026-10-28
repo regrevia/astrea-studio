@@ -19,6 +19,12 @@ Studio 的「干货卡一键出片」入口：填选题、开场钩子、要点�
 
 请求走 `createFactCardRun`（`src/api/production/production.api.ts`），`projectId` 与「新建时间轴任务」同一套取法：用项目列表第一个。
 
+## 多条之间怎么不同
+
+条数选 2 或 3 时出现「多条之间怎么不同」，只有「换开场要点」一个开关（默认勾选）：第 1 条按原稿，后面几条按条号轮转 `spec.points`。后端 `applyVerticalShortVariant` 会把 `spec.narration.points` 一起轮转，卡面标题和这一屏的口播不会错位；两边长度对不上时不转口播，宁可少一维也不串行。
+
+请求走 `POST /production/runs/batch` 并带 `variants: ['opening']`；不勾时传空数组，几条除了表演种子外文案完全一样。
+
 ## 渲染通道
 
 后端按 `run.spec.engine` 派切渲染通道，只有 `jianying` 才会入剪映草稿队列；顶层 `engine` / `template` 会被接口 DTO 的 whitelist 丢掉，所以 `spec` 里也带了一份 `engine: 'jianying'` / `template: 'factcard'`。这段约束写在 `utils.ts` 的 `buildFactCardSpec` 注释里，改动前先看后端 `production.service.ts` 的 `enqueueRender`。

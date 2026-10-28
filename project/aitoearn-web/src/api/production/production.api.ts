@@ -87,7 +87,7 @@ export function createFactCardRun(data: CreateFactCardRunInput) {
 }
 
 /** 同一份稿子排多条母版：一次出 2~3 条，挑一条发。 */
-export function createFactCardRunBatch(data: CreateFactCardRunInput & { count: number }) {
+export function createFactCardRunBatch(data: CreateFactCardRunInput & { count: number, variants?: RunBatchVariant[] }) {
   return http.post<{ runIds: string[], count: number }>('production/runs/batch', data)
 }
 

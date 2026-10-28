@@ -347,6 +347,14 @@ export function applyVerticalShortVariant(
     if (points.length > 1) out = { ...out, points: rotateList(points, index) }
     const materials = Array.isArray(spec['materials']) ? (spec['materials'] as unknown[]) : []
     if (materials.length > 1) out = { ...out, materials: rotateList(materials, index) }
+    // 干货卡这类脚本把每屏的正文放在 narration.points 里：要点转了正文必须跟着转，
+    // 否则卡面标题和第几条口播对不上（张冠李戴）。
+    const narration = spec['narration']
+    if (narration && typeof narration === 'object' && points.length > 1) {
+      const lines = (narration as Record<string, unknown>)['points']
+      if (Array.isArray(lines) && lines.length === points.length)
+        out = { ...out, narration: { ...(narration as Record<string, unknown>), points: rotateList(lines, index) } }
+    }
   }
   if (variants.includes('hook')) {
     const hooks = Array.isArray(spec['hook_variants']) ? (spec['hook_variants'] as unknown[]) : []

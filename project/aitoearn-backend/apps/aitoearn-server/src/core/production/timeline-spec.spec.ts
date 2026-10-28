@@ -403,6 +403,21 @@ describe('applyVerticalShortVariant 竖屏口播稿分版', () => {
     expect(applyVerticalShortVariant(noVariants, 1, ['hook'])['hook']).toBe('原钩子')
   })
 
+  it('干货卡脚本：要点转了 narration.points 跟着转，卡面正文不串行', () => {
+    const fact = {
+      template: 'factcard',
+      points: ['甲::说明甲', '乙::说明乙', '丙::说明丙'],
+      narration: { intro: '开场', points: ['讲甲', '讲乙', '讲丙'], outro: '收尾' },
+    }
+    const out = applyVerticalShortVariant(fact, 1, ['opening'])
+    expect(out['points']).toEqual(['乙::说明乙', '丙::说明丙', '甲::说明甲'])
+    expect((out['narration'] as Record<string, unknown>)['points']).toEqual(['讲乙', '讲丙', '讲甲'])
+    expect((out['narration'] as Record<string, unknown>)['intro']).toBe('开场')
+    // 长度对不上就不动 narration，宁可少一维也不让标题和口播错位
+    const skewed = { ...fact, narration: { intro: '开场', points: ['讲甲'] } }
+    expect(applyVerticalShortVariant(skewed, 1, ['opening'])['narration']).toEqual(skewed.narration)
+  })
+
   it('没选到的维度一个字都不动', () => {
     const out = applyVerticalShortVariant(spec, 2, ['opening'])
     expect(out['hook']).toBe('原钩子')

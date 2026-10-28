@@ -10,6 +10,7 @@
 import type { CopyScope } from './copyCheck'
 import type { FactCardFormError, FactCardFormValues, FactCardOutput } from './utils'
 import type { FactCardVoice, OutfitInfo } from '@/api/production/production.types'
+import type { RunBatchVariant } from '@/api/production/production.api'
 import { Clapperboard, Plus, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
@@ -17,6 +18,7 @@ import { createFactCardRun, createFactCardRunBatch, getOutfits } from '@/api/pro
 import { useTransClient } from '@/app/i18n/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -76,6 +78,9 @@ function FactCardForm({ projects, projectId: selectedProjectId, onCreated }: Fac
   const [createdRunId, setCreatedRunId] = useState('')
   const [createdCount, setCreatedCount] = useState(1)
   const [count, setCount] = useState('1')
+  // 干货卡只有「换开场要点」这一维真能改变成片：卡面顺序变了，开场那屏就不同。
+  // 另两维系在时间轴镜头上，干货卡的画面是现场排的纸面，勾了也不生效。
+  const [rotateOpening, setRotateOpening] = useState(true)
 
   // 出片前先过一遍体检：命中的地方改完再提交，不用等渲染完才发现文案有问题。
   // 空表单不体检，收尾是固定文案不参与，只盯着自己能改的字段。
@@ -142,8 +147,9 @@ function FactCardForm({ projects, projectId: selectedProjectId, onCreated }: Fac
     try {
       const wanted = Number(count) || 1
       const input = buildFactCardRunInput(values, effectiveProjectId)
+      const variants: RunBatchVariant[] = rotateOpening ? ['opening'] : []
       const res = wanted > 1
-        ? await createFactCardRunBatch({ ...input, count: wanted })
+        ? await createFactCardRunBatch({ ...input, count: wanted, variants })
         : await createFactCardRun(input)
       const payload = res?.data as { runId?: string, runIds?: string[] } | undefined
       if (res?.code !== 0 || !(payload?.runIds?.length ?? payload?.runId)) {
@@ -411,6 +417,23 @@ function FactCardForm({ projects, projectId: selectedProjectId, onCreated }: Fac
               {t('factCard.submit')}
             </Button>
           </div>
+
+          {Number(count) > 1 && (
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-sm font-medium">{t('factCard.batchVariants')}</legend>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="fact-card-variant-opening"
+                  checked={rotateOpening}
+                  onCheckedChange={next => setRotateOpening(next === true)}
+                />
+                <Label htmlFor="fact-card-variant-opening" className="cursor-pointer text-sm font-normal">
+                  {t('factCard.variantOpening')}
+                </Label>
+              </div>
+              <p className="text-[11px] text-muted-foreground">{t('factCard.variantOpeningHint')}</p>
+            </fieldset>
+          )}
         </form>
       </CardContent>
     </Card>
