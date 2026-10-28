@@ -118,7 +118,11 @@ export function RunDetailPanel({ run, projectName, onChanged }: RunDetailPanelPr
             {t('run.detail.jianying')}
           </span>
           <p className="text-xs text-muted-foreground">
-            {artifacts.jianyingDelivered ? t('run.detail.jianyingDone') : t('run.detail.jianyingPending')}
+            {artifacts.jianyingClaimed
+              ? t('run.detail.jianyingClaimed')
+              : artifacts.jianyingDelivered
+                ? t('run.detail.jianyingDone')
+                : t('run.detail.jianyingPending')}
           </p>
         </div>
       )}

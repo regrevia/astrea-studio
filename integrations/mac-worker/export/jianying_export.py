@@ -454,6 +454,86 @@ def ensure_free(final: Path) -> bool:
     return not Path(final).exists()
 
 
+
+def claim_export(path: str, args) -> int:
+    """认领人工导出的成片：体检 → 归位 → 交回 worker 入库。
+
+    剪映 11.6 的导出面板只能人手点，所以「草稿 → 成片」总有一步在 GUI 里。
+    这一步人工做完之后，不能靠「导出目录里最新的文件」猜（并发必错），
+    于是要求显式给文件路径；这里按草稿 sidecar 的时长/画布做同一套体检，
+    过了才归位，跟自动导出走同一个落点、同一份证据。
+    """
+    src = Path(path).expanduser().resolve()
+    if not src.is_file():
+        print("认领的成片不存在：%s" % src, file=sys.stderr)
+        return 2
+    if src.suffix.lower() not in (".mp4", ".mov"):
+        print("认领的文件不是 mp4/mov：%s" % src.name, file=sys.stderr)
+        return 2
+    if not args.job_id:
+        print("要 --job-id：认领的成片必须绑到任务", file=sys.stderr)
+        return 2
+    if not args.revision:
+        print("要 --revision：认领的成片必须绑到修订版", file=sys.stderr)
+        return 2
+    draft_path = args.draft_path or ""
+    sidecar = load_sidecar(draft_path) if draft_path else {}
+    canvas = tuple(int(x) for x in args.canvas.split("x")) if "x" in args.canvas else (0, 0)
+    if not any(canvas) and sidecar:
+        cc = sidecar.get("canvas") or {}
+        if cc.get("width") and cc.get("height"):
+            canvas = (int(cc["width"]), int(cc["height"]))
+    expect_duration = args.expect_duration or float(sidecar.get("expectedDuration") or 0)
+    expect_fps = float(sidecar.get("fps") or 30)
+    if sidecar.get("revision") and args.revision:
+        want = str(sidecar.get("revision")).strip()
+        if want.isdigit() and int(want) != args.revision:
+            print("修订版对不上：草稿是 r%s，命令行给的是 r%d" % (want, args.revision),
+                  file=sys.stderr)
+            return 11
+    info = ffprobe(str(src))
+    expect = {"duration": expect_duration, "width": canvas[0], "height": canvas[1],
+              "fps": expect_fps}
+    checks = validate(info, expect)
+    print("认领: %s (%.2f MB)" % (src, (info.get("size") or 0) / 1048576.0))
+    for k, v in checks.items():
+        print("  校验 %-13s %s  %s" % (k, "OK" if v["ok"] else "FAIL", v["detail"]))
+    failed = [k for k, v in checks.items() if not v["ok"]]
+    if failed:
+        # 拒绝也要留证据：哪一版、哪个文件、差在哪，事后能复盘。
+        ev_dir = EVIDENCE / args.job_id
+        ev_dir.mkdir(parents=True, exist_ok=True)
+        rec = {"jobId": args.job_id, "revision": args.revision, "claim": str(src),
+               "draft": Path(draft_path).name if draft_path else None,
+               "draftPath": draft_path or None, "platform": args.platform,
+               "probe": info, "expect": expect, "checks": checks,
+               "accepted": False, "failed": failed,
+               "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+        ev = ev_dir / ("r%d__%s.rejected.json" % (args.revision, args.platform))
+        ev.write_text(json.dumps(rec, ensure_ascii=False, indent=2), encoding="utf-8")
+        print("\n认领的成片没通过体检（%s），不归档：%s\n证据 → %s"
+              % (", ".join(failed), src, ev), file=sys.stderr)
+        return 6
+    out_dir, final = plan_output(args.job_id, args.revision, args.platform, args.outdir)
+    if not ensure_free(final):
+        print("这一版已经有成片了，不覆盖：%s" % final, file=sys.stderr)
+        return 8
+    out_dir.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(src), str(final))
+    ev_dir = EVIDENCE / args.job_id
+    ev_dir.mkdir(parents=True, exist_ok=True)
+    rec = {"jobId": args.job_id, "revision": args.revision, "claim": str(src),
+           "draft": Path(draft_path).name if draft_path else None,
+           "draftPath": draft_path or None, "platform": args.platform,
+           "probe": info, "expect": expect, "checks": checks,
+           "final": str(final), "accepted": True, "failed": [],
+           "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    ev = ev_dir / ("r%d__%s.json" % (args.revision, args.platform))
+    ev.write_text(json.dumps(rec, ensure_ascii=False, indent=2), encoding="utf-8")
+    print("已归位 → %s\n证据 → %s" % (final, ev))
+    return 0
+
+
 # ------------------------------------------------------------------ main
 def main(argv=None):
     ap = argparse.ArgumentParser()
@@ -485,7 +565,11 @@ def main(argv=None):
     ap.add_argument("--no-restore-focus", action="store_true",
                     help="跑完不把前台 App 和光标还回去（默认会还）")
     ap.add_argument("--map-out", default=str(REPO / "docs/probe/export-panel/panel-map.json"))
+    ap.add_argument("--claim", default="",
+                    help="认领一个人工导出的成片：只做体检+入库绑版，不开面板、不点鼠标")
     args = ap.parse_args(argv)
+    if args.claim:
+        return claim_export(args.claim, args)
 
     # 时长必须在开面板之前读：面板是模态的，开着的时候编辑器的时间线节点可能不在 AX 树里
     dur = playhead_duration()

@@ -53,6 +53,10 @@ export interface ProductionCanvas {
 export interface ProductionRunOutput {
   videoPath?: string
   videoUrl?: string
+  /** 成片是用户自己在剪映里导出、平台认领入库的：没有母版渲染，也没有待办导出。 */
+  claimed?: boolean
+  /** 剪映草稿目录；认领成片按它的时长/画布/帧率做体检。 */
+  draftPath?: string
   /** 需要人工在剪映点导出时为 true；此时没有 videoPath。 */
   requiresManualExport?: boolean
   /** 停下的原因码，例如 screen_locked / export_user_busy。 */

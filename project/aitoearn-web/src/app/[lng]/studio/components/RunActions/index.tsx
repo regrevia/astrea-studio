@@ -7,13 +7,14 @@
 'use client'
 
 import type { ProductionRun } from '@/api/production/production.types'
-import { Clapperboard, PencilLine, RotateCcw, XCircle } from 'lucide-react'
+import { Clapperboard, FolderInput, PencilLine, RotateCcw, XCircle } from 'lucide-react'
 import { useState } from 'react'
 import { cancelRun, retryRun, startRunExport } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
 import { Button } from '@/components/ui/button'
 import { confirm } from '@/utils/ui/confirm'
 import { canCancelRun, canRetryRun } from '../../utils/status'
+import { ClaimExportDialog } from './components/ClaimExportDialog'
 import { ReviseRunDialog } from './components/ReviseRunDialog'
 
 interface RunActionsProps {
@@ -29,6 +30,9 @@ export function RunActions({ run, onChanged, compact = false }: RunActionsProps)
   const [pending, setPending] = useState<'cancel' | 'retry' | 'export' | null>(null)
   const [error, setError] = useState('')
   const [reviseOpen, setReviseOpen] = useState(false)
+  const [claimOpen, setClaimOpen] = useState(false)
+  // 认领只对「草稿已落盘、用户自己去剪映导过」的任务成立；草稿路径是体检基准。
+  const draftPath = typeof run.output?.draftPath === 'string' ? run.output.draftPath : ''
 
   const size = compact ? 'sm' : 'default'
 
@@ -139,12 +143,30 @@ export function RunActions({ run, onChanged, compact = false }: RunActionsProps)
           {t('run.action.exportGui')}
         </Button>
       )}
+      {run.status === 'waiting_user' && draftPath && (
+        <Button
+          size={size}
+          variant="outline"
+          className="cursor-pointer"
+          onClick={() => setClaimOpen(true)}
+        >
+          <FolderInput className="h-4 w-4" />
+          {t('run.action.claimExport')}
+        </Button>
+      )}
       <Button size={size} variant="outline" className="cursor-pointer" onClick={() => setReviseOpen(true)}>
         <PencilLine className="h-4 w-4" />
         {t('run.action.revise')}
       </Button>
 
       {error && <p role="alert" className="text-xs text-destructive">{t(error)}</p>}
+
+      <ClaimExportDialog
+        run={run}
+        open={claimOpen}
+        onOpenChange={setClaimOpen}
+        onClaimed={() => onChanged?.()}
+      />
 
       <ReviseRunDialog
         key={`${run.id}-${run.revision ?? 0}`}

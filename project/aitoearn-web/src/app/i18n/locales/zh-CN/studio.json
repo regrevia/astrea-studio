@@ -159,12 +159,21 @@
       "retry": "重新出片",
       "revise": "提修改",
       "openVideo": "打开成片",
-      "exportGui": "让这台 Mac 导出"
+      "exportGui": "让这台 Mac 导出",
+      "claimExport": "认领已导出成片"
     },
     "confirm": {
       "cancel": "取消后已渲染的部分不再保留，可以稍后重新出片。",
       "retry": "会用当前稿子重新出一版，旧成片保留。",
       "exportGui": "会打开这台 Mac 上的剪映并点导出，导出期间别抢鼠标。"
+    },
+    "claim": {
+      "title": "认领剪映导出的成片",
+      "hint": "填成片路径。时长、画布或帧率对不上就退回，不入库。",
+      "placeholder": "成片绝对路径，例如 /Users/apple/Movies/成片.mp4",
+      "cancel": "取消",
+      "submit": "认领入库",
+      "empty": "先填成片路径"
     },
     "revise": {
       "title": "提修改",
@@ -181,7 +190,8 @@
       "revise": "修改没提交成功，稍后重试",
       "cancel": "取消失败，稍后重试",
       "retry": "重新出片没成功，稍后重试",
-      "exportGui": "导出没排上，稍后再试"
+      "exportGui": "导出没排上，稍后再试",
+      "claimExport": "认领没排上，稍后再试"
     },
     "detail": {
       "empty": "选一条任务看进度和成片",
@@ -193,6 +203,7 @@
       "duration": "{{n}} 秒",
       "noVideo": "还没有可播放的成片",
       "jianying": "剪映草稿",
+      "jianyingClaimed": "已认领你导出的成片",
       "jianyingDone": "已送进剪映草稿箱",
       "jianyingPending": "出片后自动送达",
       "publishDraft": "发布草稿",

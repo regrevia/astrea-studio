@@ -159,12 +159,21 @@
       "retry": "Retry",
       "revise": "Revise",
       "openVideo": "Open video",
-      "exportGui": "Export on this Mac"
+      "exportGui": "Export on this Mac",
+      "claimExport": "Claim exported video"
     },
     "confirm": {
       "cancel": "Rendered parts are dropped; you can start it again later.",
       "retry": "Renders a new version from the current script; the old video stays.",
       "exportGui": "This opens 剪映 on this Mac and clicks Export; keep hands off the mouse meanwhile."
+    },
+    "claim": {
+      "title": "Claim a video exported from 剪映",
+      "hint": "Paste the exported file path. Wrong duration, canvas or frame rate is rejected and nothing is filed.",
+      "placeholder": "Absolute path, e.g. /Users/apple/Movies/clip.mp4",
+      "cancel": "Cancel",
+      "submit": "Claim and file",
+      "empty": "Paste the video path first"
     },
     "revise": {
       "title": "Revise this run",
@@ -181,7 +190,8 @@
       "revise": "Could not submit the revision; try again",
       "cancel": "Cancel failed; try again",
       "retry": "Retry failed; try again",
-      "exportGui": "Export could not be queued; try again later."
+      "exportGui": "Export could not be queued; try again later.",
+      "claimExport": "Claim could not be queued; try again later."
     },
     "detail": {
       "empty": "Pick a run to see progress and video",
@@ -193,6 +203,7 @@
       "duration": "{{n}}s",
       "noVideo": "No playable video yet",
       "jianying": "JianYing draft",
+      "jianyingClaimed": "Your exported video is claimed",
       "jianyingDone": "Delivered to JianYing drafts",
       "jianyingPending": "Delivered once rendering finishes",
       "publishDraft": "Publish draft",

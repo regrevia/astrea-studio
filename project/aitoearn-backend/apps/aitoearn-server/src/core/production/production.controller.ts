@@ -74,6 +74,8 @@ const JianyingExportSchema = z.object({
   draftPath: z.string().optional().describe('草稿目录；省略就用任务里记下的剪映工程'),
   waitIdle: z.number().min(0).max(600).optional()
     .describe('等用户空闲多少秒再动鼠标；0 表示立刻就导（仍然点完即还台）'),
+  claimPath: z.string().min(1).optional()
+    .describe('人工已在剪映里导出的成片路径；给了就只认领入库，不开面板不动鼠标'),
 })
 class JianyingExportDto extends createZodDto(JianyingExportSchema, 'ExportProductionDraftDto') {}
 
@@ -293,7 +295,7 @@ export class ProductionController {
     return await this.production.cancelRun(token.id, id)
   }
 
-  @ApiDoc({ summary: '从剪映工程收导出产物（独立任务，默认只排队等人点导出）', body: JianyingExportDto.schema })
+  @ApiDoc({ summary: '从剪映工程收导出产物（独立任务：默认排队等人点导出，给 claimPath 则认领人工导出的成片）', body: JianyingExportDto.schema })
   @Post('runs/:id/export')
   async startJianyingExport(
     @GetToken() token: TokenInfo,

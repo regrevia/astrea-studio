@@ -703,12 +703,127 @@ describe('startJianyingExport', () => {
     })
   })
 
+  it('人工导出后认领成片：只排任务、不驱动面板', async () => {
+    const { service, runRepo, jobRepo } = createService()
+    runRepo.getByIdForUser.mockResolvedValue({
+      id: 'run-3',
+      revision: 2,
+      status: 'waiting_user',
+      output: { draftPath: '/Users/apple/Movies/JianyingPro/demo' },
+    })
+
+    const result = await service.startJianyingExport('user-1', 'run-3', {
+      claimPath: '/Users/apple/Movies/demo.mp4',
+    })
+
+    expect(result.draftPath).toBe('/Users/apple/Movies/JianyingPro/demo')
+    const created = jobRepo.create.mock.calls[0][0] as Record<string, unknown>
+    expect(created['payload']).toMatchObject({
+      draftPath: '/Users/apple/Movies/JianyingPro/demo',
+      allowGui: false,
+      claimPath: '/Users/apple/Movies/demo.mp4',
+    })
+  })
+
+  it('认领和驱动面板同时给、或没有草稿就认领，都不排任务', async () => {
+    const { service, runRepo, jobRepo } = createService()
+    runRepo.getByIdForUser.mockResolvedValue({
+      id: 'run-4',
+      revision: 1,
+      status: 'waiting_user',
+      output: { draftPath: '/Users/apple/Movies/JianyingPro/demo' },
+    })
+    await expect(service.startJianyingExport('user-1', 'run-4', {
+      allowGui: true,
+      claimPath: '/Users/apple/Movies/demo.mp4',
+    })).rejects.toThrow()
+
+    runRepo.getByIdForUser.mockResolvedValue({
+      id: 'run-5', revision: 1, status: 'done', output: {},
+    })
+    await expect(service.startJianyingExport('user-1', 'run-5', {
+      claimPath: '/Users/apple/Movies/demo.mp4',
+    })).rejects.toThrow()
+    expect(jobRepo.create).not.toHaveBeenCalled()
+  })
+
   it('没有草稿路径却要驱动导出面板时直接拒绝，不排一个必然失败的任务', async () => {
     const { service, runRepo, jobRepo } = createService()
     runRepo.getByIdForUser.mockResolvedValue({ id: 'run-2', revision: 1, status: 'done', output: {} })
 
     await expect(service.startJianyingExport('user-1', 'run-2', { allowGui: true })).rejects.toThrow()
     expect(jobRepo.create).not.toHaveBeenCalled()
+  })
+})
+
+describe('completeJob 认领成片', () => {
+  it('worker 认领人工导出后，把入库落点和已认领写回 run.output', async () => {
+    const { service, runRepo, jobRepo } = createService()
+    jobRepo.finish.mockResolvedValue(true)
+    jobRepo.getById.mockResolvedValue({
+      id: 'job-9', runId: 'run-9', revision: 2, stage: 'jianying:claim', progress: 60,
+    })
+    runRepo.getById.mockResolvedValue({
+      id: 'run-9',
+      revision: 2,
+      status: 'waiting_user',
+      output: { draftPath: '/Users/apple/Movies/JianyingPro/demo', requiresManualExport: true, duration: 30.821 },
+    })
+
+    const done = await service.completeJob('worker-1', 'job-9', 1, {
+      stage: 'exported',
+      claimed: true,
+      requiresManualExport: false,
+      videoPath: '/Users/apple/CreatorStudio/library/demo.mp4',
+      output: {
+        claimed: true,
+        requiresManualExport: false,
+        videoPath: '/Users/apple/CreatorStudio/library/demo.mp4',
+        libraryPath: '/Users/apple/CreatorStudio/library/demo.mp4',
+        md5: 'e3352beaeaa116c9de3755aefab3103d',
+        duration: 30.83,
+      },
+    })
+
+    expect(done).toEqual({ ok: true })
+    const update = runRepo.updateByRevision.mock.calls[0][2] as Record<string, unknown>
+    expect(update['status']).toBe('succeeded')
+    expect(update['currentStage']).toBe('done')
+    expect(update['output']).toMatchObject({
+      claimed: true,
+      requiresManualExport: false,
+      videoPath: '/Users/apple/CreatorStudio/library/demo.mp4',
+      libraryPath: '/Users/apple/CreatorStudio/library/demo.mp4',
+      md5: 'e3352beaeaa116c9de3755aefab3103d',
+      // 认领结果没带 duration 时保留草稿体检算出的时长，不被清空。
+      duration: 30.821,
+      draftPath: '/Users/apple/Movies/JianyingPro/demo',
+    })
+    expect((update['output'] as Record<string, unknown>)['manualExportReason']).toBeUndefined()
+  })
+
+  it('认领结果只有 output 内层带字段时也能取到入库信息', async () => {
+    const { service, runRepo, jobRepo } = createService()
+    jobRepo.finish.mockResolvedValue(true)
+    jobRepo.getById.mockResolvedValue({ id: 'job-8', runId: 'run-8', revision: 1, stage: 'jianying:claim', progress: 60 })
+    runRepo.getById.mockResolvedValue({ id: 'run-8', revision: 1, status: 'waiting_user', output: {} })
+
+    await service.completeJob('worker-1', 'job-8', 1, {
+      output: {
+        claimed: true,
+        videoPath: '/Users/apple/CreatorStudio/library/demo2.mp4',
+        libraryAssetId: 'demo2',
+        md5: 'md5-demo2',
+      },
+    })
+
+    const update = runRepo.updateByRevision.mock.calls[0][2] as Record<string, unknown>
+    expect(update['output']).toMatchObject({
+      claimed: true,
+      videoPath: '/Users/apple/CreatorStudio/library/demo2.mp4',
+      libraryAssetId: 'demo2',
+      md5: 'md5-demo2',
+    })
   })
 })
 

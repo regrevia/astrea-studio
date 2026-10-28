@@ -125,7 +125,7 @@ export function reviseRun(id: string, data: { brief?: string, spec?: Record<stri
  * 从剪映工程收导出产物。
  * 默认只排队等人点导出；allowGui 让这台 Mac 的 worker 驱动剪映自己导出。
  */
-export function startRunExport(id: string, data: { allowGui?: boolean, draftPath?: string } = {}) {
+export function startRunExport(id: string, data: { allowGui?: boolean, draftPath?: string, claimPath?: string } = {}) {
   return http.post<{ jobId: string, attempt: number, draftPath: string }>(`production/runs/${id}/export`, data)
 }
 

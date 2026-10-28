@@ -124,12 +124,16 @@ function normalizeRunOutput(
     ? result['videoQa'] as Record<string, unknown>
     : null
 
-  const videoKey = typeof result['videoKey'] === 'string' ? result['videoKey'] : ''
   const draftPath = typeof result['draftPath'] === 'string' ? result['draftPath'] : ''
   // worker 把「要人点导出」放在 result.output 里，老结果也可能只在 stage 上体现
   const outputMeta = result['output'] !== null && typeof result['output'] === 'object'
     ? result['output'] as Record<string, unknown>
     : {}
+  // 认领人工导出的成片：产物落在 result.output 里（videoPath/library*），
+  // 和老链路（result.videoKey 走对象存储）不是一套字段，这里按 claimed 兜住。
+  const claimed = result['claimed'] === true || outputMeta['claimed'] === true
+  const metaVideo = claimed && typeof outputMeta['videoPath'] === 'string' ? outputMeta['videoPath'] : ''
+  const videoKey = typeof result['videoKey'] === 'string' ? result['videoKey'] : metaVideo
   const requiresManualExport = result['requiresManualExport'] === true
     || outputMeta['requiresManualExport'] === true
     || result['stage'] === 'awaiting_manual_export'
@@ -142,8 +146,13 @@ function normalizeRunOutput(
   if (draftPath) {
     output['draftPath'] = draftPath
   }
-  if (requiresManualExport || typeof result['requiresManualExport'] === 'boolean') {
+  if (requiresManualExport || typeof result['requiresManualExport'] === 'boolean'
+    || typeof outputMeta['requiresManualExport'] === 'boolean') {
     output['requiresManualExport'] = requiresManualExport
+  }
+  if (claimed) {
+    output['claimed'] = true
+    delete output['manualExportReason']
   }
   // 为什么停下要能传到界面上：锁屏和「用户忙」给的动作不一样。
   const manualReason = typeof result['reasonCode'] === 'string' ? result['reasonCode'] : ''
@@ -173,7 +182,7 @@ function normalizeRunOutput(
   }
   // 成片入库的落点要跟着 output 回前端：库里按规范命名，界面和发布都认这一条路径
   for (const key of ['libraryPath', 'libraryAssetId', 'md5'] as const) {
-    const value = result[key]
+    const value = typeof result[key] === 'string' && result[key] ? result[key] : outputMeta[key]
     if (typeof value === 'string' && value) {
       output[key] = value
     }
@@ -498,7 +507,7 @@ export class ProductionService {
   async startJianyingExport(
     userId: string,
     runId: string,
-    input: { allowGui?: boolean, draftPath?: string, waitIdle?: number },
+    input: { allowGui?: boolean, draftPath?: string, waitIdle?: number, claimPath?: string },
   ) {
     const run = await this.getRun(userId, runId)
     if (run.status === ProductionRunStatus.CANCELLED) {
@@ -509,6 +518,19 @@ export class ProductionService {
       throw new AppException(
         ResponseCode.ProductionInvalidState,
         'Run has no jianying draft path to export; build the draft first',
+      )
+    }
+    const claimPath = (input.claimPath ?? '').trim()
+    if (claimPath && input.allowGui) {
+      throw new AppException(
+        ResponseCode.ProductionInvalidState,
+        '认领成片和驱动导出面板只能选一个：认领时不再动剪映',
+      )
+    }
+    if (claimPath && !draftPath) {
+      throw new AppException(
+        ResponseCode.ProductionInvalidState,
+        '认领成片需要先有剪映草稿，否则无从核对时长与画布',
       )
     }
     const attempt = await this.jobRepo.nextAttempt(run.id, ProductionJobKind.JIANYING_EXPORT)
@@ -525,6 +547,7 @@ export class ProductionService {
         revision: run.revision,
         draftPath,
         allowGui: input.allowGui === true,
+        ...(claimPath ? { claimPath } : {}),
         libraryProject: run.projectId,
         libraryTitle: run.title,
         ...(typeof input.waitIdle === 'number' ? { waitIdle: input.waitIdle } : {}),

@@ -24,6 +24,8 @@ export interface RunArtifacts {
   /** 这条任务走的是剪映草稿通道：产物是草稿目录，导出要用户在剪映里做。 */
   jianying: boolean
   jianyingDelivered: boolean
+  /** 用户自己在剪映里导出、平台认领入库的成片：不需要再开导出面板。 */
+  jianyingClaimed: boolean
   /** 成片在库里的落点：有它说明片子已按规范归档，不是临时文件。 */
   libraryPath?: string
   libraryAssetId?: string
@@ -47,6 +49,7 @@ export function deriveRunArtifacts(run?: ProductionRun | null): RunArtifacts {
     platforms: [],
     jianying: false,
     jianyingDelivered: false,
+    jianyingClaimed: false,
     copyFindings: [],
     qaFindings: [],
   }
@@ -72,6 +75,7 @@ export function deriveRunArtifacts(run?: ProductionRun | null): RunArtifacts {
     jianying: touchesJianying(run),
     // 草稿是不是真落了，只能看阶段有没有走到；没走到就别让用户去剪映里白找。
     jianyingDelivered: run.status === 'succeeded' && run.currentStage?.includes('jianying') === true,
+    jianyingClaimed: output?.claimed === true,
     libraryPath: output?.libraryPath,
     libraryAssetId: output?.libraryAssetId,
     publishDraftId: run.materialId,

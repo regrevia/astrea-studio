@@ -139,6 +139,8 @@ export const createJianyingDraftArgsSchema = z.object({
 export const startJianyingExportArgsSchema = z.object({
   runId: runIdSchema,
   allowGui: z.boolean().optional().describe('只有用户明确让你在这台 Mac 上驱动剪映导出时才传 true'),
+  claimPath: z.string().min(1).optional()
+    .describe('用户已经自己点过导出了：给他导出的成片路径，只做体检入库，不再动剪映'),
 })
 
 /** 给模型的工具清单。描述里写清「什么时候用」和「需要用户先提供什么」。 */
@@ -432,12 +434,13 @@ export const ASSISTANT_TOOLS: AssistantToolDefinition[] = [
     type: 'function',
     function: {
       name: AssistantToolName.START_JIANYING_EXPORT,
-      description: '给已有剪映工程的任务排一条独立导出任务，把草稿收成成片文件。默认只排队：macOS 上剪映必须由人点导出，任务会停在「等人导出」；只有用户明确让你驱动这台 Mac 的剪映时才传 allowGui=true。',
+      description: '给已有剪映工程的任务排一条独立导出任务，把草稿收成成片文件。默认只排队：macOS 上剪映必须由人点导出，任务会停在「等人导出」。人点完导出后，把成片路径传 claimPath，按草稿的时长/画布做体检再入库；只有用户明确让你驱动这台 Mac 的剪映时才传 allowGui=true。',
       parameters: {
         type: 'object',
         properties: {
           runId: { type: 'string', description: '任务 ID，必须已经落过剪映工程' },
           allowGui: { type: 'boolean', description: '是否允许驱动本机剪映导出面板' },
+          claimPath: { type: 'string', description: '用户人工导出的成片绝对路径；给了就只认领，不动剪映' },
         },
         required: ['runId'],
         additionalProperties: false,

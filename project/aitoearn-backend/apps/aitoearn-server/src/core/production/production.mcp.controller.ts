@@ -37,6 +37,8 @@ const StartJianyingExportSchema = z.object({
   allowGui: z.boolean().default(false).describe('true 才让本机驱动剪映导出面板；用户正在用机器时会被推迟'),
   waitIdle: z.number().min(0).max(600).optional()
     .describe('等空闲多少秒再点导出，0=立刻；点完立刻把前台和光标还给用户'),
+  claimPath: z.string().min(1).optional()
+    .describe('用户已在自己剪映里点过导出：成片绝对路径。只做体检入库，不开面板不动鼠标'),
 })
 
 const CreateRunSchema = z.object({
@@ -272,6 +274,7 @@ export class ProductionMcpController {
     const job = await this.production.startJianyingExport(user.id, params.runId, {
       allowGui: params.allowGui,
       ...(typeof params.waitIdle === 'number' ? { waitIdle: params.waitIdle } : {}),
+      ...(params.claimPath ? { claimPath: params.claimPath } : {}),
     })
     return toYamlTextResult(job)
   }

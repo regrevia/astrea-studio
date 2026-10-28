@@ -138,10 +138,22 @@ def _land_export(video: str, payload: dict, job_id: str, revision: int,
         title = str(payload.get("libraryTitle") or payload.get("title")
                     or payload.get("runId") or job_id)
         revision_meta = {}
-        ev = Path(outdir).expanduser().parent / "docs/probe/export-panel/runs" / job_id
-        for cand in sorted(ev.glob("*.json")) if ev.is_dir() else []:
+        # 导出的体检证据由 jianying_export.py 写在仓库 docs 下；worker 跑在
+        # ~/CreatorStudio/runtime，套用同一份 REPO_ROOT 才不会漏读。
+        roots = []
+        try:
+            import config as _cfg  # noqa: WPS433
+            roots.append(Path(_cfg.REPO_ROOT))
+        except Exception:
+            pass
+        roots.append(Path(outdir).expanduser().parent)
+        for root in roots:
+            ev = Path(root) / "docs/probe/export-panel/runs" / job_id
+            cands = sorted(ev.glob("*.json")) if ev.is_dir() else []
+            if not cands:
+                continue
             try:
-                revision_meta = json.loads(cand.read_text(encoding="utf-8"))
+                revision_meta = json.loads(cands[0].read_text(encoding="utf-8"))
             except Exception:
                 revision_meta = {}
             break
@@ -600,6 +612,56 @@ class Worker:
             "jobId": job_id, "runId": run_id, "revision": revision,
             "platform": platform, "draftPath": draft_path or None,
         }
+        claim_path = str(payload.get("claimPath") or "")
+        if claim_path:
+            # 人工已经在剪映里点过导出，这里只认领产物：不开面板、不动鼠标，
+            # 体检（时长/画布/帧率）与自动导出同一套，过了才入库。
+            if not draft_path:
+                raise JianyingError("认领成片需要 draftPath：没有草稿就无从核对时长与画布")
+            progress(20, "jianying:claim")
+            script = Path(__file__).with_name("export") / "jianying_export.py"
+            argv = [
+                sys.executable, str(script),
+                "--claim", claim_path,
+                "--job-id", job_id,
+                "--revision", str(revision),
+                "--platform", platform,
+                "--outdir", outdir,
+                "--draft-path", draft_path,
+            ]
+            if payload.get("canvas"):
+                argv += ["--canvas", str(payload["canvas"])]
+            try:
+                proc = subprocess.run(argv, capture_output=True, text=True, timeout=600)
+            except subprocess.TimeoutExpired:
+                raise JianyingError(f"认领进程 600s 没结束（{script}）")
+            tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-1200:]
+            if proc.returncode != 0:
+                codes = {6: "export_probe_failed", 8: "export_output_exists",
+                         11: "export_draft_revision_mismatch"}
+                raise JianyingError(reason_text(
+                    codes.get(proc.returncode, "jianying_export_failed"),
+                    f"认领失败 rc={proc.returncode}: {tail}"))
+            final_dir = Path(outdir) / job_id / f"r{revision}"
+            made = sorted(final_dir.glob("*")) if final_dir.is_dir() else []
+            video = next((str(f) for f in made if f.suffix.lower() in (".mp4", ".mov")), None)
+            if not video:
+                raise JianyingError(f"认领进程返回 0 但 {final_dir} 里没有产物")
+            landed = _land_export(video, payload, job_id, revision, outdir)
+            output = {"videoPath": video, "requiresManualExport": False, "claimed": True}
+            if landed:
+                shutil.rmtree(final_dir, ignore_errors=True)
+                output["libraryPath"] = landed["path"]
+                output["libraryAssetId"] = landed["assetId"]
+                output["md5"] = landed["md5"]
+                video = landed["path"]
+            return dict(base, **{
+                "stage": "exported",
+                "output": output,
+                "videoPath": video,
+                "log": tail,
+            })
+
         if not payload.get("allowGui"):
             # 明确不替你动鼠标：把活留在队列里，等人工在剪映点导出。
             return dict(base, **{

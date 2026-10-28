@@ -1,0 +1,60 @@
+{
+  "jobId": "probe-reject-r44",
+  "revision": 1,
+  "claim": "/private/tmp/claim-test/bad.mp4",
+  "draft": "studio_6ae205b1b2886cd834c8a6fe__r1",
+  "draftPath": "/Users/apple/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6ae205b1b2886cd834c8a6fe__r1",
+  "platform": "",
+  "probe": {
+    "path": "/private/tmp/claim-test/bad.mp4",
+    "format": "mov,mp4,m4a,3gp,3g2,mj2",
+    "duration": 40.0,
+    "size": 102666,
+    "width": 1080,
+    "height": 1920,
+    "codec": "h264",
+    "pix_fmt": "yuv420p",
+    "fps": 30.0
+  },
+  "expect": {
+    "duration": 30.821,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30.0
+  },
+  "checks": {
+    "has_duration": {
+      "ok": true,
+      "detail": "实测 40.0"
+    },
+    "has_width": {
+      "ok": true,
+      "detail": "实测 1080"
+    },
+    "has_height": {
+      "ok": true,
+      "detail": "实测 1920"
+    },
+    "has_fps": {
+      "ok": true,
+      "detail": "实测 30.0"
+    },
+    "duration": {
+      "ok": false,
+      "detail": "40.00s vs 期望 30.82s (±0.40)"
+    },
+    "resolution": {
+      "ok": true,
+      "detail": "1080x1920 vs 期望 1080x1920"
+    },
+    "fps": {
+      "ok": true,
+      "detail": "30.000 vs 期望 30.000"
+    }
+  },
+  "accepted": false,
+  "failed": [
+    "duration"
+  ],
+  "at": "2026-10-28T22:36:34"
+}
