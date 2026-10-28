@@ -6,7 +6,7 @@
 | --- | --- |
 | `createProductionProject` / `listProductionProjects` | 建项目、列项目。项目绑定素材分组，任务默认落到该分组。 |
 | `createProductionRun` / `listProductionRuns` / `getProductionRun` | 建任务（立即返回 `runId`，不等渲染）、列任务、查任务详情。 |
-| `createProductionBatch` | 同一份稿子一次排 1–8 条，返回全部 `runId`。每条独立入队、标题带 `i/N` 序号，用于批量出母版；逐条轮询 `getProductionRun`。 |
+| `createProductionBatch` | 同一份稿子一次排 1–8 条，返回全部 `runId`。每条独立入队、标题带 `i/N` 序号；逐条轮询 `getProductionRun`。**多条不是多份副本**：第 1 条按原稿，第 2 条起把每段关键帧的 `zoom` 值倒序（推镜变拉镜、时间点不动），第 3 条起再把首段素材挪到最后换开场；`text[0]` 若带 `hookVariants: string[]`，还会按条轮换开头字幕。实测 count=3 三条 30s 1080×1920 成片 md5 两两不同、时长均为 30.000000 s。 |
 | `reviseProductionRun` | 在既有任务上出新版本，`revision` 递增。 |
 | `listProductionEvents` | 读任务事件流，按阶段回放。 |
 | `createJianyingDraft` | 把已完成任务的成片落成剪映工程，进用户素材库默认分组；同一任务重复调用复用同一工程。任务没有成片时直接报错，不会凭空造工程。 |

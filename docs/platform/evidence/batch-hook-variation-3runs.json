@@ -1,0 +1,59 @@
+{
+  "checkedAt": "2026-10-28T19:11:30+08:00",
+  "tool": "createProductionBatch",
+  "projectId": "6adc2161656a13996166bbfc",
+  "title": "同题三版-钩子轮换",
+  "count": 3,
+  "variationRule": [
+    "1/3 原稿",
+    "2/3 关键帧 zoom 倒序（推↔拉）",
+    "3/3 镜像 + 首段底色挪到最后 + 钩子按条轮换"
+  ],
+  "runs": [
+    {
+      "id": "6ae1d82a95ab75433d6644f2",
+      "title": "同题三版-钩子轮换 · 1/3",
+      "status": "succeeded",
+      "hook": "这台咖啡机，让我戒了手冲",
+      "md5": "ab26451375fc7ea59dea9ec6f6fdca79",
+      "duration": 30.0,
+      "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261028-191041__studio__001__同题三版-钩子轮换-1-3__douyin__r1.mp4"
+    },
+    {
+      "id": "6ae1d82a95ab75433d6644fb",
+      "title": "同题三版-钩子轮换 · 2/3",
+      "status": "succeeded",
+      "hook": "手冲 20 分钟，它 3 分钟",
+      "md5": "641353116437ab4584b9b56e91b2cc42",
+      "duration": 30.0,
+      "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261028-191046__studio__001__同题三版-钩子轮换-2-3__douyin__r1.mp4"
+    },
+    {
+      "id": "6ae1d82a95ab75433d664504",
+      "title": "同题三版-钩子轮换 · 3/3",
+      "status": "succeeded",
+      "hook": "早八不排队，一杯稳定好咖啡",
+      "md5": "041b56837f505c69eee383b80fc4958f",
+      "duration": 30.0,
+      "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261028-191051__studio__001__同题三版-钩子轮换-3-3__douyin__r1.mp4"
+    }
+  ],
+  "ocr": {
+    "method": "ffmpeg 抽 t=1.5s、crop=1080x200@y1480，~/CreatorStudio/bin/ocr 识别",
+    "run1": "这台咖啡机，让我戒了",
+    "run2": "手冲20分钟，它3分钟",
+    "run3": "早八不排队，"
+  },
+  "probe": {
+    "width": 1080,
+    "height": 1920,
+    "allDurations": "30.000000",
+    "md5Distinct": 3
+  },
+  "tests": {
+    "nxTarget": "aitoearn-server",
+    "filter": "timeline-spec production.service",
+    "passed": 53,
+    "exit": 0
+  }
+}

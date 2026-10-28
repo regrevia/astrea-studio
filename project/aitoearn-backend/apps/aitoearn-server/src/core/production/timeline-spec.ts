@@ -277,3 +277,24 @@ export function rotateOpening(spec: Record<string, unknown>): Record<string, unk
   const [first, ...rest] = video
   return { ...spec, video: [...rest, first] }
 }
+
+/**
+ * 同题多版的文案差异：给第一条字幕换钩子。
+ *
+ * 运镜/开场变了但字还是同一句时，三条片子在信息流里看着还是「同一条」。这里允许
+ * 第一条字幕额外带 `hookVariants: string[]`，批量时按条取一条替换 `text`，位置、
+ * 时长、字号都不动。没写 hookVariants 就原样返回——不猜文案。
+ */
+export function varyHook(spec: Record<string, unknown>, index: number): Record<string, unknown> {
+  const text = spec['text']
+  if (!Array.isArray(text) || text.length === 0) return spec
+  const head = text[0]
+  if (!head || typeof head !== 'object') return spec
+  const item = head as Record<string, unknown>
+  const variants = item['hookVariants']
+  if (!Array.isArray(variants) || variants.length === 0) return spec
+  const picked = String(variants[index % variants.length] ?? '')
+  if (!picked) return spec
+  const { hookVariants: _drop, ...rest } = item
+  return { ...spec, text: [{ ...rest, text: picked }, ...text.slice(1)] }
+}

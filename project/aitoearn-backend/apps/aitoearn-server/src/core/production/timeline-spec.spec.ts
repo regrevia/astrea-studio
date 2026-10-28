@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { buildTimelineSpec, mirrorKeyframes, rotateOpening, TimelineCanvasPreset } from './timeline-spec'
+import { buildTimelineSpec, mirrorKeyframes, rotateOpening, TimelineCanvasPreset, varyHook } from './timeline-spec'
 
 const FRIENDLY_INPUT = {
   engine: 'timeline',
@@ -285,5 +285,31 @@ describe('rotateOpening 同题多版的换开场', () => {
     const spec = { video: [{ src: 'only.mp4' }] }
 
     expect(rotateOpening(spec as Record<string, unknown>)['video']).toEqual(spec.video)
+  })
+})
+
+describe('varyHook 同题多版的钩子轮换', () => {
+  it('按条取 hookVariants，位置与其它字段不动，且变体清单不落到渲染规格里', () => {
+    const spec = {
+      text: [
+        { text: '默认钩子', start: 0.4, end: 3.2, y: 0.86, hookVariants: ['钩子A', '钩子B', '钩子C'] },
+        { text: '卖点字幕', start: 3.2, end: 8 },
+      ],
+    }
+
+    const second = varyHook(spec as Record<string, unknown>, 1) as typeof spec
+    const first = varyHook(spec as Record<string, unknown>, 0) as typeof spec
+
+    expect(second.text[0]).toEqual({ text: '钩子B', start: 0.4, end: 3.2, y: 0.86 })
+    expect(first.text[0]['text']).toBe('钩子A')
+    expect(second.text[1]).toEqual({ text: '卖点字幕', start: 3.2, end: 8 })
+  })
+
+  it('没有 hookVariants 或没有字幕时原样返回', () => {
+    const plain = { text: [{ text: '就一句', start: 0, end: 2 }] }
+    const noText = { video: [] }
+
+    expect(varyHook(plain as Record<string, unknown>, 2)).toBe(plain)
+    expect(varyHook(noText as Record<string, unknown>, 2)).toBe(noText)
   })
 })

@@ -23,7 +23,7 @@ import {
 } from '@yikart/mongodb'
 import { MaterialGroupService } from '../content/material-group.service'
 import { MaterialService } from '../content/material.service'
-import { buildTimelineSpec, mirrorKeyframes, rotateOpening } from './timeline-spec'
+import { buildTimelineSpec, mirrorKeyframes, rotateOpening, varyHook } from './timeline-spec'
 
 export const LEASE_MS = 60_000
 export const RENDER_LANE = 'render'
@@ -286,6 +286,8 @@ export class ProductionService {
       if (i > 0 && timeline) {
         let variant = mirrorKeyframes(timeline as Record<string, unknown>)
         if (i > 1) variant = rotateOpening(variant)
+        // 有钩子变体时按条换开头那句，运镜再好文案一样也算同一支
+        variant = varyHook(variant, i)
         spec = { ...input.spec, timeline: variant }
       }
       runs.push(await this.createRun(userId, {
