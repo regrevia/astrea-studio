@@ -252,6 +252,37 @@ describe('completeJob', () => {
     })
   })
 
+  it('成片入库落点跟着 output 回前端，不能只活在 worker 日志里', async () => {
+    const { service, jobRepo, runRepo } = createService()
+    jobRepo.getById.mockResolvedValue({ id: 'job-1', runId: 'run-1', attempt: 1 })
+    runRepo.getById.mockResolvedValue({ id: 'run-1', output: {} })
+
+    await service.completeJob('worker-1', 'job-1', 1, {
+      engine: 'timeline',
+      videoKey: 'studio/runs/run-1/r1/master.mp4',
+      videoUrl: '/oss/studio/runs/run-1/r1/master.mp4',
+      duration: 30,
+      libraryPath: '/Users/apple/CreatorStudio/library/studio/2026-10/20261028-183224__studio__001__片名__douyin__r1.mp4',
+      libraryAssetId: '20261028-183224__studio__001__片名__douyin__r1',
+      md5: '7f250578fec55e68cce604f0cdb156ba',
+      libraryEntries: [
+        { kind: 'master', path: '/Users/apple/CreatorStudio/library/studio/2026-10/master.mp4' },
+      ],
+      // 库里没有落点时 worker 会带 None，这种不能把已有 output 写坏
+      unknownField: 'ignored',
+    })
+
+    const update = runRepo.updateByRevision.mock.calls[0][2] as Record<string, unknown>
+    const output = update.output as Record<string, unknown>
+    expect(output['libraryPath']).toBe('/Users/apple/CreatorStudio/library/studio/2026-10/20261028-183224__studio__001__片名__douyin__r1.mp4')
+    expect(output['libraryAssetId']).toBe('20261028-183224__studio__001__片名__douyin__r1')
+    expect(output['md5']).toBe('7f250578fec55e68cce604f0cdb156ba')
+    expect(output['libraryEntries']).toEqual([
+      { kind: 'master', path: '/Users/apple/CreatorStudio/library/studio/2026-10/master.mp4' },
+    ])
+    expect(output['unknownField']).toBeUndefined()
+  })
+
   it('剪映导出还要人点面板时把 run 记成等人，不造假成片', async () => {
     const { service, jobRepo, runRepo } = createService()
     jobRepo.getById.mockResolvedValue({ id: 'job-1', runId: 'run-1', attempt: 1, progress: 90 })
