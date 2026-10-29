@@ -16,7 +16,6 @@ import json
 import logging
 import os
 import signal
-import shutil
 import subprocess
 import sys
 import threading
@@ -755,13 +754,7 @@ class Worker:
             if not video:
                 raise JianyingError(f"认领进程返回 0 但 {final_dir} 里没有产物")
             landed = _land_export(video, payload, job_id, revision, outdir)
-            output = {"videoPath": video, "requiresManualExport": False, "claimed": True}
-            if landed:
-                shutil.rmtree(final_dir, ignore_errors=True)
-                output["libraryPath"] = landed["path"]
-                output["libraryAssetId"] = landed["assetId"]
-                output["md5"] = landed["md5"]
-                video = landed["path"]
+            output, video = claim.finish(video, final_dir, landed, claimed=True)
             return dict(base, **{
                 "stage": "exported",
                 "output": output,
@@ -843,16 +836,7 @@ class Worker:
             if not video:
                 raise JianyingError(f"导出进程返回 0 但 {final_dir} 里没有产物")
             landed = _land_export(video, payload, job_id, revision, outdir)
-            output = {"videoPath": video, "requiresManualExport": False}
-            if landed:
-                try:
-                    shutil.rmtree(final_dir, ignore_errors=True)
-                except Exception:
-                    pass
-                output["libraryPath"] = landed["path"]
-                output["libraryAssetId"] = landed["assetId"]
-                output["md5"] = landed["md5"]
-                video = landed["path"]
+            output, video = claim.finish(video, final_dir, landed)
             return dict(base, **{
                 "stage": "exported",
                 "output": output,

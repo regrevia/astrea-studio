@@ -70,7 +70,7 @@ cd integrations/mac-worker
 | --- | --- | --- |
 | 发布段离线契约 | 0.1 s | PASS |
 | 剪映段离线自检 | 4.7 s | PASS（10/10） |
-| worker 分发单元测试 | 0.0 s | PASS（15/15：认领参数拼装/退出码归因/产物定位、入库证据/字段兜底/失败留痕不丢文件） |
+| worker 分发单元测试 | 0.0 s | PASS（18/18：认领参数拼装/退出码归因/产物定位、入库证据/字段兜底/失败留痕不丢文件、归位收尾与中转清理） |
 | 发布泳道真机探针 | 72.0 s | PASS（claim 3.3 / cancelled-run 3.3 / stale-revision 3.3 / lease-expired 58.8 / readback-retry 2.0 s） |
 | 剪映版本依据 | — | 11.6.0 build 490 · 沿用模板（无同主版本实证，不猜版本号）· 参考草稿 11 份（版本戳 10.2.0/5.9.0） |
 | 后端生产 spec（`--with-web`） | 2.3 s | PASS（76/76：发布状态机、租约回收归位、回读） |
@@ -293,6 +293,9 @@ job `6ae2a2b58f01834bace100de` 返回 `stage=draft_checked`、`output.canOpen=tr
 成片入库的收口同样抽成 `integrations/mac-worker/export_landing.py`：按候选根目录读导出体检证据、
 把项目/标题/平台字段按优先级兜底、交给 `library.land`；入库抛错时返回 None 并留痕，成片仍在原处，
 调用方不会拿到伪造的库路径。`tests/test_export_landing.py` 8 项覆盖（含真实 `library.land` 的同版本二次入库不覆盖）。
+认领/导出两条成功路径共用同一段收尾（`claim_dispatch.finish`）：入库成功才清 `out/<jobId>/rN` 中转目录，
+入库失败则 `videoPath` 保留原文件、不伪造库路径；若自定义库目录恰好落在这个中转目录里，清理会跳过，
+不会把刚入库的成片一起删掉。`tests/test_claim_dispatch.py` 3 项盯这条。
 
 
 

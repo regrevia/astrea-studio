@@ -76,3 +76,55 @@ class FindVideoTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FinishTest(unittest.TestCase):
+    def _dir(self, tmp, name="out/job1/r1"):
+        d = Path(tmp) / name
+        d.mkdir(parents=True)
+        return d
+
+    def test_landed_none_keeps_source_path_and_does_not_clean(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._dir(tmp)
+            removed = []
+            output, video = claim.finish(str(d / "a.mp4"), d, None, claimed=True,
+                                         remove=lambda p, **kw: removed.append(p))
+            self.assertEqual(output["videoPath"], str(d / "a.mp4"))
+            self.assertTrue(output["claimed"])
+            self.assertFalse(output["requiresManualExport"])
+            self.assertNotIn("libraryPath", output)
+            self.assertEqual(removed, [])
+            self.assertTrue(d.is_dir())
+
+    def test_landed_cleans_staging_dir_and_reports_library_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._dir(tmp)
+            lib = Path(tmp) / "lib" / "a.mp4"
+            lib.parent.mkdir()
+            lib.write_bytes(b"v")
+            removed = []
+            output, video = claim.finish(
+                str(d / "a.mp4"), d,
+                {"path": str(lib), "assetId": "a1", "md5": "m"},
+                claimed=True, remove=lambda p, **kw: removed.append(p))
+            self.assertEqual(video, str(lib))
+            self.assertEqual(output["videoPath"], str(lib))
+            self.assertEqual(output["libraryPath"], str(lib))
+            self.assertEqual(output["libraryAssetId"], "a1")
+            self.assertEqual(output["md5"], "m")
+            self.assertEqual(removed, [d])
+
+    def test_library_dir_inside_staging_dir_is_never_deleted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._dir(tmp)
+            lib = d / "library" / "a.mp4"
+            lib.parent.mkdir()
+            lib.write_bytes(b"v")
+            removed = []
+            output, _ = claim.finish(str(d / "a.mp4"), d,
+                                     {"path": str(lib), "assetId": "a1", "md5": "m"},
+                                     remove=lambda p, **kw: removed.append(p))
+            self.assertEqual(output["videoPath"], str(lib))
+            self.assertEqual(removed, [], "把刚入库的成片一起删了")
+            self.assertTrue(lib.is_file())

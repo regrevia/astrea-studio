@@ -6,7 +6,9 @@ worker 里这段原来是内联的，拼错了参数或漏映射一个退出码�
 """
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
+from typing import Any
 
 VIDEO_SUFFIXES = (".mp4", ".mov")
 
@@ -58,3 +60,36 @@ def find_video(final_dir: str | Path) -> str | None:
         if f.is_file() and f.suffix.lower() in VIDEO_SUFFIXES:
             return str(f)
     return None
+
+
+def finish(video: str, final_dir: str | Path, landed: dict | None, *,
+           claimed: bool = False, remove=None) -> tuple[dict, str]:
+    """归位后的收尾：回给后端的字段 + 该不该清中转目录。
+
+    两个坑都在这里堵：入库失败时 videoPath 必须是原文件（不是空串，也不是库路径），
+    中转目录只有在成片已经躺进库里时才清——反过来说，如果库目录恰好落在中转目录
+    里（自定义 STUDIO_LIBRARY 时可能出现），清掉就等于删刚入库的片子，必须跳过。
+    """
+    raw = str(video)
+    output: dict[str, Any] = {"videoPath": raw, "requiresManualExport": False}
+    if claimed:
+        output["claimed"] = True
+    path = raw
+    if not landed:
+        return output, path
+    path = str(landed.get("path") or raw)
+    output.update({
+        "videoPath": path,
+        "libraryPath": landed.get("path"),
+        "libraryAssetId": landed.get("assetId"),
+        "md5": landed.get("md5"),
+    })
+    target = Path(final_dir)
+    dest = Path(path)
+    try:
+        inside = dest.resolve().is_relative_to(target.resolve())
+    except (OSError, ValueError):
+        inside = False
+    if target.is_dir() and not inside:
+        (remove or shutil.rmtree)(target, ignore_errors=True)
+    return output, path
