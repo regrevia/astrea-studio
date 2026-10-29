@@ -22,6 +22,8 @@ export enum ProductionJobKind {
   /** 只把草稿在剪映里打开给人改，不导出 */
   JIANYING_OPEN = 'jianying_open',
   PUBLISH_SAU = 'publish_sau',
+  /** 回读作品链接：只读，不发布；用来给回执不明的提交收尾 */
+  PUBLISH_READBACK = 'publish_readback',
   PROBE = 'probe',
 }
 

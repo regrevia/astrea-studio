@@ -215,7 +215,9 @@ const SUBMISSION_TRANSITIONS: Record<string, PublicationStatus[]> = {
     PublicationStatus.PUBLISHED,
     PublicationStatus.NOT_SUBMITTED,
   ],
+  // 回读没给出结论时退回回执不明：核对失败不等于有了结论，不能停在 reconciling
   [PublicationStatus.RECONCILING]: [
+    PublicationStatus.SUBMISSION_UNKNOWN,
     PublicationStatus.SUBMITTED_UNVERIFIED,
     PublicationStatus.PUBLISHED,
     PublicationStatus.NOT_SUBMITTED,
@@ -255,9 +257,14 @@ function assertSubmissionTransition(
  * intents. Every state transition that matters for correctness is a conditionally
  * guarded Mongo update rather than a read-then-write.
  */
+// 交付之后才做的动作：打开草稿、人工导出后认领，以及发布与回读。
+// 发布天然发生在成片 succeeded 之后，漏在集合里就会被 claimJob 当成
+// 「挂在已完成 run 上的渲染」取消掉，用户看到的是发布永远排队、然后租约过期。
 const POST_RUN_KINDS = new Set<ProductionJobKind>([
   ProductionJobKind.JIANYING_OPEN,
   ProductionJobKind.JIANYING_EXPORT,
+  ProductionJobKind.PUBLISH_SAU,
+  ProductionJobKind.PUBLISH_READBACK,
 ])
 
 function isPostRunJob(job: { kind?: string }): boolean {
@@ -938,6 +945,35 @@ export class ProductionService {
     return { ok: true, leaseExpiresAt: job.leaseExpiresAt }
   }
 
+  /**
+   * 回读作业收尾。
+   *
+   * 有结论时 worker 已经写了台账（published / not_submitted），这里只补事件；
+   * 没结论时把记录从 reconciling 退回 submission_unknown —— 核对失败不是结论，
+   * 停在「核对中」会让人以为有个地方正在替他把这件事查清楚。
+   */
+  private async settleReadbackJob(job: ProductionJob, result: Record<string, unknown>) {
+    const attemptId = (job.payload?.['attemptId'] as string | undefined) ?? ''
+    const applied = result['applied'] === true
+    const state = (result['state'] as string | undefined) ?? 'unknown'
+    if (!attemptId) {
+      return { ok: true, applied, state, reason: 'no_attempt' }
+    }
+    if (!applied) {
+      await this.recordSubmission(job.userId, attemptId, {
+        status: PublicationStatus.SUBMISSION_UNKNOWN,
+        evidence: { kind: 'readback_no_conclusion', state, at: new Date().toISOString() },
+      } as never)
+    }
+    await this.appendEvent(job.runId, {
+      kind: 'publication.readback',
+      jobId: job.id,
+      stage: 'reconciling',
+      message: applied ? `readback: ${state}` : `readback no conclusion: ${state}`,
+    })
+    return { ok: true, applied, state }
+  }
+
   async completeJob(
     workerId: string,
     jobId: string,
@@ -972,6 +1008,11 @@ export class ProductionService {
     })
     if (!done) {
       return { ok: false, reason: 'stale-lease' }
+    }
+    // 回读不是渲染：结论已经由 worker 走回写接口落账，run 不该因为一条核对
+    // 作业被改成 succeeded，也不该把 output 覆盖成回读结果。
+    if (job.kind === ProductionJobKind.PUBLISH_READBACK) {
+      return await this.settleReadbackJob(job, result)
     }
     // 剪映导出在 macOS 上要人点导出面板：worker 干完了这轮也只能回报
     // 「等人导出」，这时把 run 记成 succeeded 会凭空造出一条做不到的成片。
@@ -1458,6 +1499,70 @@ export class ProductionService {
       data: { attemptId, remotePostId: input.remotePostId },
     })
     return updated
+  }
+
+  /**
+   * 给一条回执不明的提交排一条回读作业。
+   *
+   * 回读只读：不开浏览器上传、不改作品，只在 publish lane 里读一次链接，
+   * 结论由 worker 回写。排作业时先把记录推到 reconciling，条件更新落空就说明
+   * 别人已经先动了这条记录，直接报冲突而不是重复排一条。
+   */
+  async enqueueSubmissionReadback(userId: string, attemptId: string) {
+    const attempt = await this.attemptRepo.getById(attemptId)
+    if (!attempt || attempt.userId !== userId) {
+      throw new AppException(ResponseCode.ProductionInvalidState, 'Publication attempt not found')
+    }
+    // 正在核对说明已经有人在回读了：再排一条只会让同一条链接被读两遍。
+    if (attempt.status === PublicationStatus.RECONCILING) {
+      throw new AppException(ResponseCode.ProductionInvalidState, '这条提交正在回读，等结论回来')
+    }
+    if (attempt.status !== PublicationStatus.SUBMISSION_UNKNOWN) {
+      throw new AppException(
+        ResponseCode.ProductionInvalidState,
+        '只有回执不明的提交需要回读；其他状态已有结论',
+      )
+    }
+    const url = (attempt.remoteUrl || '').trim()
+      || (attempt.remotePostId ? `https://www.douyin.com/video/${attempt.remotePostId}` : '')
+    if (!url) {
+      throw new AppException(
+        ResponseCode.ProductionInvalidState,
+        '这条记录没有可回读的链接；有作品 ID 才能按 ID 去平台核对',
+      )
+    }
+    const run = await this.getRun(userId, attempt.runId)
+    // 复用 recordSubmission：证据、事件、状态机都只在这一处维护；
+    // 第二次点击时状态已是 reconciling，转换表会直接拒掉，不会排出两条作业。
+    await this.recordSubmission(userId, attempt.id, {
+      status: PublicationStatus.RECONCILING,
+      evidence: { kind: 'readback_enqueued', at: new Date().toISOString(), url },
+    } as never)
+    const attemptNo = await this.jobRepo.nextAttempt(run.id, ProductionJobKind.PUBLISH_READBACK)
+    const job = await this.jobRepo.create({
+      userId,
+      runId: run.id,
+      revision: attempt.revision,
+      kind: ProductionJobKind.PUBLISH_READBACK,
+      attempt: attemptNo,
+      status: ProductionJobStatus.QUEUED,
+      lane: PUBLISH_LANE,
+      payload: {
+        runId: run.id,
+        revision: attempt.revision,
+        attemptId: attempt.id,
+        url,
+        account: attempt.accountName || attempt.accountRef,
+        platform: attempt.platform,
+      },
+    } as unknown as Partial<ProductionJob>)
+    await this.appendEvent(run.id, {
+      kind: 'job.queued',
+      jobId: job.id,
+      stage: 'reconciling',
+      message: `readback attempt ${job.attempt}`,
+    })
+    return { jobId: job.id, attempt: job.attempt, url, status: PublicationStatus.RECONCILING }
   }
 
   /**

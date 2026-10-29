@@ -432,6 +432,12 @@ export class ProductionController {
     return await this.production.recordSubmission(token.id, id, body)
   }
 
+  @ApiDoc({ summary: '排一条回读作业，给回执不明的提交收尾' })
+  @Post('publications/:id/readback-job')
+  async enqueueReadback(@GetToken() token: TokenInfo, @Param('id') id: string) {
+    return await this.production.enqueueSubmissionReadback(token.id, id)
+  }
+
   @ApiDoc({ summary: '巡检查出提交中断的记录', body: SweepSubmissionsDto.schema })
   @Post('publications/sweep')
   async sweepSubmissions(@GetToken() token: TokenInfo, @Body() body: SweepSubmissionsDto) {

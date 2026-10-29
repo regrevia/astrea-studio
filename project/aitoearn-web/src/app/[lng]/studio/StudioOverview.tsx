@@ -20,7 +20,7 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiGetMaterialGroupList } from '@/api/materials/material.api'
-import { createProject, getCharacters, getHealth, getInventory, getProjects, getPublications, getRenderJobs, getRuns, updateProject } from '@/api/production/production.api'
+import { createProject, enqueueReadback, getCharacters, getHealth, getInventory, getProjects, getPublications, getRenderJobs, getRuns, updateProject } from '@/api/production/production.api'
 import { useTransClient } from '@/app/i18n/client'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -51,7 +51,7 @@ const ALL_PROJECTS = '__all__'
 /** 草稿箱的「跟默认」也是一个空字符串，同样得用哨兵占住选项值。 */
 const DEFAULT_DRAFT_GROUP = '__default__'
 
-function PublicationRow({ row }: { row: PublicationAttempt }) {
+function PublicationRow({ row, onReadback }: { row: PublicationAttempt, onReadback?: (id: string) => void }) {
   const { t } = useTransClient('studio')
   const meta = publicationStatusMeta(row.status)
   const unknown = row.status === 'submission_unknown'
@@ -68,9 +68,19 @@ function PublicationRow({ row }: { row: PublicationAttempt }) {
         </div>
       </div>
       {unknown && (
-        <span className="shrink-0 text-xs font-medium text-warning">
-          {t('pub.manualCheck')}
-        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-xs font-medium text-warning">{t('pub.manualCheck')}</span>
+          {onReadback && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="cursor-pointer"
+              onClick={() => onReadback(row.id)}
+            >
+              {t('pub.readback')}
+            </Button>
+          )}
+        </div>
       )}
     </div>
   )
@@ -288,6 +298,7 @@ export default function StudioOverview() {
   const [characters, setCharacters] = useState<CharacterInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [readbackNotice, setReadbackNotice] = useState('')
   /**
    * 选中态只有两个字段：projectId 决定列表范围，runId 决定右侧详情。
    * 两者都写进 URL，刷新同一地址能回到原来的项目和任务，聊天/表单/批量发表单
@@ -454,6 +465,19 @@ export default function StudioOverview() {
       setError(e instanceof Error ? e.message : t('overview.draftGroupFailed'))
     }
   }, [projectId, projectGroups, t])
+
+  /** 回读一条回执不明的作品链接：只排一次作业，结论由回读结果写回。 */
+  const handleReadback = useCallback(async (attemptId: string) => {
+    setError('')
+    try {
+      await enqueueReadback(attemptId)
+      setReadbackNotice(t('pub.readbackQueued'))
+      await refresh()
+    }
+    catch (e) {
+      setError(e instanceof Error ? e.message : t('pub.readbackFailed'))
+    }
+  }, [refresh, t])
 
   const changeProject = useCallback((value: string) => {
     const next = value === ALL_PROJECTS ? '' : value
@@ -752,7 +776,12 @@ export default function StudioOverview() {
             <CardTitle className="text-base">{t('overview.ledger')}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
-            {publications.slice(0, 8).map(row => <PublicationRow key={row.id} row={row} />)}
+            {readbackNotice && (
+              <p className="text-xs text-muted-foreground">{readbackNotice}</p>
+            )}
+            {publications.slice(0, 8).map(row => (
+              <PublicationRow key={row.id} row={row} onReadback={handleReadback} />
+            ))}
           </CardContent>
         </Card>
       )}

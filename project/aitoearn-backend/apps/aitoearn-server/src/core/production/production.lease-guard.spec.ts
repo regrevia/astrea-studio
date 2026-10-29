@@ -21,6 +21,7 @@ vi.mock('@yikart/mongodb', () => ({
     TIMELINE_RENDER: 'render_timeline',
     JIANYING_DRAFT: 'jianying_draft',
     PUBLISH_SAU: 'publish_sau',
+    PUBLISH_READBACK: 'publish_readback',
     PROBE: 'probe',
   },
   ProductionJobStatus: {

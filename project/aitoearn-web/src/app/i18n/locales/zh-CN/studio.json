@@ -289,7 +289,10 @@
       "rejected": "被驳回",
       "waitingUser": "等你决定",
       "notSubmitted": "未提交"
-    }
+    },
+    "readback": "回读链接",
+    "readbackQueued": "已排队回读，稍后回来看结论",
+    "readbackFailed": "回读没排上"
   },
   "overview": {
     "title": "制作台",

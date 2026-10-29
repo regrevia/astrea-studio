@@ -162,6 +162,18 @@ export function getPublications(runId?: string) {
   return http.get<PublicationAttempt[]>('production/publications', runId ? { runId } : undefined)
 }
 
+/**
+ * 给回执不明的提交排一条回读作业。
+ *
+ * 只读一次作品链接，结论由 worker 回写台账；同一条记录第二次点会被后端拒掉，
+ * 因为状态已经推到 reconciling。
+ */
+export function enqueueReadback(attemptId: string) {
+  return http.post<{ jobId: string, attempt: number, url: string, status: string }>(
+    `production/publications/${attemptId}/readback-job`,
+  )
+}
+
 /** worker 与运行时健康。 */
 export function getHealth() {
   return http.get<{ workers: ProductionWorker[], serverTime: string }>('production/health')

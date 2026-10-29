@@ -100,6 +100,20 @@ worker 只做三件事——渲染回读、翻成台账能收的结论、调用
 没有结论或没给 `attemptId` 时，作业照样成功返回 `{state, applied:false, reason}`，**不写台账**。
 后端只收 `published`（必须带作品 ID）和 `not_submitted`，其余状态直接拒（12853）。
 
+界面上不用手搓作业：对回执不明的记录点「回读链接」，前端调
+`POST /api/production/publications/:id/readback-job`（用户态），后端把记录翻成 `reconciling`、
+排一条 `publish_readback` 作业，返回 `{jobId, attempt, url, status}`。几个边界：
+
+- 只有 `submission_unknown` 能排：已有结论的记录再排一次等于白读一遍链接，直接拒（12853，`只有回执不明的提交需要回读；其他状态已有结论`）。
+- 正在回读（`reconciling`）时再点一次也拒（`这条提交正在回读，等结论回来`），`reconciling` 本身就是重复点击的锁。
+- 没有链接也没有作品 ID 的记录拒掉（`这条记录没有可回读的链接；有作品 ID 才能按 ID 去平台核对`），不排空转作业。
+- 回读作业不等同于渲染：它不写 run 的 `output`、不把 run 翻成 `succeeded`（`completeJob` 走 `settleReadbackJob` 分支）。
+- 回读没给出结论时，记录退回 `submission_unknown` 并记一条 `readback_no_conclusion` 证据——核对失败不等于有了结论，不能让记录停在 `reconciling` 装成还在查。
+
+实测（2026-10-29，账号 `yefen`，记录 `6ae2b7f9c7f59fe6681559e2` / 不存在的作品 `7456000000000000000`）：
+`POST publications/:id/readback-job` → 作业在 `publish` 泳道被领取并跑完（21s）→ `result.applied=false, state=unknown` →
+记录回到 `submission_unknown`，证据两条（`readback_enqueued`、`readback_no_conclusion`），run 状态不动。
+
 实测（2026-10-29，账号 `yefen`）：`--works yefen` 读到 4 条真实作品；对真实作品 `7602658672556153993` 回读得 `published` + 标题；对不存在的 `7456000000000000000` 回读得 `unknown`（页面里读不到作品标记），`reconcile_publish.py` 判为「没有明确结论，台账不动」。后端接口侧新增 `applySubmissionReadback`，单测覆盖「published 带 ID 收下 / published 无 ID 拒 / 越级状态拒」。
 
 ## Cookie

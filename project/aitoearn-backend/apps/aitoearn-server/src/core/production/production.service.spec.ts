@@ -24,6 +24,7 @@ vi.mock('@yikart/mongodb', () => ({
     JIANYING_EXPORT: 'jianying_export',
     JIANYING_OPEN: 'jianying_open',
     PUBLISH_SAU: 'publish_sau',
+    PUBLISH_READBACK: 'publish_readback',
     PROBE: 'probe',
   },
   ProductionJobStatus: {
@@ -411,6 +412,52 @@ describe('reviseRun', () => {
   })
 
 describe('completeJob', () => {
+  it('回读作业收尾不动 run 状态，无结论时把记录退回回执不明', async () => {
+    const { service, jobRepo, runRepo, attemptRepo } = createService()
+    jobRepo.getById.mockResolvedValue({
+      id: 'job-rb',
+      runId: 'run-1',
+      attempt: 1,
+      userId: 'user-1',
+      kind: 'publish_readback',
+      payload: { attemptId: 'attempt-1', url: 'https://www.douyin.com/video/1' },
+    })
+    runRepo.getById.mockResolvedValue({ id: 'run-1', revision: 1, status: 'succeeded', output: {} })
+    attemptRepo.getById.mockResolvedValue({
+      id: 'attempt-1',
+      userId: 'user-1',
+      runId: 'run-1',
+      status: 'reconciling',
+      evidence: [],
+    })
+    attemptRepo.updateById.mockResolvedValue({ id: 'attempt-1', status: 'submission_unknown' })
+
+    const result = await service.completeJob('worker-1', 'job-rb', 1, { state: 'unknown', applied: false })
+
+    expect(result).toMatchObject({ ok: true, applied: false })
+    expect(runRepo.updateByRevision).not.toHaveBeenCalled()
+    expect(attemptRepo.updateById.mock.calls[0][1]).toMatchObject({ status: 'submission_unknown' })
+  })
+
+  it('回读有结论时不重复写台账：结论已经走回写接口落过账', async () => {
+    const { service, jobRepo, runRepo, attemptRepo } = createService()
+    jobRepo.getById.mockResolvedValue({
+      id: 'job-rb',
+      runId: 'run-1',
+      attempt: 1,
+      userId: 'user-1',
+      kind: 'publish_readback',
+      payload: { attemptId: 'attempt-1' },
+    })
+    runRepo.getById.mockResolvedValue({ id: 'run-1', revision: 1, status: 'succeeded', output: {} })
+
+    const result = await service.completeJob('worker-1', 'job-rb', 1, { state: 'published', applied: true })
+
+    expect(result).toMatchObject({ ok: true, applied: true, state: 'published' })
+    expect(attemptRepo.updateById).not.toHaveBeenCalled()
+    expect(runRepo.updateByRevision).not.toHaveBeenCalled()
+  })
+
   it('把 worker 结果归一成 output.videoPath/videoUrl/duration/canvas/platforms', async () => {
     const { service, jobRepo, runRepo } = createService()
     jobRepo.getById.mockResolvedValue({ id: 'job-1', runId: 'run-1', attempt: 1 })
@@ -645,6 +692,83 @@ describe('sweepStaleSubmissions', () => {
     await service.sweepStaleSubmissions('user-1', { olderThanMinutes: 0 })
     const clamped = (attemptRepo.listStaleByStatus.mock.calls[1][1] as Date).getTime()
     expect(clamped).toBeGreaterThan(Date.now() - 2 * 60_000)
+  })
+})
+
+describe('enqueueSubmissionReadback', () => {
+  const UNKNOWN = {
+    id: 'attempt-unknown',
+    userId: 'user-1',
+    runId: 'run-1',
+    revision: 2,
+    projectId: 'project-1',
+    platform: 'douyin',
+    accountRef: 'sau-1',
+    accountName: 'yefen',
+    status: 'submission_unknown',
+    remotePostId: '',
+    remoteUrl: 'https://www.douyin.com/video/7456000000000000001',
+    evidence: [],
+  }
+
+  function setup(attempt: Record<string, unknown> = UNKNOWN) {
+    const ctx = createService()
+    ctx.attemptRepo.getById.mockResolvedValue({ ...attempt })
+    ctx.attemptRepo.updateById.mockResolvedValue({ ...attempt, status: 'reconciling' })
+    ctx.runRepo.getByIdForUser.mockResolvedValue({ id: 'run-1', userId: 'user-1', revision: 2, status: 'succeeded' })
+    return ctx
+  }
+
+  it('回执不明时排一条 publish lane 的回读作业，并先把记录推到 reconciling', async () => {
+    const { service, attemptRepo, jobRepo, eventRepo } = setup()
+
+    const result = await service.enqueueSubmissionReadback('user-1', 'attempt-unknown')
+
+    expect(result.jobId).toBe('job-1')
+    expect(result.url).toBe('https://www.douyin.com/video/7456000000000000001')
+    const job = jobRepo.create.mock.calls[0][0] as Record<string, unknown>
+    expect(job.kind).toBe('publish_readback')
+    expect(job.lane).toBe('publish')
+    expect(job.payload).toMatchObject({
+      attemptId: 'attempt-unknown',
+      account: 'yefen',
+      url: 'https://www.douyin.com/video/7456000000000000001',
+    })
+    expect(attemptRepo.updateById.mock.calls[0][1]).toMatchObject({
+      status: 'reconciling',
+      evidence: [expect.objectContaining({ kind: 'readback_enqueued' })],
+    })
+    expect(eventRepo.append).toHaveBeenCalled()
+  })
+
+  it('没有链接但有作品 ID 时按 ID 拼链接', async () => {
+    const { service, jobRepo } = setup({ ...UNKNOWN, remoteUrl: '', remotePostId: '7602658672556153993' })
+    const result = await service.enqueueSubmissionReadback('user-1', 'attempt-unknown')
+    expect(result.url).toBe('https://www.douyin.com/video/7602658672556153993')
+    expect((jobRepo.create.mock.calls[0][0] as any).payload.url).toBe(result.url)
+  })
+
+  it('有结论的记录不排回读：不会把已发布的作品又拉去核对', async () => {
+    const { service, jobRepo, attemptRepo } = setup({ ...UNKNOWN, status: 'published', remotePostId: '7602658672556153993' })
+    await expect(service.enqueueSubmissionReadback('user-1', 'attempt-unknown'))
+      .rejects.toThrow('只有回执不明的提交需要回读')
+    expect(jobRepo.create).not.toHaveBeenCalled()
+    expect(attemptRepo.updateById).not.toHaveBeenCalled()
+  })
+
+  it('连点两次只排一条：第二次状态已不是 submission_unknown', async () => {
+    const { service, attemptRepo, jobRepo } = setup()
+    await service.enqueueSubmissionReadback('user-1', 'attempt-unknown')
+    attemptRepo.getById.mockResolvedValue({ ...UNKNOWN, status: 'reconciling' })
+    await expect(service.enqueueSubmissionReadback('user-1', 'attempt-unknown'))
+      .rejects.toThrow('这条提交正在回读')
+    expect(jobRepo.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('别人的记录不排作业', async () => {
+    const { service, jobRepo } = setup({ ...UNKNOWN, userId: 'user-2' })
+    await expect(service.enqueueSubmissionReadback('user-1', 'attempt-unknown')).rejects.toThrow('not found')
+    expect(jobRepo.create).not.toHaveBeenCalled()
   })
 })
 
@@ -1066,6 +1190,28 @@ describe('任务领取与心跳', () => {
     const job = await service.claimJob(
       { id: 'worker-1', userId: 'user-1', capabilities: ['jianying_open'] },
       'render',
+    )
+    expect(job).not.toBeNull()
+    expect(jobRepo.updateByStatusIn).not.toHaveBeenCalled()
+  })
+
+  it('发布与回读挂在已交付的 run 上照领：交付之后才发，不该被当成补跑', async () => {
+    const { service, runRepo, jobRepo } = createService()
+    jobRepo.listByStatus.mockResolvedValue([])
+    jobRepo.claimNext.mockResolvedValue({
+      id: 'job-readback',
+      runId: 'run-1',
+      revision: 1,
+      attempt: 1,
+      kind: 'publish_readback',
+      lane: 'publish',
+      stage: 'queued',
+      payload: { attemptId: 'attempt-1', url: 'https://www.douyin.com/video/1' },
+    })
+    runRepo.getById.mockResolvedValue({ id: 'run-1', status: 'succeeded', revision: 1 })
+    const job = await service.claimJob(
+      { id: 'worker-1', userId: 'user-1', capabilities: ['publish_readback'] },
+      'publish',
     )
     expect(job).not.toBeNull()
     expect(jobRepo.updateByStatusIn).not.toHaveBeenCalled()
