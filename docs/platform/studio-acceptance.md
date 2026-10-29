@@ -220,13 +220,15 @@ cd project/aitoearn-web && npx tsc --noEmit
 
 打开草稿原来只有「真开」一条路，验证时必须动鼠标。现在多一条只读通道：
 
-- `export/open_draft.py --check` 输出一行 JSON：`draftPath/appPath/draftExists/appInstalled/appRunning/editorOpen/canOpen`，退出码 0 可开、2 不可开；不启动、不点、不抢前台。
+- `export/open_draft.py --check` 输出一行 JSON：`draftPath/appPath/draftExists/appInstalled/appRunning/editorOpen/canOpen/blockers`，退出码 0 可开、2 不可开；不启动、不点、不抢前台。
+- 体检还读草稿内部（`export/draft_inspect.py`，只读）：`canvas/durationSec/fps/trackCount/media/missingMedia/schema`；素材引用逐个核对是否还在，缺了报 `missingMedia` 并给阻塞项 `media_missing`。剪映 11.6 保存后 `draft_info.json` 是密文，这时报 `encrypted/infoReadable=false`，不当失败（草稿照样能开）。
 - worker 的 `jianying_open` 收 `check: true` 走体检分支，返回 `stage=draft_checked`；体检不看屏幕锁（只读），真开仍被 `screen_locked` 拦住。
 - REST `POST /production/runs/:id/open-draft {check:true}`、MCP `openJianyingDraft {check:true}` 均可触发。
 - 顺带修掉一个真问题：`claimJob` 的「run 已终态就不再跑」原来把 `jianying_open`/`jianying_export` 一起丢掉，对已交付的 run 点「在剪映中打开」会被判 `dropped: run already succeeded`。现在这两类收尾动作只拒「run 已取消」，渲染类任务行为不变（`production.service.spec.ts` 两条新断言覆盖）。
 
 实测（2026-10-29 09:34，run `6ae237a72a5e71e140145c49`，草稿 `studio_6ae20a3cb2886cd834c8b67e__r1`）：
-job `6ae2a2b58f01834bace100de` 返回 `stage=draft_checked`、`output.canOpen=true`，剪映进程未被拉起、前台未变。
+job `6ae2a2b58f01834bace100de` 返回 `stage=draft_checked`、`output.canOpen=true`，剪映进程未被拉起、前台未变；
+09:43 同一 run 的 job `6ae2a4338f01834bace105e9` 带上内部信息：`canvas=1080×1920`、`durationSec=11.234`、`fps=30`、`trackCount=7`、`media={videos:15,audios:4,images:0}`、`missingMedia=[]`。
 
 ## 10. 剪映打开工程 + 版本适配层（2026-10-29）
 

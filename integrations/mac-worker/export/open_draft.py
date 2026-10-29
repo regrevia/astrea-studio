@@ -189,6 +189,18 @@ def check(name: str, draft_path: str | None = None) -> int:
     draft = Path(draft_path) if draft_path else DRAFT_ROOT / name
     running = app_running()
     editor = editor_open() if running else False
+    try:
+        from .draft_inspect import inspect as inspect_draft
+    except ImportError:  # 直接当脚本跑时没有包上下文
+        from draft_inspect import inspect as inspect_draft
+    details = inspect_draft(draft)
+    blockers = []
+    if not draft.is_dir():
+        blockers.append("draft_missing")
+    if not APP_PATH.exists():
+        blockers.append("app_missing")
+    if details["missingMedia"]:
+        blockers.append("media_missing")
     info = {
         "draft": name,
         "draftPath": str(draft),
@@ -197,7 +209,17 @@ def check(name: str, draft_path: str | None = None) -> int:
         "appInstalled": APP_PATH.exists(),
         "appRunning": running,
         "editorOpen": editor,
-        "canOpen": draft.is_dir() and APP_PATH.exists(),
+        "canOpen": not blockers,
+        "blockers": blockers,
+        "infoReadable": details["infoReadable"],
+        "encrypted": details["encrypted"],
+        "canvas": details["canvas"],
+        "durationSec": details["durationSec"],
+        "fps": details["fps"],
+        "trackCount": details["trackCount"],
+        "media": details["media"],
+        "missingMedia": details["missingMedia"][:10],
+        "schema": details["schema"],
     }
     print(json.dumps(info, ensure_ascii=False))
     return 0 if info["canOpen"] else 2

@@ -69,8 +69,27 @@ REASON_CODES = (
     "export_draft_not_open",
     "export_probe_failed",
     "draft_not_found",
+    "draft_media_missing",
+    "jianying_app_missing",
     "jianying_open_failed",
 )
+
+
+def _check_blockers(stdout: str) -> list[str]:
+    """从 `open_draft.py --check` 的 JSON 里取阻塞项，取不到就当没有。"""
+    import json as _json
+    for line in reversed((stdout or "").strip().splitlines()):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            data = _json.loads(line)
+        except ValueError:
+            continue
+        blockers = data.get("blockers")
+        if isinstance(blockers, list):
+            return [b for b in blockers if isinstance(b, str)]
+    return []
 
 
 def reason_text(code: str, message: str) -> str:
@@ -638,8 +657,14 @@ class Worker:
                                                 f"体检 120s 没结束（{draft.name}）"))
             if probed.returncode != 0:
                 tail = ((probed.stdout or "") + (probed.stderr or "")).strip()[-400:]
-                raise JianyingError(reason_text(
-                    "draft_not_found", f"草稿体检没过：{tail or '无输出'}"))
+                blockers = _check_blockers(probed.stdout)
+                code = {"media_missing": "draft_media_missing",
+                        "app_missing": "jianying_app_missing"}.get(
+                            blockers[0] if blockers else "", "draft_not_found")
+                label = {"draft_media_missing": "草稿引用的素材不全",
+                         "jianying_app_missing": "这台机器没装剪映",
+                         "draft_not_found": "草稿目录不在"}[code]
+                raise JianyingError(reason_text(code, f"{label}：{tail or '无输出'}"))
             import json as _json
             try:
                 info = _json.loads((probed.stdout or "").strip().splitlines()[-1])

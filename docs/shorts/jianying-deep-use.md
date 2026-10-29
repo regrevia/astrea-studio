@@ -251,5 +251,9 @@ rc=2 判 `export_draft_not_open`、成功落 `stage=draft_opened` 且命令行�
 ## 12. 只体检，不动手
 
 `python3 export/open_draft.py --name <草稿目录名> --check` 打印一行 JSON：草稿目录在不在、
-剪映装没装、当前是不是编辑器态、能不能开（`canOpen`）。全程不启动剪映、不点鼠标、不抢前台，
-人正在用机器时可以先跑它确认前置条件。退出码 0 = 能开，2 = 不能开。
+剪映装没装、当前是不是编辑器态、能不能开（`canOpen`），以及草稿内部——画布、时长、帧率、
+轨道数、素材条数、缺了哪些素材（`missingMedia`）、版本戳（`schema`）。全程不启动剪映、不点鼠标、
+不抢前台，人正在用机器时可以先跑它确认前置条件。退出码 0 = 能开，2 = 不能开。
+
+剪映 11.6 会加密保存 `draft_info.json`，这时内部字段读不到，报 `encrypted:true`、
+`infoReadable:false`——只是读不到，不是坏草稿，照样能开。

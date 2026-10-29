@@ -107,6 +107,17 @@ class JianyingOpenTest(unittest.TestCase):
                 self._call({"draftPath": str(self.draft), "check": True})
         self.assertIn("draft_not_found", str(ctx.exception))
 
+    def test_check_mode_blames_missing_media_not_the_draft(self) -> None:
+        stdout = ('{"draftExists": true, "canOpen": false, '
+                  '"blockers": ["media_missing"], "missingMedia": ["assets/a.png"]}')
+        done = subprocess.CompletedProcess([], 2, stdout=stdout, stderr="")
+        with mock.patch.object(worker, "screen_locked", return_value=True), \
+                mock.patch.object(worker.subprocess, "run", return_value=done):
+            with self.assertRaises(worker.JianyingError) as ctx:
+                self._call({"draftPath": str(self.draft), "check": True})
+        self.assertIn("draft_media_missing", str(ctx.exception))
+        self.assertIn("素材不全", str(ctx.exception))
+
     def test_hard_failure_raises_with_reason(self) -> None:
         done = subprocess.CompletedProcess([], 7, stdout="", stderr="boom")
         with mock.patch.object(worker, "screen_locked", return_value=False), \

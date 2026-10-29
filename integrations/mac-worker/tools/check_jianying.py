@@ -360,6 +360,32 @@ def t_version_layer(tmp):
     return "12.x 无实证=keep-template，有实证=reference-same-major；adapter=%s" % E.ADAPTER_VERSION
 
 
+def t_draft_inspect(tmp: Path) -> str:
+    """打开前的只读体检：画布/时长/素材都在，缺素材要说出来，加密不冒充失败。"""
+    from export.draft_inspect import inspect
+
+    d = tmp / "inspect" / "draft_a__r1"
+    (d / "assets").mkdir(parents=True)
+    (d / "assets" / "keep.png").write_bytes(b"x")
+    (d / "draft_info.json").write_text(json.dumps({
+        "canvas_config": {"width": 1080, "height": 1920},
+        "duration": 30_000_000, "fps": 30, "tracks": [{}],
+        "materials": {"videos": [{"path": "assets/keep.png"}, {"path": "assets/gone.png"}],
+                      "audios": [], "images": []},
+    }), encoding="utf-8")
+    info = inspect(d)
+    require(info["infoReadable"] and info["canvas"]["height"] == 1920, "读不出画布: %r" % info["canvas"])
+    require(abs(info["durationSec"] - 30.0) < 1e-6, "时长换算不对: %r" % info["durationSec"])
+    require(info["missingMedia"] == ["assets/gone.png"], "缺素材没报准: %r" % info["missingMedia"])
+
+    enc = tmp / "inspect" / "draft_enc__r1"
+    enc.mkdir()
+    (enc / "draft_info.json").write_bytes(b"\x1a\x00ciphertext")
+    wrapped = inspect(enc)
+    require(wrapped["encrypted"] and not wrapped["infoReadable"], "加密草稿判断错: %r" % wrapped)
+    return "画布/时长/缺素材可读，加密草稿如实标注"
+
+
 def main() -> int:
     print("[剪映链路离线自检] ffmpeg=%s" % FFMPEG)
     require(Path(FFMPEG).exists() and Path(FFPROBE).exists(), "缺 ffmpeg/ffprobe，无法自检")
@@ -378,6 +404,8 @@ def main() -> int:
         check("8 个身份字段 + 第二次部署另起目录", lambda: t_sidecar(tmp, media))
         print("-- 5 剪映版本适配（新版本不靠猜）")
         check("无实证沿用模板 / 有实证采纳 schema", lambda: t_version_layer(tmp))
+        print("-- 6 打开前体检（只读，不开剪映）")
+        check("画布/时长/素材、加密草稿", lambda: t_draft_inspect(tmp))
 
     failed = [r for r in _results if not r[0]]
     print("\n结果: %d/%d 通过" % (len(_results) - len(failed), len(_results)))

@@ -34,7 +34,9 @@
 
 参数 `draftPath` 可省略（用任务上次落的草稿）；`check=true` 只体检：确认草稿目录与剪映安装
 都在、报当前是不是编辑器态，**不启动剪映、不点鼠标、不抢前台**，人正在用机器时也能跑。
-返回 `stage=draft_checked`、`output.opened=false`，结论看 `output.canOpen`。
+返回 `stage=draft_checked`、`output.opened=false`：`output.canOpen` 是结论，`output.blockers`
+说明卡在哪（`draft_missing` / `app_missing` / `media_missing`），`output.canvas/durationSec/fps/
+missingMedia/schema` 是草稿内部实况；密文草稿给 `encrypted=true` 而不是失败。
 
 打开工程是给人看的动作，不是流水线的一步，所以它和导出彻底分开：
 
