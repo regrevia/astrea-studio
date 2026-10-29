@@ -73,6 +73,29 @@ POST /api/production/publications/sweep
 把 `updatedAt` 推到一小时前后巡检，第一次 `scanned:1 recovered:[…]`，第二次 `scanned:0`；
 记录变成 `submission_unknown`，证据一条（`kind: "stale_sweep"`），`lastError` 写明要人工回读。
 
+## 回读一条链接收尾
+
+`submission_unknown` 只能靠回读平台收尾，不能靠重投。入口：
+
+```
+# 只读看结论，不写库
+python3 tools/check_publish.py --readback https://www.douyin.com/video/<id> --account <账号>
+# 顺便认领：拉本人最近作品（用来对照标题找回作品 ID）
+python3 tools/check_publish.py --works <账号>
+# 把结论写回台账（默认 dry-run，加 --apply 才发请求）
+python3 tools/reconcile_publish.py --url https://www.douyin.com/video/<id> --account <账号> \
+    --attempt <attemptId> --apply
+```
+
+规则：
+
+- 抖音对普通 HTTP 请求只回一段 JS 检测壳，没有内容；所以回读走无头 chromium（只读打开，不点任何按钮、不抢前台），复用该账号的 SAU cookie，私密作品也看得到。
+- 结论只有三档：`published`（页面给出作品）、`not_found`（平台明确说作品不存在）、`unknown`（登录墙、验证码、网络失败、页面结构变了）。只有前两档会写台账：`published` 必须带作品 ID 和链接，`not_submitted` 只能由 `not_found` 推出；`unknown` 一律不动。
+- 分类只看渲染出来的文字，不看 HTML 源码：脚本里本来就带「验证码」等字样，看源码会把真作品误判成登录墙。
+- 拉作品列表抽不到 ID 时返回空列表，**不能据此判定「没发出去」**。
+
+实测（2026-10-29，账号 `yefen`）：`--works yefen` 读到 4 条真实作品；对真实作品 `7602658672556153993` 回读得 `published` + 标题；对不存在的 `7456000000000000000` 回读得 `unknown`（页面里读不到作品标记），`reconcile_publish.py` 判为「没有明确结论，台账不动」。
+
 ## Cookie
 
 发布前先跑 `sau douyin check --account <account>`；失效直接报错并提示重新登录，

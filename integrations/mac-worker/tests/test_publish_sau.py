@@ -151,3 +151,87 @@ class PublishSubmitTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PublishReadbackTest(unittest.TestCase):
+    """回读只读、只给三档结论：猜错会把没发出去的记成已发布。"""
+
+    URL = "https://www.douyin.com/video/7456000000000000001"
+
+    def _run(self, html="", status=200, error=None):
+        def fetch(url, cookie, timeout):
+            if error:
+                raise error
+            return status, html
+        return P.readback(self.URL, fetch=fetch)
+
+    def test_published_when_page_carries_the_work(self):
+        result = self._run('<html><title>我的作品</title><script>{"aweme_id":"7456000000000000001"}</script></html>')
+        self.assertEqual(result.state, "published")
+        self.assertEqual(result.post_id, "7456000000000000001")
+        self.assertEqual(result.title, "我的作品")
+
+    def test_not_found_when_platform_says_the_work_is_gone(self):
+        self.assertEqual(self._run("<html><title>抖音</title>作品不存在</html>").state, "not_found")
+
+    def test_http_404_is_not_found_but_403_is_unknown(self):
+        import urllib.error
+        self.assertEqual(self._run(error=urllib.error.HTTPError(self.URL, 404, "x", {}, None)).state, "not_found")
+        self.assertEqual(self._run(error=urllib.error.HTTPError(self.URL, 403, "x", {}, None)).state, "unknown")
+
+    def test_login_wall_and_network_failure_stay_unknown(self):
+        self.assertEqual(self._run("<html>登录后查看</html>").state, "unknown")
+        self.assertEqual(self._run(error=TimeoutError("timed out")).state, "unknown")
+
+    def test_page_without_marker_is_unknown_not_published(self):
+        self.assertEqual(self._run("<html><title>抖音</title>随便一个页面</html>").state, "unknown")
+
+    def test_non_work_url_is_rejected_without_fetching(self):
+        called = []
+        result = P.readback("https://www.douyin.com/user/abc", fetch=lambda *a: called.append(1) or (200, ""))
+        self.assertEqual(result.state, "unknown")
+        self.assertEqual(called, [])
+
+
+class PublishWorksParseTest(unittest.TestCase):
+    """作品列表只认 href 里的真 ID；抽不到就是空，不能反推「没发出去」。"""
+
+    def test_pulls_ids_and_titles_from_the_works_page(self):
+        html = (
+            '<a href="/video/7456000000000000001"><span>第一条</span></a>'
+            '<a href="https://www.douyin.com/video/7456000000000000001">重复</a>'
+            '<a href="/note/7456000000000000002">第二条</a>'
+        )
+        works = P.parse_works(html)
+        self.assertEqual([w["postId"] for w in works], ["7456000000000000001", "7456000000000000002"])
+        self.assertEqual(works[0]["title"], "第一条")
+        self.assertEqual(works[0]["url"], "https://www.douyin.com/video/7456000000000000001")
+
+    def test_falls_back_to_bare_links_and_respects_limit(self):
+        html = '<a href="/video/7456000000000000003"></a><a href="/video/7456000000000000004"></a>'
+        self.assertEqual(len(P.parse_works(html, limit=1)), 1)
+
+    def test_login_page_yields_no_works_instead_of_fake_ids(self):
+        self.assertEqual(P.parse_works("<html>登录后查看</html>"), [])
+
+
+class PublishReconcilePayloadTest(unittest.TestCase):
+    """回读结论 → 台账回写；没有结论就不回写。"""
+
+    def test_published_needs_a_work_id_and_carries_it(self):
+        payload = P.reconcile_payload(P.Readback(state="published", post_id="7456000000000000001", title="成片"))
+        self.assertEqual(payload["status"], "published")
+        self.assertEqual(payload["remotePostId"], "7456000000000000001")
+        self.assertEqual(payload["remoteUrl"], "https://www.douyin.com/video/7456000000000000001")
+        self.assertEqual(payload["evidence"]["kind"], "readback")
+
+    def test_published_without_id_is_refused(self):
+        self.assertIsNone(P.reconcile_payload(P.Readback(state="published", post_id="")))
+
+    def test_not_found_goes_back_to_not_submitted(self):
+        payload = P.reconcile_payload(P.Readback(state="not_found", post_id="7456000000000000001"))
+        self.assertEqual(payload["status"], "not_submitted")
+        self.assertNotIn("remotePostId", payload)
+
+    def test_unknown_writes_nothing(self):
+        self.assertIsNone(P.reconcile_payload(P.Readback(state="unknown", post_id="7456000000000000001")))
