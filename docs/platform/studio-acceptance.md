@@ -167,6 +167,38 @@ PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib \
 返回 0 即草稿已开，再对 job `6ae1ab69ed8f33a90f5c77a5` 重发 `startJianyingExport{allowGui:true}`，
 验收项是 `~/CreatorStudio/out/6ae1ab69ed8f33a90f5c77a5/r2/` 出现 mp4 且 `videoQa.ok=true`。
 
+### 9.1.1 草稿打不开这一跳已解决（本轮），真导出只剩「等人空闲」
+
+「首页里看不到草稿、所以开不了」这个根因本轮查清了，规则见
+[docs/platform/jianying-draft-listing.md](jianying-draft-listing.md)：
+
+* 剪映首页草稿区是 CEF 自绘的固定一屏，AX 树只出现**最新的 8 张**（`HomePageDraftTitle:*`），
+  合成滚轮对它无效（line/pixel 两种单位，`wincap` 截图 md5 一致）；
+* 显示哪 8 张由索引 `com.lveditor.draft/root_meta_info.json` 的 `tm_draft_modified` 决定，
+  **只改正目录里的 `draft_meta_info.json` 无效**；
+* 把验收草稿 `studio_6ae20a3cb2886cd834c8b67e__r1` 的索引时间戳顶到最新 + 重启剪映后，
+  它成为第 7 张卡，`open_draft.py --name … --surface` **返回 0「已进编辑器」**，
+  `lsof` 确认打开的就是这张草稿（`docs/probe/export-panel/runs/6ae237a72a5e71e140145c49/`）；
+* 新目录不需要手插索引：剪映启动会扫描收录（实测复制原生草稿目录、不动索引，条目 47→50、
+  首页多出该卡）。
+
+**真导出仍没跑成，且原因与代码无关**：本轮两次发起 `jianying_export.py`，都停在
+「等待用户空闲 ≥30s 再操作（最多等 300s）…」——当时机器 `ax_tool idle` 一直在 0.6~0.8s，
+有人在用，脚本按设计不动鼠标（不抢前台、不盲点），于是这轮不点导出。
+
+**下一轮开跑条件**：机器空闲 ≥30s 时执行（草稿可先 surface 再开）：
+
+```
+PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib \
+python3 integrations/mac-worker/export/jianying_export.py \
+  --job-id <jobId> --revision <n> \
+  --draft-path "$HOME/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6ae20a3cb2886cd834c8b67e__r1" \
+  --outdir "$HOME/CreatorStudio/out/<jobId>" --wait-idle 30
+```
+
+验收项：`<outdir>/<jobId>/r<n>/` 出现 mp4，时长 11.234s ±0.4、画布 1080x1920、30fps，且随后
+`--claim <mp4>` 返回 0（r2 那次真导出的产物只有 1 帧 / 15fps，被认领体检正确拒绝，是探针草稿本身的锅）。
+
 ### 9.2 已顺带闭环的两项
 
 - **辅助功能授权**：已具备 —— `ax_tool tree 1842` 能读到剪映 40 个控件（原来记的「尚未授予」已过期）。

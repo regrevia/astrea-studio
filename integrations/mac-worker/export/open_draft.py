@@ -13,6 +13,7 @@ Qt 控件对 AXPress 无效，所以点击是真实鼠标坐标点击。
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -21,6 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import panel as P  # noqa: E402
+import draft_listing as DL  # noqa: E402
 
 APP_PATH = Path("/Applications/VideoFusion-macOS.app")
 DRAFT_ROOT = Path.home() / "Movies/JianyingPro/User Data/Projects/com.lveditor.draft"
@@ -134,7 +136,24 @@ def open_draft_name(pid=None) -> str:
     return ""
 
 
-def open_draft(name: str, wait: float = 25.0) -> int:
+def restart_app(timeout: float = 60.0) -> bool:
+    """硬重启剪映，并等首页卡片重新出现。
+
+    为什么要重启：首页草稿箱的排序/收录在启动时读索引算一次，改完索引不重启不生效
+    （实测改完 tm_draft_modified 后必须重启才看到卡片位置变化）。
+    """
+    sh("pkill", "-9", "-x", P.APP)
+    time.sleep(2.0)
+    sh("open", "-a", str(APP_PATH))
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if "HomePageDraftTitle:" in tree_text(1):
+            return True
+        time.sleep(1.0)
+    return False
+
+
+def open_draft(name: str, wait: float = 25.0, surface: bool = False) -> int:
     if not app_running():
         print("启动剪映…")
         launch()
@@ -156,6 +175,17 @@ def open_draft(name: str, wait: float = 25.0) -> int:
         P.run([P.AX_TOOL, "key", "cmd+shift+h"])  # 无副作用：剪映首页快捷键不中也不报错
         time.sleep(1.0)
     rect = card_rect(name)
+    if not rect and surface:
+        # 首页只显示「最新的一屏」（实测 8 张）卡；旧草稿要先把索引里的修改时间顶到最新，
+        # 重启剪映才会出现在第一屏。改之前 draft_listing 会备份索引，可 restore 还原。
+        r = DL.surface(name)
+        print("草稿不在第一屏，顶时间戳：%s" % json.dumps(r, ensure_ascii=False), file=sys.stderr)
+        if r.get("changed"):
+            print("重启剪映让首页重排…", file=sys.stderr)
+            restart_app()
+            P.front()
+            time.sleep(0.8)
+            rect = card_rect(name)
     if not rect:
         print("首页里没有这张草稿：%s" % name, file=sys.stderr)
         print(tree_text(1)[:2000], file=sys.stderr)
@@ -169,7 +199,9 @@ def open_draft(name: str, wait: float = 25.0) -> int:
     x, y, w, h = rect
     cx, cy = x + w // 2, y + h // 2
     print("双击草稿卡 %s @ %d,%d（%dx%d）" % (name, cx, cy, w, h))
-    P.run([P.AX_TOOL, "click-at", str(cx), str(cy), "--count", "2"], timeout=30)
+    # 走三级通道阶梯：先试不动光标的通道，无效才借指针；点完用「编辑器是否出现」验证
+    hit = P.click_point(cx, cy, verify=lambda: editor_open(), tiers=("pid", "hid"))
+    print("点击通道：%s" % json.dumps(hit, ensure_ascii=False) if hit else "点击通道：失败")
     deadline = time.time() + wait
     while time.time() < deadline:
         if editor_open():
@@ -238,7 +270,16 @@ def main(argv=None) -> int:
     ap.add_argument("--check", action="store_true", help="只体检不开剪映，不碰鼠标")
     ap.add_argument("--wait-idle", type=float, default=0.0)
     ap.add_argument("--wait", type=float, default=25.0)
+    ap.add_argument("--surface", action="store_true",
+                    help="草稿不在首页第一屏时，把它在索引里的修改时间顶到最新并重启剪映")
+    ap.add_argument("--list", action="store_true",
+                    help="只列出首页第一屏能读到的草稿名（不点鼠标）")
     args = ap.parse_args(argv)
+    if args.list:
+        print(json.dumps({"visible": DL.visible_titles(tree_text(1)) or [],
+                          "stale": DL.stale_entries() if app_running() else []},
+                         ensure_ascii=False))
+        return 0
     if args.check:
         return check(args.name, args.draft_path)
     if not P.quiet_start(args.wait_idle, restore=False, strict=True):
@@ -247,7 +288,7 @@ def main(argv=None) -> int:
     if args.name not in tree_text(1) and not (DRAFT_ROOT / args.name).is_dir():
         print("草稿目录不存在：%s" % (DRAFT_ROOT / args.name), file=sys.stderr)
         return 2
-    return open_draft(args.name, wait=args.wait)
+    return open_draft(args.name, wait=args.wait, surface=args.surface)
 
 
 if __name__ == "__main__":
