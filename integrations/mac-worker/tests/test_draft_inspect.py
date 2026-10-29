@@ -110,6 +110,38 @@ class DraftInspectTest(unittest.TestCase):
         self.assertEqual(missing["stampState"], "missing")
         self.assertEqual(broken["stampState"], "unreadable")
 
+    def test_media_digest_changes_when_draft_points_at_other_files(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = _draft(Path(td), {
+                "canvas_config": {"width": 1080, "height": 1920},
+                "duration": 30_000_000, "fps": 30, "tracks": [{}],
+                "materials": {"videos": [{"path": "assets/a.png"}], "audios": []},
+            })
+            (d / "studio_export_meta.json").write_text(json.dumps({
+                "expectedCanvas": {"width": 1080, "height": 1920}, "expectedDuration": 30.0,
+                "fps": 30, "tracks": 1, "mediaDigest": "deadbeef0000",
+            }), encoding="utf-8")
+            info = inspect(d)
+        self.assertTrue(any(m.startswith("media ") for m in info["mismatches"]), info["mismatches"])
+
+    def test_matching_media_digest_is_not_a_mismatch(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = _draft(Path(td), {
+                "canvas_config": {"width": 1080, "height": 1920},
+                "duration": 30_000_000, "fps": 30, "tracks": [{}],
+                "materials": {"videos": [{"path": "assets/a.png"}], "audios": []},
+            })
+            good = "6f35d8b668ac"
+            from export.media_digest import digest
+            good = digest(["assets/a.png"])
+            (d / "studio_export_meta.json").write_text(json.dumps({
+                "expectedCanvas": {"width": 1080, "height": 1920}, "expectedDuration": 30.0,
+                "fps": 30, "tracks": 1, "mediaDigest": good,
+            }), encoding="utf-8")
+            info = inspect(d)
+            self.assertEqual(info["mismatches"], [])
+            self.assertEqual(info["mediaDigest"], good)
+
     def test_schema_stamp_is_surfaced_when_present(self):
         with tempfile.TemporaryDirectory() as td:
             d = _draft(Path(td), {"materials": {}})

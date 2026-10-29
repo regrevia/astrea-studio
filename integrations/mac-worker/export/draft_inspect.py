@@ -11,8 +11,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-MEDIA_SECTIONS = ("videos", "audios", "images")
-MEDIA_KEYS = ("path", "file_Path", "file_path")
+try:
+    from .media_digest import MEDIA_KEYS, MEDIA_SECTIONS, digest as _media_digest
+except ImportError:
+    from media_digest import MEDIA_KEYS, MEDIA_SECTIONS, digest as _media_digest
 SIDECAR = "studio_export_meta.json"
 # 时长对账容差：一帧（30fps≈33ms），再宽就说明真不一样了
 DURATION_TOLERANCE = 0.05
@@ -50,6 +52,7 @@ def inspect(draft_dir: str | Path) -> dict:
         "stampState": "missing",
         "expected": None,
         "mismatches": [],
+        "mediaDigest": "",
     }
     if not d.is_dir():
         return info
@@ -79,6 +82,7 @@ def inspect(draft_dir: str | Path) -> dict:
         if isinstance(tracks, list):
             info["trackCount"] = len(tracks)
         materials = data.get("materials") or {}
+        refs: list[str] = []
         if isinstance(materials, dict):
             for name in MEDIA_SECTIONS:
                 items = materials.get(name) or []
@@ -91,11 +95,13 @@ def inspect(draft_dir: str | Path) -> dict:
                     ref = next((item[k] for k in MEDIA_KEYS if isinstance(item.get(k), str) and item[k]), "")
                     if not ref or "://" in ref:
                         continue
+                    refs.append(ref)
                     target = Path(ref)
                     if not target.is_absolute():
                         target = d / ref
                     if not target.exists() and ref not in info["missingMedia"]:
                         info["missingMedia"].append(ref)
+            info["mediaDigest"] = _media_digest(refs, d)
 
     stamp_path = d / "draft_version.json"
     if stamp_path.is_file():
@@ -136,6 +142,12 @@ def _expected(path: Path) -> dict | None:
         out["fps"] = meta["fps"]
     if isinstance(meta.get("tracks"), int):
         out["trackCount"] = meta["tracks"]
+    if isinstance(meta.get("draftId"), str) and meta["draftId"]:
+        out["draftId"] = meta["draftId"]
+    if isinstance(meta.get("sourceSpecHash"), str) and meta["sourceSpecHash"]:
+        out["sourceSpecHash"] = meta["sourceSpecHash"]
+    if isinstance(meta.get("mediaDigest"), str) and meta["mediaDigest"]:
+        out["mediaDigest"] = meta["mediaDigest"]
     return out
 
 
@@ -157,4 +169,7 @@ def _mismatches(info: dict, expected: dict | None) -> list[str]:
     want_tracks, got_tracks = expected.get("trackCount"), info.get("trackCount")
     if want_tracks is not None and got_tracks != want_tracks:
         bad.append("tracks %s != %s" % (got_tracks, want_tracks))
+    want_digest, got_digest = expected.get("mediaDigest"), info.get("mediaDigest")
+    if want_digest and got_digest and want_digest != got_digest:
+        bad.append("media %s != %s" % (got_digest, want_digest))
     return bad

@@ -223,6 +223,7 @@ def check(name: str, draft_path: str | None = None) -> int:
         "missingMedia": details["missingMedia"][:10],
         "schema": details["schema"],
         "stampState": details["stampState"],
+        "mediaDigest": details["mediaDigest"],
         "expected": details["expected"],
         "mismatches": details["mismatches"],
     }

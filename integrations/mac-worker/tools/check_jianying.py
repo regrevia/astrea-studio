@@ -252,7 +252,7 @@ def t_sidecar(tmp: Path, media: dict[str, Path]) -> str:
     (src / "draft_content.json").write_text(json.dumps({
         "id": "OLD-ID", "duration": 5000000, "fps": 30.0,
         "canvas_config": {"width": 1080, "height": 1920, "ratio": "9:16"},
-        "tracks": [{"type": "video"}], "materials": {"videos": [{"id": "m1"}]},
+        "tracks": [{"type": "video"}], "materials": {"videos": [{"id": "m1", "path": "assets/a.png"}]},
     }, ensure_ascii=False), encoding="utf-8")
     (src / "draft_meta_info.json").write_text(json.dumps({
         "draft_name": "selfcheck", "draft_fold_path": str(src),
@@ -282,6 +282,9 @@ def t_sidecar(tmp: Path, media: dict[str, Path]) -> str:
     require(side1.get("canvas", {}).get("width") == 1080, "画布没从 draft 推导出来")
     require(side1.get("tracks") == 1 and side1.get("materials") == {"videos": 1},
             "tracks/materials 没落盘: %r" % {k: side1.get(k) for k in ("tracks", "materials")})
+    require(isinstance(side1.get("mediaDigest"), str) and side1["mediaDigest"],
+            "sidecar 没写素材指纹: %r" % side1.get("mediaDigest"))
+    require(side1["mediaDigest"] == side2["mediaDigest"], "同素材两版指纹不一致")
 
     version_file = first / "draft_version.json"
     require(version_file.is_file(), "草稿少了 draft_version.json：版本适配层没落盘")
@@ -355,7 +358,7 @@ def t_version_layer(tmp):
             versioned["platform"]["os"] == "mac",
             "盖章没写到 platform: %r" % versioned["platform"])
 
-    require(E.ADAPTER_VERSION == "jianying-engine/3",
+    require(E.ADAPTER_VERSION == "jianying-engine/4",
             "适配器版本没随 schema 写入语义升级: %r" % E.ADAPTER_VERSION)
     return "12.x 无实证=keep-template，有实证=reference-same-major；adapter=%s" % E.ADAPTER_VERSION
 

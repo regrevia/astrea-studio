@@ -50,7 +50,7 @@ VCUT_BASE = f"http://127.0.0.1:{VCUT_PORT}"
 DRAFT_ROOT = HOME / "Movies" / "JianyingPro" / "User Data" / "Projects" / "com.lveditor.draft"
 
 # 出片侧靠这个版本号判断「草稿是哪个适配器写的」，语义变了必须加一
-ADAPTER_VERSION = "jianying-engine/3"
+ADAPTER_VERSION = "jianying-engine/4"
 
 
 # ---------------------------------------------------------------- HTTP 层
@@ -284,6 +284,17 @@ def _write_export_sidecar(dest: Path, project_name: str,
     side["tracks"] = len(data.get("tracks") or [])
     side["materials"] = {k: len(v) for k, v in (data.get("materials") or {}).items()
                          if isinstance(v, list) and v}
+    try:
+        from export.media_digest import digest as _digest, refs_from_materials
+    except ImportError:  # 从仓库根以外的地方跑：按文件路径加载
+        import importlib.util as _ilu
+        _spec = _ilu.spec_from_file_location(
+            "media_digest", Path(__file__).resolve().parent / "export" / "media_digest.py")
+        _mod = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        _digest, refs_from_materials = _mod.digest, _mod.refs_from_materials
+    mat = data.get("materials") or {}
+    side["mediaDigest"] = _digest(refs_from_materials(mat), dest)
     version_file = dest / "draft_version.json"
     if version_file.exists():
         try:
