@@ -36,6 +36,7 @@ from slides_render import SlidesError, render_from_payload as render_slides
 from motion_render_engine import render_motion, MotionError
 from jianying_engine import render_jianying, JianyingError
 import claim_dispatch as claim
+import export_landing as landing
 import video_qa
 from export import timeline_render as timeline
 from export import vertical_short as vertical
@@ -164,49 +165,19 @@ def _wait_idle(payload: dict) -> float:
 
 def _land_export(video: str, payload: dict, job_id: str, revision: int,
                  outdir: str) -> dict | None:
-    """成片入库：只认库里的落点，不留在 out/<jobId> 里当散件。"""
+    """成片入库：只认库里的落点，不留在 out/<jobId> 里当散件。
+
+    收口细节（体检证据、字段兜底、失败留痕不丢文件）在 export_landing.py，
+    这里只负责告诉它去哪找证据、以及把告警接到 worker 日志上。
+    """
+    roots = []
     try:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        import library as lib  # noqa: WPS433
-        project = str(payload.get("libraryProjectName") or payload.get("libraryProject")
-                      or payload.get("project") or "studio")
-        project_id = str(payload.get("libraryProject") or "")
-        title = str(payload.get("libraryTitle") or payload.get("title")
-                    or payload.get("runId") or job_id)
-        revision_meta = {}
-        # 导出的体检证据由 jianying_export.py 写在仓库 docs 下；worker 跑在
-        # ~/CreatorStudio/runtime，套用同一份 REPO_ROOT 才不会漏读。
-        roots = []
-        try:
-            import config as _cfg  # noqa: WPS433
-            roots.append(Path(_cfg.REPO_ROOT))
-        except Exception:
-            pass
-        roots.append(Path(outdir).expanduser().parent)
-        for root in roots:
-            ev = Path(root) / "docs/probe/export-panel/runs" / job_id
-            cands = sorted(ev.glob("*.json")) if ev.is_dir() else []
-            if not cands:
-                continue
-            try:
-                revision_meta = json.loads(cands[0].read_text(encoding="utf-8"))
-            except Exception:
-                revision_meta = {}
-            break
-        row = lib.land(video, project=project, title=title, project_id=project_id,
-                       platform=str(payload.get("platform") or "douyin"),
-                       revision=revision, run_id=str(payload.get("runId") or ""),
-                       job_id=job_id,
-                       draft=str(payload.get("draft") or ""),
-                       draft_path=str(payload.get("draftPath") or ""),
-                       duration=(revision_meta.get("probe") or {}).get("duration"),
-                       meta={"checks": revision_meta.get("checks") or {},
-                             "profile": revision_meta.get("profile") or {},
-                             "panel": revision_meta.get("panel") or ""})
-        return row
-    except Exception as exc:  # 入库失败不能吞掉成片，但也必须留痕
-        log.warning("成片入库失败（%s）：%s 仍留在 %s", job_id, exc, video)
-        return None
+        import config as _cfg  # noqa: WPS433
+        roots.append(Path(_cfg.REPO_ROOT))
+    except Exception:
+        pass
+    return landing.land(video, payload, job_id, revision, outdir, roots=roots,
+                        warn=log.warning)
 
 
 def _land_timeline(video: str, payload: dict, job_id: str, revision: int, *,

@@ -70,7 +70,7 @@ cd integrations/mac-worker
 | --- | --- | --- |
 | 发布段离线契约 | 0.1 s | PASS |
 | 剪映段离线自检 | 4.7 s | PASS（10/10） |
-| 认领分发单元测试 | 0.0 s | PASS（7/7：参数拼装、退出码归因、产物定位） |
+| worker 分发单元测试 | 0.0 s | PASS（15/15：认领参数拼装/退出码归因/产物定位、入库证据/字段兜底/失败留痕不丢文件） |
 | 发布泳道真机探针 | 72.0 s | PASS（claim 3.3 / cancelled-run 3.3 / stale-revision 3.3 / lease-expired 58.8 / readback-retry 2.0 s） |
 | 剪映版本依据 | — | 11.6.0 build 490 · 沿用模板（无同主版本实证，不猜版本号）· 参考草稿 11 份（版本戳 10.2.0/5.9.0） |
 | 后端生产 spec（`--with-web`） | 2.3 s | PASS（76/76：发布状态机、租约回收归位、回读） |
@@ -290,6 +290,9 @@ job `6ae2a2b58f01834bace100de` 返回 `stage=draft_checked`、`output.canOpen=tr
 认领在 worker 侧的分发（拼命令行、退出码→原因码、找归位后的成片）已抽成纯标准库的
 `integrations/mac-worker/claim_dispatch.py`，由 `tests/test_claim_dispatch.py` 覆盖并在验收里作为独立一行跑，
 不再只靠真机探针间接验证；worker 只负责起进程、落库、把原因码回给后端。
+成片入库的收口同样抽成 `integrations/mac-worker/export_landing.py`：按候选根目录读导出体检证据、
+把项目/标题/平台字段按优先级兜底、交给 `library.land`；入库抛错时返回 None 并留痕，成片仍在原处，
+调用方不会拿到伪造的库路径。`tests/test_export_landing.py` 8 项覆盖（含真实 `library.land` 的同版本二次入库不覆盖）。
 
 
 
