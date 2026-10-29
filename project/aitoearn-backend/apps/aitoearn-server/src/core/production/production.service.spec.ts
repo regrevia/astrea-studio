@@ -625,6 +625,29 @@ describe('planPublication', () => {
     })
   })
 
+  it('认领入库过的 run 记的是入库那一份，不是产物目录里的临时路径', async () => {
+    const { service, runRepo, attemptRepo } = createService()
+    runRepo.getByIdForUser.mockResolvedValue({
+      ...SUCCEEDED_RUN,
+      output: {
+        videoPath: '/Users/apple/CreatorStudio/out/job-1/r1/job-1__r1__douyin.mp4',
+        libraryPath: '/Users/apple/CreatorStudio/library/p/2026-10/a__douyin__r1.mp4',
+        platforms: {},
+      },
+    })
+
+    await service.planPublication('user-1', {
+      runId: 'run-1',
+      platform: 'douyin',
+      dispatcher: 'sau',
+      accountRef: 'acc-1',
+    })
+
+    expect(attemptRepo.create.mock.calls[0][0].content).toEqual({
+      assetKey: '/Users/apple/CreatorStudio/library/p/2026-10/a__douyin__r1.mp4',
+    })
+  })
+
   it('没有任何成片时拒绝计划发布', async () => {
     const { service, runRepo, attemptRepo } = createService()
     runRepo.getByIdForUser.mockResolvedValue({ ...SUCCEEDED_RUN, output: {} })

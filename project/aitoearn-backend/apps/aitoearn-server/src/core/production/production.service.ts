@@ -1299,8 +1299,13 @@ export class ProductionService {
     const run = await this.getRun(userId, input.runId)
     const output = (run.output ?? {}) as Record<string, unknown>
     const platforms = (output['platforms'] ?? {}) as Record<string, { key?: string }>
-    // 发布投递哪个文件：该平台重新交付过的成片优先，否则退回母版 key
-    const assetKey = platforms[input.platform]?.key || (typeof output['videoPath'] === 'string' ? output['videoPath'] : '')
+    // 发布投递哪个文件：该平台重新交付过的成片优先；其次是认领入库那一份
+    // （它是唯一保证在本机存在、且过过指纹闸的文件）；最后才退回母版 key。
+    // 之前只认平台 key 和 videoPath，认领过的 run 会在台账里记下产物目录里那条
+    // 临时路径，发布时可能指向已被清掉的文件。
+    const libraryPath = typeof output['libraryPath'] === 'string' ? output['libraryPath'] : ''
+    const masterPath = typeof output['videoPath'] === 'string' ? output['videoPath'] : ''
+    const assetKey = platforms[input.platform]?.key || libraryPath || masterPath
     if (run.status !== ProductionRunStatus.SUCCEEDED || !assetKey) {
       throw new AppException(ResponseCode.ProductionInvalidState, '运行还没有可发布的成片产物')
     }

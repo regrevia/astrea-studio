@@ -42,6 +42,18 @@ argv 不一样，所以发布类型必须显式带：
 输出两种结局：`cookie 文件在` + `cookie 有效` → 可发；文件不在或 `sau douyin check` 不通过 →
 直接给重新登录的命令。实测 `yefen`：文件在、`sau douyin check` 通过（2026-10-29）。
 
+## 台账记哪一个文件
+
+`planPublication` 往 `content.assetKey` 写的是「这次真要发的那份文件」，优先级：
+
+1. 该平台重新交付过的成片（`output.platforms[platform].key`）
+2. **认领入库那一份**（`output.libraryPath`）——本机保证存在、过过指纹闸
+3. 母版 key（`output.videoPath`）——产物目录里的临时路径，可能已被清掉
+
+实测：run `6ae237a72a5e71e140145c49` 登记成 attempt `6ae2ab4666b2fe676bafe43a`，
+`assetKey` 是 `library/…/20261029-095802__…__douyin__r1.mp4`（188927 B，文件在），
+同一载荷再登记一次 `deduped:true`，没有产生第二行。
+
 ## 离线体检
 
 ```
