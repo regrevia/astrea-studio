@@ -201,6 +201,7 @@ PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib \
 | 类型化工具 | 完成 | MCP 18 个工具带 schema（[mcp-production-tools.md](mcp-production-tools.md)、[mcp-studio-capabilities.json](evidence/mcp-studio-capabilities.json)） |
 | 可验证 scene patch | 完成 | 补丁落新 revision、可连续叠加、底稿仍可审计；[scene-patch-accumulate.json](evidence/scene-patch-accumulate.json)、[scene-patch-ui.png](evidence/scene-patch-ui.png) |
 | 剪映工程 + 独立导出任务 | 完成 | 导出与渲染拆成两条 job，认领只排任务不驱动面板，`claimPath`/`allowGui` 互斥；[claim-export-branches](evidence/claim-export-branches) |
+| 认领成片入库 | 完成 | 实机 job `6ae2a8298f01834bace113fc`：`claimPath` 指向 1080×1920/30fps/6.0s 的 mp4，job `succeeded`、`claimed=true`，落 `library/端到端验收-一体化宣发工作台__6ae237a7/2026-10/…__douyin__r1.mp4`（188 KB）并写进 `library/index.jsonl`；素材指纹不符时 job `6ae2a8228f01834bace113b3` 失败，`reasonCode=draft_media_changed`（`认领失败 rc=12：草稿素材换了：media 1b0c4d60a2f4 != deadbeef0000`） |
 | 约 30 秒 1080×1920 端到端 | 完成 | 新项目 `6ae237a72a5e71e140145c45` 跑 3 版：全部 succeeded，ffprobe 1080×1920 / 30 fps / 30.0 s / 4.4 MB，落点在 `library/端到端验收-一体化宣发工作台__6ae237a7/`（[result.json](evidence/library-project/result.json) 的 `finalCheck`） |
 
 本轮还补齐了成片库的目录规范：目录与文件名统一 `<项目名slug>__<id8>`，历史 `studio/` 与纯 id 目录用 `library.py migrate` 一次搬完 121 个文件，`library.py verify` 对账干净（见 [asset-library.md](asset-library.md)、[library-project/README.md](evidence/library-project/README.md)）。

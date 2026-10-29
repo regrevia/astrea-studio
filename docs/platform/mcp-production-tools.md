@@ -26,6 +26,7 @@
 剪映的导出面板只能由人点，或由这台 Mac 上的 GUI 自动化代点；机器不空闲时强行代点只会空转。所以这个工具分成两档，行为可预期：
 
 - 默认（不带 `allowGui`）：立刻返回，job 记 `succeeded`，`result.stage = awaiting_manual_export`、`reasonCode = export_needs_manual_gui`，任务转 `waiting_user`。不产生 `videoPath`。
+- `claimPath`：认领人工导出的成片，不驱动面板。校验画布/时长/帧率/修订版/素材指纹，任一对不上就拒绝（rc 12 → `draft_media_changed`），只有校验过的文件才会落成片库并写 `library/index.jsonl`。
 - `allowGui: true`：worker 先自检。屏幕锁着直接返回 `reasonCode = screen_locked`（不开剪映、不等 1800 秒）；工具链缺失现场编译；面板可用才代点导出，返回 `stage = exported` 与真实 `videoPath`，或按 rc 映射成 `export_panel_unavailable` / `export_timeout` / `export_aspect_mismatch` 等原因码。
 
 `reasonCode` 写在结果顶层，任务详情把它归一进 `run.output.manualExportReason`，界面据此给不同的下一步。一个不变量：**没有真实产物就不写 `videoPath`**，也不会把这类任务记成 `succeeded`。
