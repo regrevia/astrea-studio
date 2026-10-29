@@ -37,6 +37,8 @@
 返回 `stage=draft_checked`、`output.opened=false`：`output.canOpen` 是结论，`output.blockers`
 说明卡在哪（`draft_missing` / `app_missing` / `media_missing`），`output.canvas/durationSec/fps/
 missingMedia/schema` 是草稿内部实况；密文草稿给 `encrypted=true` 而不是失败。
+和这次任务对账的结果在 `output.expected`（画布/时长/帧率/轨道/`mediaDigest` 素材指纹，含
+`draftId`/`sourceSpecHash` 身份）与 `output.mismatches`；对不上时阻塞项是 `spec_mismatch`。
 
 打开工程是给人看的动作，不是流水线的一步，所以它和导出彻底分开：
 

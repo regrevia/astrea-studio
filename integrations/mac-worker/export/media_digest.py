@@ -31,12 +31,29 @@ def normalize(ref: str, base: Path | None) -> str | None:
     return Path(ref.replace("\\", "/")).as_posix()
 
 
+def _entry(ref: str, base: Path | None) -> str | None:
+    """一条素材的指纹原文：相对路径 + 字节数。文件不在了记 `?`，删了也算变了。"""
+    name = normalize(ref, base)
+    if not name:
+        return None
+    target = Path(name) if base is None else (base / name)
+    try:
+        size = target.stat().st_size
+    except OSError:
+        return "%s|?" % name
+    return "%s|%d" % (name, size)
+
+
 def digest(refs: Iterable[str], base: Path | None = None) -> str:
-    """排序后拼接再取 sha1 前 12 位；没有素材时返回空串，不当成「不一致」。"""
-    normed = sorted({n for n in (normalize(r, base) for r in refs) if n})
-    if not normed:
+    """排序后拼接再取 sha1 前 12 位；没有素材时返回空串，不当成「不一致」。
+
+    带字节数是为了认出「路径没变、内容换了」：只认路径的话，同一路径换了素材也算一致。
+    不带 mtime：剪映/备份工具会重写 mtime，那是噪声，会造出假阻塞。
+    """
+    entries = sorted({e for e in (_entry(r, base) for r in refs) if e})
+    if not entries:
         return ""
-    return hashlib.sha1("\n".join(normed).encode("utf-8")).hexdigest()[:12]
+    return hashlib.sha1("\n".join(entries).encode("utf-8")).hexdigest()[:12]
 
 
 def refs_from_materials(materials: Any) -> list[str]:

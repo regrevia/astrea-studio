@@ -778,7 +778,7 @@ class Worker:
             tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-1200:]
             if proc.returncode != 0:
                 codes = {6: "export_probe_failed", 8: "export_output_exists",
-                         11: "export_draft_revision_mismatch"}
+                         11: "export_draft_revision_mismatch", 12: "draft_media_changed"}
                 raise JianyingError(reason_text(
                     codes.get(proc.returncode, "jianying_export_failed"),
                     f"认领失败 rc={proc.returncode}: {tail}"))
@@ -906,7 +906,7 @@ class Worker:
                  4: "export_panel_unavailable", 5: "export_timeout",
                  6: "export_probe_failed", 7: "export_aspect_mismatch",
                  8: "export_output_exists", 10: "export_ambiguous_output",
-                 11: "export_draft_revision_mismatch"}
+                 11: "export_draft_revision_mismatch", 12: "draft_media_changed"}
         raise JianyingError(reason_text(codes.get(code, "jianying_export_failed"),
                                         f"导出失败 rc={code}: {tail}"))
 

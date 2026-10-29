@@ -259,7 +259,7 @@ rc=2 判 `export_draft_not_open`、成功落 `stage=draft_opened` 且命令行�
 `infoReadable:false`——只是读不到，不是坏草稿，照样能开。
 
 体检还会跟平台写的 `studio_export_meta.json` 对账：`expected` 是这份草稿本该有的画布/时长/
-帧率/轨道/素材指纹（`mediaDigest`，素材路径集合排序后 sha1 前 12 位，引擎 v4 起写盘），
+帧率/轨道/素材指纹（`mediaDigest`，素材「相对路径 + 字节数」排序后 sha1 前 12 位，引擎 v4 起写盘；看不到文件大小就不算不一致），
 `mismatches` 列出实际差异，有差异就把 `spec_mismatch` 放进 `blockers`——这样拿错
 草稿在「真开」之前就挡住。版本戳 `stampState` 分 `present`（有版本块）、`missing`（旧草稿没写）、
 `unreadable`（文件在但读不出），不再一律 `null`。

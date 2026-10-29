@@ -222,9 +222,10 @@ cd project/aitoearn-web && npx tsc --noEmit
 
 - `export/open_draft.py --check` 输出一行 JSON：`draftPath/appPath/draftExists/appInstalled/appRunning/editorOpen/canOpen/blockers`，退出码 0 可开、2 不可开；不启动、不点、不抢前台。
 - 体检还读草稿内部（`export/draft_inspect.py`，只读）：`canvas/durationSec/fps/trackCount/media/missingMedia/schema`；素材引用逐个核对是否还在，缺了报 `missingMedia` 并给阻塞项 `media_missing`。剪映 11.6 保存后 `draft_info.json` 是密文，这时报 `encrypted/infoReadable=false`，不当失败（草稿照样能开）。
-- 体检还跟这次任务对账：读 `studio_export_meta.json` 的 `expectedCanvas/expectedDuration/fps/tracks/mediaDigest`，跟草稿实况比，不一致列进 `mismatches` 并给阻塞项 `spec_mismatch`（拿错草稿在「真开」之前就能发现）；`mediaDigest` 是素材路径集合的短指纹（相对草稿目录、排序后 sha1 前 12 位），草稿换了素材也能在体检阶段看出来；版本戳分三态 `present/missing/unreadable`，旧草稿没戳和戳写坏不再混成一句 `null`。
+- 体检还跟这次任务对账：读 `studio_export_meta.json` 的 `expectedCanvas/expectedDuration/fps/tracks/mediaDigest`，跟草稿实况比，不一致列进 `mismatches` 并给阻塞项 `spec_mismatch`（拿错草稿在「真开」之前就能发现）；`mediaDigest` 是素材的短指纹（相对路径 + 字节数，排序后 sha1 前 12 位），同一路径换了内容也能在体检阶段看出来；版本戳分三态 `present/missing/unreadable`，旧草稿没戳和戳写坏不再混成一句 `null`。
 - 实机负例：把 sidecar 写成期望 30s/2 轨、草稿实况 11s/1 轨，job `6ae2a4f58f01834bace1089d` 失败并给出「草稿和这次任务对不上：duration 11.0 != 30.0s；tracks 1 != 2」；素材指纹对不上的负例 job `6ae2a6878f01834bace10e4e` 给出「media b858506f887c != deadbeef0000」。
-- 实机正例（引擎 v4 语义的手写 sidecar）：job `6ae2a6518f01834bace10d4b` 的 `expected` 带上 `draftId/sourceSpecHash/mediaDigest=6f35d8b668ac`，与草稿实况一致，`mismatches=[]` 仍可开。
+- 导出/认领前还有一道素材闸：草稿建好后素材被换掉，`jianying_export.py` 以 rc 12 拒绝并报 `draft_media_changed`（实测 `草稿素材换了：media 1b0c4d60a2f4 != deadbeef0000`），不会把贴错素材的成片认领进来。
+- 实机正例（引擎 v4 语义的手写 sidecar）：job `6ae2a7748f01834bace11166` 的 `expected` 带上 `draftId/sourceSpecHash/mediaDigest=6f35d8b668ac`，与草稿实况一致，`mismatches=[]` 仍可开。
 - worker 的 `jianying_open` 收 `check: true` 走体检分支，返回 `stage=draft_checked`；体检不看屏幕锁（只读），真开仍被 `screen_locked` 拦住。
 - REST `POST /production/runs/:id/open-draft {check:true}`、MCP `openJianyingDraft {check:true}` 均可触发。
 - 顺带修掉一个真问题：`claimJob` 的「run 已终态就不再跑」原来把 `jianying_open`/`jianying_export` 一起丢掉，对已交付的 run 点「在剪映中打开」会被判 `dropped: run already succeeded`。现在这两类收尾动作只拒「run 已取消」，渲染类任务行为不变（`production.service.spec.ts` 两条新断言覆盖）。

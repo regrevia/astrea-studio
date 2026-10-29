@@ -195,6 +195,26 @@ def load_sidecar(draft_dir: str) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def media_drift(draft_dir: str, sidecar: dict) -> str:
+    """sidecar 里的素材指纹 vs 草稿现在引用的素材：不一致就返回差异说明，一致返回空串。
+
+    为什么在导出/认领前再查一次：草稿建好后素材可能被换掉/删掉，成片就贴不上这一版了。
+    读不到草稿内部（加密）或 sidecar 没指纹时返回空串——读不到不是「不一致」。
+    """
+    want = sidecar.get("mediaDigest") if isinstance(sidecar, dict) else ""
+    if not want or not draft_dir:
+        return ""
+    try:
+        from draft_inspect import inspect as _inspect
+    except ImportError:
+        return ""
+    info = _inspect(draft_dir)
+    got = info.get("mediaDigest") or ""
+    if not got or got == want:
+        return ""
+    return "media %s != %s" % (got, want)
+
+
 def draft_canvas(name: str, explicit: str = ""):
     """草稿画布 (w,h) 及来源。优先 sidecar（剪映保存后草稿 JSON 是密文，读不了）。"""
     if explicit:
@@ -478,6 +498,10 @@ def claim_export(path: str, args) -> int:
         return 2
     draft_path = args.draft_path or ""
     sidecar = load_sidecar(draft_path) if draft_path else {}
+    drift = media_drift(draft_path, sidecar)
+    if drift:
+        print("草稿素材换了：%s" % drift, file=sys.stderr)
+        return 12
     canvas = tuple(int(x) for x in args.canvas.split("x")) if "x" in args.canvas else (0, 0)
     if not any(canvas) and sidecar:
         cc = sidecar.get("canvas") or {}
@@ -618,6 +642,10 @@ def main(argv=None):
 
     canvas, canvas_src = draft_canvas(draft, args.canvas)
     sidecar = load_sidecar(args.draft_path or str(DRAFT_ROOT / draft))
+    drift = media_drift(args.draft_path or str(DRAFT_ROOT / draft), sidecar)
+    if drift:
+        print("草稿素材换了：%s" % drift, file=sys.stderr)
+        return 12
     if not canvas and sidecar:
         cc = sidecar.get("canvas") or {}
         if cc.get("width") and cc.get("height"):
