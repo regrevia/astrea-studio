@@ -35,6 +35,7 @@ from render_mpt import RenderError, render as render_mpt
 from slides_render import SlidesError, render_from_payload as render_slides
 from motion_render_engine import render_motion, MotionError
 from jianying_engine import render_jianying, JianyingError
+import claim_dispatch as claim
 import video_qa
 from export import timeline_render as timeline
 from export import vertical_short as vertical
@@ -765,31 +766,21 @@ class Worker:
                 raise JianyingError("认领成片需要 draftPath：没有草稿就无从核对时长与画布")
             progress(20, "jianying:claim")
             script = Path(__file__).with_name("export") / "jianying_export.py"
-            argv = [
-                sys.executable, str(script),
-                "--claim", claim_path,
-                "--job-id", job_id,
-                "--revision", str(revision),
-                "--platform", platform,
-                "--outdir", outdir,
-                "--draft-path", draft_path,
-            ]
-            if payload.get("canvas"):
-                argv += ["--canvas", str(payload["canvas"])]
+            argv = claim.build_argv(
+                sys.executable, script, claim_path=claim_path, job_id=job_id,
+                revision=revision, platform=platform, outdir=outdir,
+                draft_path=draft_path, canvas=str(payload.get("canvas") or ""),
+            )
             try:
                 proc = subprocess.run(argv, capture_output=True, text=True, timeout=600)
             except subprocess.TimeoutExpired:
                 raise JianyingError(f"认领进程 600s 没结束（{script}）")
             tail = ((proc.stdout or "") + (proc.stderr or "")).strip()[-1200:]
             if proc.returncode != 0:
-                codes = {6: "export_probe_failed", 8: "export_output_exists",
-                         11: "export_draft_revision_mismatch", 12: "draft_media_changed"}
-                raise JianyingError(reason_text(
-                    codes.get(proc.returncode, "jianying_export_failed"),
-                    f"认领失败 rc={proc.returncode}: {tail}"))
+                code, message = claim.failure(proc.returncode, tail)
+                raise JianyingError(reason_text(code, message))
             final_dir = Path(outdir) / job_id / f"r{revision}"
-            made = sorted(final_dir.glob("*")) if final_dir.is_dir() else []
-            video = next((str(f) for f in made if f.suffix.lower() in (".mp4", ".mov")), None)
+            video = claim.find_video(final_dir)
             if not video:
                 raise JianyingError(f"认领进程返回 0 但 {final_dir} 里没有产物")
             landed = _land_export(video, payload, job_id, revision, outdir)
@@ -877,8 +868,7 @@ class Worker:
         code = proc.returncode
         if code == 0:
             final_dir = Path(outdir) / job_id / f"r{revision}"
-            made = sorted(final_dir.glob("*")) if final_dir.is_dir() else []
-            video = next((str(f) for f in made if f.suffix.lower() in (".mp4", ".mov")), None)
+            video = claim.find_video(final_dir)
             if not video:
                 raise JianyingError(f"导出进程返回 0 但 {final_dir} 里没有产物")
             landed = _land_export(video, payload, job_id, revision, outdir)

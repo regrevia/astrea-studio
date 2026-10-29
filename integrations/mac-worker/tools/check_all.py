@@ -35,13 +35,16 @@ REPO = MW.parents[1]
 BACKEND = REPO / "project/aitoearn-backend"
 WEB = REPO / "project/aitoearn-web"
 
-# kind: python=本目录工具；lane=真机探针（压成一行结论）；version=版本依据；
+# kind: python=本目录工具；unittest=单元测试模块；lane=真机探针（压成一行结论）；version=版本依据；
 # shell=外部工作区的命令（后端单测、Web 类型检查），只有 --with-web 才跑。
 CHECKS: list[dict[str, object]] = [
     {"name": "发布段离线契约", "kind": "python", "cmd": ["check_publish.py"],
      "timeout": 180.0, "live": False, "group": "core"},
     {"name": "剪映段离线自检", "kind": "python", "cmd": ["check_jianying.py"],
      "timeout": 240.0, "live": False, "group": "core"},
+    {"name": "认领分发单元测试", "kind": "unittest",
+     "cmd": ["tests.test_claim_dispatch"], "timeout": 60.0,
+     "live": False, "group": "core"},
     {"name": "发布泳道真机探针", "kind": "lane",
      "cmd": ["--apply", "--all"], "timeout": 300.0, "live": True, "group": "core"},
     {"name": "剪映版本依据", "kind": "version", "cmd": ["--json"],
@@ -148,6 +151,22 @@ def run_one(script: str, argv: list[str], timeout: float) -> tuple[bool, str, st
     return proc.returncode == 0, detail, elapsed
 
 
+def run_unittest(modules: list[str], timeout: float) -> tuple[bool, str, str]:
+    """在 mac-worker 根目录跑指定单元测试模块（标准库，不需要 worker 那套重依赖）。"""
+    cmd = [sys.executable, "-m", "unittest", *modules]
+    started = time.time()
+    try:
+        proc = subprocess.run(cmd, cwd=str(MW), capture_output=True, text=True,
+                              timeout=timeout, check=False)
+    except subprocess.TimeoutExpired:
+        return False, f"{timeout:.0f}s 超时", f"{time.time() - started:.1f}s"
+    elapsed = f"{time.time() - started:.1f}s"
+    tail = (proc.stdout or proc.stderr or "").strip().splitlines()
+    ran = next((line.strip() for line in reversed(tail) if line.startswith("Ran ")), "")
+    detail = ran or (tail[-1][:160] if tail else "")
+    return proc.returncode == 0, detail, elapsed
+
+
 def run_lane(argv: list[str], timeout: float) -> tuple[bool, str, str]:
     """真机探针输出是 JSON 列表；这里把它压成一行结论，别把整段 JSON 当详情。"""
     import re
@@ -240,6 +259,8 @@ def main() -> int:
             ok, detail, elapsed = run_lint(entry)
         elif kind == "lane":
             ok, detail, elapsed = run_lane(list(entry["cmd"]), float(entry["timeout"]))
+        elif kind == "unittest":
+            ok, detail, elapsed = run_unittest(list(entry["cmd"]), float(entry["timeout"]))
         elif kind == "shell":
             ok, detail, elapsed = run_shell(entry)
         else:
