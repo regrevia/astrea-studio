@@ -42,7 +42,8 @@ USER_ID = "6ad9e38c8d350ba17d570e2b"
 PROJECT_ID = "6ae237a72a5e71e140145c45"  # 端到端验收项目
 WAIT_SECONDS = 60
 
-CASES = ("claim", "cancelled-run", "stale-revision")
+CASES = ("claim", "cancelled-run", "stale-revision", "lease-expired")
+LEASE_WAIT_SECONDS = 150  # 回收器每分钟扫一次
 
 
 def _mongosh_cmd(js: str) -> list[str]:
@@ -100,6 +101,60 @@ def insert_probe(run_id: str, revision: int = 1) -> str:
     return mongo(js).splitlines()[-1].strip()
 
 
+def create_attempt(run_id: str) -> str:
+    """造一条提交中途的记录：worker 已经点了发布、还没回写结论。"""
+    js = (
+        "const now=new Date();"
+        f"const r=db.publicationAttempt.insertOne({{userId:'{USER_ID}',runId:'{run_id}',"
+        f"projectId:'{PROJECT_ID}',platform:'douyin',dispatcher:'sau',accountRef:'yefen',"
+        "accountName:'yefen',revision:1,idempotencyKey:'round27-lease-probe-'+Date.now(),"
+        "plannedAt:now,status:'submitting',content:{},remotePostId:'',remoteUrl:'',"
+        "evidence:[],lastError:'',createdAt:now,updatedAt:now});"
+        "print(String(r.insertedId))"
+    )
+    return mongo(js).splitlines()[-1].strip()
+
+
+def insert_expired_job(run_id: str, attempt_id: str) -> str:
+    """running 作业 + 已经过期的租约：等价于 worker 被 kill -9 之后再没人续约。"""
+    js = (
+        "const now=new Date();const old=new Date(now.getTime()-5*60*1000);"
+        f"const r=db.productionJob.insertOne({{runId:ObjectId('{run_id}'),revision:1,attempt:1,"
+        "lane:'publish',kind:'publish_sau',status:'running',stage:'submitting',"
+        f"payload:{{attemptId:'{attempt_id}'}},userId:'{USER_ID}',"
+        f"workerId:'{WORKER_ID}',leaseOwner:'{WORKER_ID}',leaseVersion:1,maxAttempts:1,"
+        "startedAt:old,heartbeatAt:old,leaseExpiresAt:old,createdAt:old,updatedAt:old});"
+        "print(String(r.insertedId))"
+    )
+    return mongo(js).splitlines()[-1].strip()
+
+
+def read_attempt(attempt_id: str) -> dict:
+    js = (
+        f"const a=db.publicationAttempt.findOne({{_id:ObjectId('{attempt_id}')}},"
+        "{status:1,evidence:1,lastError:1});"
+        "print(JSON.stringify(a&&{status:a.status,evidence:a.evidence,lastError:a.lastError}))"
+    )
+    raw = mongo(js)
+    return json.loads(raw.splitlines()[-1] or "null") or {}
+
+
+def read_run_status(run_id: str) -> str:
+    raw = mongo(
+        f"const r=db.productionRun.findOne({{_id:ObjectId('{run_id}')}},{{status:1}});"
+        "print(r?r.status:'')"
+    )
+    return raw.splitlines()[-1].strip() if raw else ""
+
+
+def count_pending_jobs(run_id: str, exclude_job_id: str) -> int:
+    raw = mongo(
+        f"print(db.productionJob.countDocuments({{runId:ObjectId('{run_id}'),"
+        f"status:{{$in:['queued','running']}},_id:{{$ne:ObjectId('{exclude_job_id}')}}}}))"
+    )
+    return int(raw.splitlines()[-1].strip() or 0)
+
+
 def read_state(job_id: str) -> dict:
     js = (
         f"const j=db.productionJob.findOne({{_id:ObjectId('{job_id}')}},"
@@ -115,11 +170,13 @@ def read_state(job_id: str) -> dict:
     return json.loads(line or "{}")
 
 
-def cleanup(job_id: str, run_ids: list[str]) -> None:
+def cleanup(job_id: str, run_ids: list[str], attempt_id: str = "") -> None:
     js = (
         f"db.productionEvent.deleteMany({{jobId:'{job_id}'}});"
         f"db.productionJob.deleteOne({{_id:ObjectId('{job_id}')}});"
     )
+    if attempt_id:
+        js += f"db.publicationAttempt.deleteOne({{_id:ObjectId('{attempt_id}')}});"
     for run_id in run_ids:
         js += (
             f"db.productionEvent.deleteMany({{runId:'{run_id}'}});"
@@ -150,6 +207,16 @@ def plan(case: str) -> dict:
                 "worker 不会收到这条活",
             ],
         }
+    if case == "lease-expired":
+        return {
+            "case": case,
+            "run": "已交付 run + 一条租约过期的 running 作业 + 一条 submitting 提交",
+            "expect": [
+                "作业被判 lease expired（事件带作业号）",
+                "那条提交不能停在 submitting（要落 submission_unknown 等回读）",
+                "run 保持 succeeded，不给已交付 run 补渲染任务",
+            ],
+        }
     return {
         "case": case,
         "run": "临时造一条第 2 版的 run，作业挂第 1 版",
@@ -159,9 +226,15 @@ def plan(case: str) -> dict:
 
 def run_case(case: str, wait_seconds: float) -> dict:
     created_runs: list[str] = []
+    attempt_id = ""
     if case == "claim":
         run_id = pick_succeeded_run()
         job_revision = 1
+    elif case == "lease-expired":
+        run_id = pick_succeeded_run()
+        job_revision = 1
+        attempt_id = create_attempt(run_id)
+        job_id = insert_expired_job(run_id, attempt_id)
     elif case == "cancelled-run":
         run_id = create_run("cancelled", 1)
         created_runs.append(run_id)
@@ -171,10 +244,12 @@ def run_case(case: str, wait_seconds: float) -> dict:
         created_runs.append(run_id)
         job_revision = 1
 
-    job_id = insert_probe(run_id, job_revision)
+    if case != "lease-expired":
+        job_id = insert_probe(run_id, job_revision)
     started = time.time()
     try:
-        while time.time() - started < wait_seconds:
+        wait_for = LEASE_WAIT_SECONDS if case == "lease-expired" else wait_seconds
+        while time.time() - started < wait_for:
             state = read_state(job_id)
             if (state.get("job") or {}).get("status") in ("succeeded", "failed", "cancelled"):
                 break
@@ -194,7 +269,20 @@ def run_case(case: str, wait_seconds: float) -> dict:
         cancelled_event = next((e for e in events if e.get("kind") == "job.cancelled"), {})
         status = job.get("status")
 
-        if case == "claim":
+        if case == "lease-expired":
+            attempt = read_attempt(attempt_id)
+            checks = {
+                "expired_failed": status == "failed" and "lease expired" in str(job.get("message") or ""),
+                "failed_event_has_job_id": any(
+                    e.get("kind") == "job.failed" and e.get("jobId") == job_id for e in events
+                ),
+                "attempt_not_stuck_submitting": attempt.get("status")
+                in ("submission_unknown", "reconciling", "submitted_unverified", "published"),
+                "attempt_marked": str(attempt.get("status") or "") != "submitting",
+                "run_still_succeeded": read_run_status(run_id) == "succeeded",
+                "no_requeue": count_pending_jobs(run_id, job_id) == 0,
+            }
+        elif case == "claim":
             checks = {
                 "claimed": bool(job.get("leaseOwner")) and "job.claimed" in kinds,
                 "claimed_event_has_job_id": any(
@@ -237,13 +325,14 @@ def run_case(case: str, wait_seconds: float) -> dict:
             "status": status,
             "leaseOwner": job.get("leaseOwner"),
             "message": (job.get("message") or job.get("lastError") or "")[:120],
+            "attemptStatus": read_attempt(attempt_id).get("status", "") if case == "lease-expired" else "",
             "events": kinds,
             "eventDetails": events,
             "checks": checks,
             "verdict": "PASS" if ok else "FAIL",
         }
     finally:
-        cleanup(job_id, created_runs)
+        cleanup(job_id, created_runs, attempt_id if case == "lease-expired" else "")
         print("probe cleaned", file=sys.stderr)
 
 

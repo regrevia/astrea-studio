@@ -1143,6 +1143,50 @@ export class ProductionService {
   }
 
   /**
+   * 租约过期的发布作业：把对应的提交记录从「进行中」放回「回执不明」。
+   *
+   * worker 在点完发布之后、回写结论之前被 kill，进程内没人做收尾；之前只把 job
+   * 判失败，提交记录停在 submitting，界面一条「正在发布」挂到天荒地老，也排不上
+   * 回读（回读只接受 submission_unknown）。这里按作业类型各归位一次，失败不影响
+   * 其它作业的回收。
+   */
+  private async releaseExpiredPublicationAttempt(job: ProductionJob) {
+    const attemptId = (job.payload?.['attemptId'] as string | undefined) ?? ''
+    if (!attemptId) {
+      return
+    }
+    try {
+      const attempt = await this.attemptRepo.getById(attemptId) as PublicationAttempt | null
+      if (!attempt || attempt.userId !== job.userId) {
+        return
+      }
+      if (job.kind === ProductionJobKind.PUBLISH_SAU) {
+        if (attempt.status !== PublicationStatus.SUBMITTING) {
+          return
+        }
+        await this.recordSubmission(job.userId, attemptId, {
+          status: PublicationStatus.SUBMISSION_UNKNOWN,
+          error: '发布进程中途失联，是否已经发出未知；可回读核对后再决定',
+          evidence: { reasonCode: 'lease_expired', jobId: job.id },
+        })
+        return
+      }
+      if (job.kind === ProductionJobKind.PUBLISH_READBACK) {
+        if (attempt.status !== PublicationStatus.RECONCILING) {
+          return
+        }
+        await this.recordSubmission(job.userId, attemptId, {
+          status: PublicationStatus.SUBMISSION_UNKNOWN,
+          error: '回读中途失联，可以再发起一次回读',
+          evidence: { reasonCode: 'readback_lease_expired', jobId: job.id },
+        })
+      }
+    } catch (error) {
+      this.logger.warn(`release expired publication attempt failed: ${String(error)}`)
+    }
+  }
+
+  /**
    * 回收心跳超时的渲染任务，返回真正重新排队的 run 数量。
    *
    * worker 被 kill -9 之后不会再续约，也没有人替它把 job 从 running 里拿出来。
@@ -1184,6 +1228,10 @@ export class ProductionService {
         stage: 'failed',
         message: 'lease expired',
       })
+      // 发布/回读的作业失联时，提交记录会留在 submitting / reconciling：界面显示
+      // 「正在发布」，但已经没有人会回写结论。判回执不明（submission_unknown）是
+      // 保守且可继续的落点——不会重复发，也给了回读与人工核对的入口。
+      await this.releaseExpiredPublicationAttempt(job)
       const run = await this.runRepo.getById(job.runId)
       // run 已经结束（另一条路径完成或用户取消）就不要把它拉回 queued；
       // 旧 revision 的任务超时也不该复活当前稿。

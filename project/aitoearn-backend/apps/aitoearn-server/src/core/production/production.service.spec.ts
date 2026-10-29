@@ -1102,6 +1102,76 @@ describe('reapExpiredLeases', () => {
     expect(kinds).toEqual(['job.failed', 'job.requeued'])
   })
 
+  it('发布作业失联时把提交从 submitting 放回回执不明', async () => {
+    const { service, jobRepo, runRepo, attemptRepo, eventRepo } = createService()
+    jobRepo.findExpired.mockResolvedValue([
+      { ...expiredJob, userId: 'user-1', kind: 'publish_sau', payload: { attemptId: 'attempt-1' } },
+    ])
+    runRepo.getById.mockResolvedValue({ id: 'run-1', userId: 'user-1', status: 'succeeded' })
+    attemptRepo.getById.mockResolvedValue({
+      id: 'attempt-1',
+      userId: 'user-1',
+      status: 'submitting',
+      evidence: [],
+    })
+
+    await expect(service.reapExpiredLeases()).resolves.toBe(0)
+
+    const update = attemptRepo.updateById.mock.calls[0][1] as Record<string, unknown>
+    expect(update).toMatchObject({ status: 'submission_unknown' })
+    expect(String(update['lastError'])).toContain('未知')
+    expect(update['evidence']).toEqual([
+      expect.objectContaining({ reasonCode: 'lease_expired', jobId: 'job-1' }),
+    ])
+    // 已交付的 run 不补渲染任务，但提交记录要有人收尾
+    expect(runRepo.updateByRevision).not.toHaveBeenCalled()
+    expect(jobRepo.create).not.toHaveBeenCalled()
+    expect(eventRepo.append.mock.calls.map(call => (call[0] as Record<string, unknown>).kind)).toEqual([
+      'job.failed',
+      'publication.updated',
+    ])
+  })
+
+  it('回读作业失联时把提交从 reconciling 放回回执不明，可以再回读', async () => {
+    const { service, jobRepo, runRepo, attemptRepo } = createService()
+    jobRepo.findExpired.mockResolvedValue([
+      { ...expiredJob, userId: 'user-1', kind: 'publish_readback', payload: { attemptId: 'attempt-1' } },
+    ])
+    runRepo.getById.mockResolvedValue({ id: 'run-1', userId: 'user-1', status: 'succeeded' })
+    attemptRepo.getById.mockResolvedValue({
+      id: 'attempt-1',
+      userId: 'user-1',
+      status: 'reconciling',
+      evidence: [],
+    })
+
+    await service.reapExpiredLeases()
+
+    const update = attemptRepo.updateById.mock.calls[0][1] as Record<string, unknown>
+    expect(update).toMatchObject({ status: 'submission_unknown' })
+    expect(update['evidence']).toEqual([
+      expect.objectContaining({ reasonCode: 'readback_lease_expired' }),
+    ])
+  })
+
+  it('提交记录已经被别人收尾时不再改写', async () => {
+    const { service, jobRepo, runRepo, attemptRepo } = createService()
+    jobRepo.findExpired.mockResolvedValue([
+      { ...expiredJob, userId: 'user-1', kind: 'publish_sau', payload: { attemptId: 'attempt-1' } },
+    ])
+    runRepo.getById.mockResolvedValue({ id: 'run-1', userId: 'user-1', status: 'succeeded' })
+    attemptRepo.getById.mockResolvedValue({
+      id: 'attempt-1',
+      userId: 'user-1',
+      status: 'submitted_unverified',
+      evidence: [],
+    })
+
+    await service.reapExpiredLeases()
+
+    expect(attemptRepo.updateById).not.toHaveBeenCalled()
+  })
+
   it('扫描之间 worker 续约了就不动 run', async () => {
     const { service, jobRepo, runRepo } = createService()
     jobRepo.findExpired.mockResolvedValue([expiredJob])

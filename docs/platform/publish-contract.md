@@ -99,6 +99,18 @@ cd integrations/mac-worker && <venv-python> tools/check_publish_lane.py --apply 
   ——旧稿不会被当成当前稿发出去。
 
 跑完把探针作业、事件（和临时造的 run）删掉，台账不留痕。
+### worker 死在发布中途，提交不能无声卡在「进行中」
+
+`reapExpiredLeases` 每分钟扫一次过期租约。以前它只把作业判 `lease expired`，对应的提交记录
+还停在 `submitting`：界面一直显示「正在发布」，也排不上回读（回读只接受回执不明）。现在回收时
+按作业类型各归位一次——`publish_sau` 的 `submitting` 与 `publish_readback` 的 `reconciling`
+都放回 `submission_unknown`，证据写 `reasonCode` 与作业号，用户能重新回读或人工核对；已经被
+别人收尾（有结论）的记录不动，已交付的 run 也不会被补一条渲染任务。
+
+探针第四条 `--case lease-expired` 就是这条：造一条租约五分鐘前就过期的 `running` 作业和一条
+`submitting` 的提交，等回收器跑一轮（约半分钟），断言作业判 `lease expired`、事件带作业号、
+提交落到 `submission_unknown`、run 仍 `succeeded`、没有补新任务。真机 33.6 s PASS。
+
 
 顺带修掉一个排查盲区：`claimNext` 之前用 `lean: true` 返回，`id` 虚拟字段没带上，领取事件
 写成 `jobId: ""`、取消分支按 `job.id` 更新等于空操作；现在与其它仓储一致用
