@@ -300,6 +300,20 @@ class Handler(BaseHTTPRequestHandler):
                 q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
                 data, ctype = material_file((q.get("path") or [""])[0])
                 self._send(200, data, ctype)
+            elif path == "/materials/search":
+                q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+                def _one(name: str, default: str) -> str:
+                    return (q.get(name) or [default])[0]
+                rows = jobs.materials_search(
+                    _utf8_query_value(_one("q", "")) or _one("query", ""),
+                    kind=_one("kind", "video"),
+                    n=int(_one("n", "5")),
+                    max_mb=int(_one("maxMb", "60")),
+                )
+                body = json.dumps({"query": _one("q", ""), "kind": _one("kind", "video"),
+                                   "count": len(rows), "items": rows},
+                                  ensure_ascii=False).encode("utf-8")
+                self._send(200, body)
             elif path == "/materials/frame":
                 q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
                 try:

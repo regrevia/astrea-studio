@@ -52,7 +52,7 @@ RUN_ENV = {
     "PYTHONPATH": os.environ.get("PYTHONPATH") or str(STUDIO_HOME / "runtime/lib"),
     "STUDIO_SKIP_PREFLIGHT": os.environ.get("STUDIO_SKIP_PREFLIGHT", "1"),
 }
-KINDS = ("paper", "slides", "jianying", "motion", "timeline")
+KINDS = ("paper", "slides", "jianying", "motion", "timeline", "materials")
 
 # 成片元数据：agent 报「多长、多大」时不该靠猜，成功后就地量一次。
 FFPROBE = next((c for c in [
@@ -119,6 +119,8 @@ def submit(kind: str, payload: dict | None = None) -> dict:
         raise ValueError("paper 任务需要 specPath 或 spec")
     if kind in ("slides", "jianying", "motion") and not (payload.get("spec") or payload.get("specPath")):
         raise ValueError(f"{kind} 任务需要 spec（或 specPath）")
+    if kind == "materials" and not (payload.get("query") or payload.get("items")):
+        raise ValueError("materials 任务需要 query（搜索并下载）或 items（给已选素材）")
     job_id = time.strftime("%y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
     d = _job_dir(job_id)
     d.mkdir(parents=True, exist_ok=True)
@@ -271,6 +273,46 @@ def _timeline(job: dict, payload: dict) -> dict:
     return {"files": [str(out)], "duration": spec.get("duration"), **_run_cli(job, cmd)}
 
 
+def materials_search(query: str, kind: str = "video", n: int = 5,
+                     max_mb: int = 60) -> list[dict]:
+    """只搜不下载：面板里挑素材要先看到标题、许可和大小，落盘是第二步。"""
+    import materials as M
+    text = (query or "").strip()
+    if not text:
+        raise ValueError("缺少 query")
+    if kind not in ("video", "image"):
+        raise ValueError(f"kind 只能是 video/image：{kind}")
+    return M.search_wikimedia(text, kind=kind, limit=max(1, min(int(n), 20)),
+                              max_mb=max(0, int(max_mb)))
+
+
+def _materials(job: dict, payload: dict) -> dict:
+    """素材落地：搜（或收已选项）→ 下载 → md5/许可 sidecar → 台账；产物是本地路径。"""
+    import materials as M
+    query = str(payload.get("query") or "").strip()
+    kind = str(payload.get("kind") or "video")
+    if kind not in ("video", "image"):
+        raise ValueError(f"kind 只能是 video/image：{kind}")
+    root = Path(payload.get("root") or M.DEFAULT_ROOT).expanduser()
+    items = [x for x in (payload.get("items") or []) if isinstance(x, dict)] or None
+    if items is None:
+        items = materials_search(query, kind=kind, n=int(payload.get("n") or 3),
+                                 max_mb=int(payload.get("maxMb") or 60))
+        if not items:
+            raise ValueError(f"没搜到可用的{kind}：{query}")
+    _progress(job, 30, "materials:downloading")
+    landed = M.fetch(items, root, kind=kind, dry_run=bool(payload.get("dryRun")),
+                     dedupe=not payload.get("noDedupe"))
+    fields = ("title", "provider", "url", "page", "license", "author", "bytes",
+              "md5", "path", "duplicate", "dryRun")
+    return {
+        "engine": "materials", "query": query, "kind": kind,
+        "dryRun": bool(payload.get("dryRun")), "root": str(root),
+        "count": len(landed),
+        "items": [{k: row[k] for k in fields if row.get(k) is not None} for row in landed],
+    }
+
+
 def _media_info(path: str | None) -> dict:
     """ffprobe 量首个视频流的宽高与时长；量不到就什么都不加，不编造。"""
     if not path or not FFPROBE or not Path(path).is_file():
@@ -306,9 +348,11 @@ def run_job(job_id: str) -> int:
             res = _paper(job, payload)
         elif job["kind"] == "timeline":
             res = _timeline(job, payload)
+        elif job["kind"] == "materials":
+            res = _materials(job, payload)
         else:
             res = _engine(job, payload)
-        if isinstance(res, dict) and job["kind"] != "paper":
+        if isinstance(res, dict) and job["kind"] not in ("paper", "materials"):
             delivered = _deliver(job, list(res.get("files") or []))
             if delivered:
                 res = {**res, "files": delivered}

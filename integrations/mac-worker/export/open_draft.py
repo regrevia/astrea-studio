@@ -153,7 +153,33 @@ def restart_app(timeout: float = 60.0) -> bool:
     return False
 
 
+def guard_plain(name: str) -> dict | None:
+    """打开前过一遍明文守卫：明文存快照，被剪映回写成密文就先还原。
+
+    剪映 11.x 打开草稿会把 draft_info.json / draft_meta_info.json 换成密文，
+    引擎下次想读就读不了（见 export/plain_guard.py 说明）。守卫失败不拦打开：
+    剪映自己能读密文，用户要的那一次打开不该因为我们读不懂而卡住。
+    """
+    try:
+        import plain_guard as PG
+    except Exception:
+        return None
+    target = PG.draft_dir(name)
+    if not target.is_dir():
+        return None
+    try:
+        return PG.ensure_plain(target)
+    except Exception as exc:
+        print("明文守卫跳过：%s" % exc, file=sys.stderr)
+        return None
+
+
 def open_draft(name: str, wait: float = 25.0, surface: bool = False) -> int:
+    guard = guard_plain(name)
+    if guard:
+        print("明文守卫：%s %s" % (guard["action"],
+                                 json.dumps(guard["detail"].get("draft") or guard["detail"].get("restored"),
+                                            ensure_ascii=False)), file=sys.stderr)
     if not app_running():
         print("启动剪映…")
         launch()

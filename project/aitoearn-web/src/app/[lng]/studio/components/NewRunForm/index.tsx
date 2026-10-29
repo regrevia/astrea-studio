@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { packShotPath, useMaterialThumbs } from '../../utils/materials'
 import { DEFAULT_PLATFORMS, PLATFORM_LABELS, PLATFORM_OPTIONS } from '../../studioConstants'
+import MaterialSearch from '../MaterialSearch'
 import NarrationRunResult from './components/NarrationRunResult'
 import {
   buildVerticalShortSpec,
@@ -280,6 +281,10 @@ export default function NewRunForm({
             onChange={event => setMaterialsText(event.target.value)}
           />
           <span className={hintClass}>每行一个，第几条进第几屏，图插在卡面收尾前。</span>
+          <MaterialSearch
+            picked={materialsText.split('\n').map(line => line.trim()).filter(Boolean)}
+            onPick={togglePackShot}
+          />
           {packs.length > 0 && (
             <div className="flex flex-col gap-1.5">
               {packs.map(pack => (

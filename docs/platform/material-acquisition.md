@@ -25,6 +25,30 @@
 - 默认 `STUDIO_LIBRARY` = `~/CreatorStudio/library`，素材与成片同在库根下、分 `_assets/` 与 `<project>/`。
 - `--max-mb`（默认 60）挡掉 Commons 上 170MB~2GB 的 4K 原始文件：下载慢、后续转码也慢。
 
+### 1.1 平台入口（任务队列 + Web 搜素材）
+
+机器上给界面用的那条路，不要求用户开终端：
+
+```bash
+# 搜候选（不下载）：GET /materials/search?q=城市夜景&kind=video&n=6&maxMb=60
+curl -s "http://127.0.0.1:8899/materials/search?q=cat&kind=video&n=2"
+# 落盘：POST /jobs {"kind":"materials","payload":{"query":"cat slow motion","n":1,"maxMb":25}}
+#       或 {"kind":"materials","payload":{"items":[...]}}（把界面上选中的几条交给宿主下载）
+curl -s http://127.0.0.1:8899/jobs/<id>   # result.items[*] = {path,md5,license,bytes,duplicate}
+```
+
+- `jobs.py`：新增 `materials` 任务类型（`KINDS`）、`materials_search()`、`_materials()`；`submit()` 前置校验
+  「`query` 和 `items` 至少给一个」，错误文案直接给用户看。
+- `capabilities_server.py`：新增 `GET /materials/search`，返回 `{query,kind,count,items}`。
+- Web：`production.api.ts` 的 `searchMaterials()` / `landMaterials()`，界面组件
+  `studio/components/MaterialSearch`（挂在新建表单素材框下），选中即把落盘绝对路径追加进素材行
+  ——「第几条进第几屏」的规则不变，`isMaterialRef()` 本来就认绝对路径。
+- 真机实证（round 45）：`curl POST /jobs {"kind":"materials","payload":{"query":"cat slow motion","n":1,"maxMb":25}}`
+  → `succeeded`，落到
+  `/Users/apple/CreatorStudio/library/_assets/wikimedia/2026-10/cat-lapping-water-off-ground-in__wikimedia__54669255.webm`
+  （10.3MB，`CC BY-SA 4.0`，md5 `42ca72062f631a3d0fc54884dc6d94e3`），`.json` sidecar 同步落盘。
+- 测试：`tests/test_jobs_materials.py`（搜空/坏 kind/条数钳制/下载落盘/sidecar/去重/dry-run）
+
 ## 2. 卡点分析
 
 `integrations/mac-worker/beats.py`（纯 numpy + ffmpeg，不装 librosa）

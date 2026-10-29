@@ -229,6 +229,92 @@ export async function getInventory(base = 'http://127.0.0.1:8899'): Promise<Inve
   }
 }
 
+/** 一条候选素材：宿主搜到还没落盘，面板先摆标题、许可和大小。 */
+export interface MaterialCandidate {
+  provider: string
+  id: string
+  title: string
+  url: string
+  page: string
+  mime: string
+  bytes: number
+  license: string
+  author: string
+}
+
+/** 落盘后的素材：path 是宿主上的绝对路径，可直接写进素材行。 */
+export interface LandedMaterial {
+  path: string
+  license?: string
+  bytes?: number
+  md5?: string
+  duplicate?: boolean
+  title?: string
+}
+
+const LOCAL_SERVICE = 'http://127.0.0.1:8899'
+
+/** 搜素材：只搜不下载（许可未知的素材不值得先落盘）。 */
+export async function searchMaterials(
+  query: string,
+  kind: 'video' | 'image' = 'video',
+  n = 6,
+  base = LOCAL_SERVICE,
+): Promise<MaterialCandidate[]> {
+  const qs = new URLSearchParams({ q: query, kind, n: String(n) })
+  try {
+    const res = await fetch(`${base}/materials/search?${qs.toString()}`, { cache: 'no-store' })
+    if (!res.ok)
+      return []
+    const payload = await res.json() as { items?: MaterialCandidate[] }
+    return Array.isArray(payload.items) ? payload.items : []
+  }
+  catch {
+    return []
+  }
+}
+
+/**
+ * 把选中的素材交给宿主落盘（查重、md5、许可 sidecar 都在那侧做）。
+ *
+ * 落盘是下载，一条几百 KB 到几十 MB，所以走本机任务队列：提交后轮询到 succeeded，
+ * 拿回来的 path 才是真实落盘位置；失败把原因抛给调用方贴到界面上。
+ */
+export async function landMaterials(
+  items: MaterialCandidate[],
+  base = LOCAL_SERVICE,
+  timeoutMs = 90000,
+): Promise<LandedMaterial[]> {
+  const res = await fetch(`${base}/jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind: 'materials', payload: { items } }),
+  })
+  if (!res.ok)
+    throw new Error(`素材服务拒绝：${res.status}`)
+  const job = await res.json() as { id?: string, error?: string }
+  if (!job.id)
+    throw new Error(job.error || '没拿到任务号')
+
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 700))
+    const poll = await fetch(`${base}/jobs/${job.id}`, { cache: 'no-store' })
+    if (!poll.ok)
+      continue
+    const detail = await poll.json() as {
+      status?: string
+      error?: string
+      result?: { items?: LandedMaterial[] }
+    }
+    if (detail.status === 'succeeded')
+      return detail.result?.items ?? []
+    if (detail.status === 'failed' || detail.status === 'cancelled')
+      throw new Error(detail.error || '素材没下下来')
+  }
+  throw new Error('素材下载超时')
+}
+
 /**
  * 可用主角清单。宿主上的 capabilities server 顺带读了
  * ~/CreatorStudio/state/characters，面板不需要知道目录结构。

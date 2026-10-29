@@ -51,3 +51,37 @@ python3 integrations/mac-worker/jianying_versions.py          # 支持状态里�
 - 拿不到 11.x 明文参考之前，不新增任何「猜」的版本号；`BUILTIN_SCHEMAS` 只在干净机器上兜底。
 - 想要 B 级证据，唯一办法是让剪映在**没接触过我们草稿**的情况下自己存一份明文草稿（需要真人在
   剪映里建空草稿、确认它仍是明文），这一步没做，写在验收缺口里。
+
+## 4. 加密草稿怎么处理（调研结论 + 本机方案）
+
+问题：剪映回写后草稿变密文，我们的 `draft_info.json` 读不了，引擎想再改同一条时间线就断了。
+
+### 4.1 调研到的四条路
+
+| 方案 | 依据 | 结论 |
+| --- | --- | --- |
+| 逆向导密钥解密 | 社区文章称 6.0 起草稿主文件 AES-256，密钥在剪映进程内（[CSDN](https://blog.csdn.net/ENEN779/article/details/148995142)、[看雪](https://bbs.kanxue.com/thread-285223.htm)） | 不采用：需要注入/读进程内存，分分钟随版本失效，也不适合交付给用户 |
+| 用现成解密库 | `pyJianYingDraft`（aoguai 分支）`content_codec` 走 Windows `videoeditor.dll`，只覆盖 10.3.0–10.6.5 | 不采用：macOS 无此 DLL |
+| macOS 解密移植 | [wenshui330/jy-draftc](https://github.com/wenshui330/jy-draftc) 的解密/加密本身可离线跑，但其 [macOS 移植 README](https://github.com/wenshui330/jy-draftc/main/jy-draftc-mac/README.md) 自述「不用于生产」 | 不采用：作者自己标了非生产 |
+| **明文快照 + 打开前还原** | 本机行为实证：剪映接受明文草稿打开（rounds 43/44），且回写只动 `draft_info.json` / `draft_meta_info.json` | **采用**：不碰密钥、只依赖「剪映能读明文」这一条已证行为 |
+
+### 4.2 采用方案：`export/plain_guard.py`
+
+```bash
+python3 integrations/mac-worker/export/plain_guard.py status  <草稿名|绝对路径>   # 明文/密文/有无快照
+python3 integrations/mac-worker/export/plain_guard.py snapshot <草稿名>            # 打开前存明文快照
+python3 integrations/mac-worker/export/plain_guard.py restore  <草稿名> [--dry-run] # 密文先备份再写回明文
+python3 integrations/mac-worker/export/plain_guard.py ensure   <草稿名>            # 明文→存快照；密文→还原
+python3 integrations/mac-worker/export/plain_guard.py list                        # 所有快照及是否待还原
+```
+
+- 快照落在剪映目录**之外**：`com.lveditor.draft/.studio-plain/<草稿名>/`，含 `manifest.json`
+  （文件、字节、sha256、创建时间、当时已是密文的文件清道）+ `files/` 原件。
+  同时带上 `studio_export_meta.json` 这类引擎侧车，认领/重建都要读它。
+- 还原时把被替换的密文备份到 `.studio-enc-backup/<时间戳>/`，可回滚；dry-run 只报会动哪些文件。
+- `open_draft.py` 打开草稿前自动调 `ensure_plain()`：明文就顺手存快照，密文就从快照还原。
+  **守卫失败不拦打开**——剪映自己能读密文，用户要的那次打开不该因为我们读不懂而卡住。
+- 边界：快照只在「我们手里还有明文」时有用。已经被回写、又没存过快照的草稿（round 43 的
+  `studio_6ae20a3cb2886cd834c8b67e__r1` 就是这样）救不回来，只能从 `studio_export_meta.json`
+  拿参数重渲染；原件备份在 `/tmp/r1_meta.bak`、`root_meta_info.json.studio-bak`。
+- 所以纪律是「**打开前先快照**」：`jianying_draft` 落盘后、任何一次在剪映里打开之前跑一次 `ensure`。
