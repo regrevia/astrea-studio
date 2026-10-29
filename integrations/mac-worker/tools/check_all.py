@@ -44,7 +44,8 @@ CHECKS: list[dict[str, object]] = [
      "timeout": 240.0, "live": False, "group": "core"},
     {"name": "worker 分发单元测试", "kind": "unittest",
      "cmd": ["tests.test_claim_dispatch", "tests.test_draft_listing",
-            "tests.test_export_landing", "tests.test_input_tiers"],
+            "tests.test_export_landing", "tests.test_input_tiers",
+            "tests.test_materials", "tests.test_version_evidence"],
      "timeout": 120.0,
      "live": False, "group": "core"},
     {"name": "发布泳道真机探针", "kind": "lane",
@@ -220,6 +221,8 @@ def version_note() -> str:
         return "本机未安装剪映"
     if schema.get("source") == "reference-same-major":
         adopted = f'同主版本实证 schema {schema.get("version")}/{schema.get("new_version")}'
+    elif support.get("status") == "accepted":
+        adopted = f'行为实证 {info.get("evidence")} 条（这版剪映打开并回写过引擎草稿）'
     else:
         adopted = "沿用模板（无同主版本实证，不猜版本号）"
     stamps = "/".join(info.get("referenceApps") or []) or "无"

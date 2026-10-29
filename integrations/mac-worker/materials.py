@@ -107,7 +107,47 @@ def search_wikimedia(query: str, kind: str = "video", limit: int = 5,
     return out
 
 
-def fetch(items: list[dict], root: Path, kind: str = "video", dry_run: bool = False) -> list[dict]:
+def find_duplicate(root: Path, md5: str) -> dict | None:
+    """在素材台账里找同 md5 的已有副本（`_assets` 下所有 sidecar），命中就不重复占盘。"""
+    if not md5:
+        return None
+    for side in sorted(Path(root, "_assets").glob("**/*.json")):
+        try:
+            row = json.loads(side.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if row.get("md5") == md5 and row.get("path") and Path(row["path"]).is_file():
+            return row
+    return None
+
+
+def verify(root: Path) -> list[dict]:
+    """素材台账体检：sidecar 与磁盘文件是否对得上（缺文件 / md5 不符 / 空文件）。"""
+    problems = []
+    for side in sorted(Path(root, "_assets").glob("**/*.json")):
+        try:
+            row = json.loads(side.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            problems.append({"sidecar": str(side), "problem": "sidecar 不是 JSON"})
+            continue
+        path = Path(row.get("path") or "")
+        if not path.is_file():
+            problems.append({"sidecar": str(side), "problem": "文件缺失", "path": str(path)})
+            continue
+        size = path.stat().st_size
+        if size <= 0:
+            problems.append({"sidecar": str(side), "problem": "空文件", "path": str(path)})
+            continue
+        want = row.get("md5")
+        got = _md5(path)
+        if want and want != got:
+            problems.append({"sidecar": str(side), "problem": "md5 不符", "path": str(path),
+                             "want": want, "got": got})
+    return problems
+
+
+def fetch(items: list[dict], root: Path, kind: str = "video", dry_run: bool = False,
+          dedupe: bool = True) -> list[dict]:
     root = Path(root)
     month = time.strftime("%Y-%m")
     landed = []
@@ -126,6 +166,13 @@ def fetch(items: list[dict], root: Path, kind: str = "video", dry_run: bool = Fa
         size = _download(it["url"], dest)
         md5 = _md5(dest)
         sidecar = dest.with_suffix(dest.suffix + ".json")
+        if dedupe:  # 先查已有台账，再写自己的 sidecar（否则永远撞到自己）
+            same = find_duplicate(root, md5)
+            if same:
+                dest.unlink(missing_ok=True)
+                landed.append({**it, "path": same["path"], "bytes": same.get("bytes") or size,
+                               "md5": md5, "duplicate": True})
+                continue
         sidecar.write_text(json.dumps({
             **it, "path": str(dest), "bytes": size, "md5": md5,
             "kind": kind, "fetchedAt": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
@@ -149,7 +196,16 @@ def main(argv=None) -> int:
     g.add_argument("--n", type=int, default=3)
     g.add_argument("--max-mb", type=int, default=60)
     g.add_argument("--dry-run", action="store_true")
+    g.add_argument("--no-dedupe", action="store_true", help="同 md5 已有也重复落盘（默认去重）")
+    v = sub.add_parser("verify")
+    v.add_argument("--root", default=str(DEFAULT_ROOT))
     a = ap.parse_args(argv)
+    if a.cmd == "verify":
+        bad = verify(Path(a.root))
+        for row in bad:
+            print("%-10s %s" % (row["problem"], row.get("path") or row.get("sidecar")))
+        print("素材台账: %d 处问题" % len(bad))
+        return 1 if bad else 0
     if a.cmd == "search":
         for it in search_wikimedia(a.query, a.kind, a.n, a.max_mb):
             print("%-8s %-14s %6.1fMB %s\n         %s" % (
@@ -167,7 +223,8 @@ def main(argv=None) -> int:
     if not picked:
         print("没有搜到可用素材：%s" % a.query, file=sys.stderr)
         return 2
-    for row in fetch(picked, Path(a.root), a.kind, a.dry_run):
+    for row in fetch(picked, Path(a.root), a.kind, a.dry_run,
+                     dedupe=not a.no_dedupe):
         print("%s  %6.1fMB  %s" % (row["path"], (row.get("bytes") or 0) / 1e6, row.get("license", "")))
     return 0
 

@@ -18,7 +18,10 @@
 <同上>.json   # 来源/许可证/作者/原始URL/md5/字节数/抓取时间
 ```
 
-- 同 md5 不重复下载；同名加 `-2`、`-3`；绝不覆盖。
+- 落盘先写 `.part` 再原子改名，且 `< 1KB` 视为失败并删掉：不留半截文件。
+- **同 md5 不重复落盘**（`find_duplicate()` 查 `_assets/**/*.json` 台账，命中就回已有路径并标
+  `duplicate`）；确实要副本加 `--no-dedupe`。同名加 `-2`、`-3`；绝不覆盖。
+- `materials.py verify [--root DIR]`：台账体检——文件缺失 / 空文件 / md5 不符三类别出来，有问题退出码 1。
 - 默认 `STUDIO_LIBRARY` = `~/CreatorStudio/library`，素材与成片同在库根下、分 `_assets/` 与 `<project>/`。
 - `--max-mb`（默认 60）挡掉 Commons 上 170MB~2GB 的 4K 原始文件：下载慢、后续转码也慢。
 

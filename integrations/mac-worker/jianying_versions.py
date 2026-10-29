@@ -213,20 +213,33 @@ def stamp(content: dict[str, Any], schema: dict[str, Any],
     }
 
 
-def support_report(schema: dict[str, Any]) -> dict[str, Any]:
-    """这次是「实测采纳」还是「沿用旧模板」，以及新装机器的操作指引。"""
+def support_report(schema: dict[str, Any],
+                   evidence: dict[str, Any] | None = None) -> dict[str, Any]:
+    """这次是「实测采纳」还是「沿用旧模板」，以及新装机器的操作指引。
+
+    `evidence` 是保留字段：传 `version_evidence.status_report()` 的结果进来时，
+    没有参考草稿但**这版剪映打开并回写过我们的引擎草稿**的情况会被标成
+    `accepted`（行为实证），而不是含糊的 `template`。剪映 11.x 把草稿回写成加密
+    原生格式后版本字段读不出来，只有行为实证可用。
+    """
     major = _major((schema.get("app") or {}).get("version"))
     if schema.get("source") == "reference-same-major":
         return {"status": "adopted", "major": major,
-                "note": "已抄本机同主版本草稿的 schema"}
+                "note": "已抄本机同主版本草稿的 schema",
+                "evidence": evidence}
+    if evidence and (evidence.get("status") == "accepted"
+                     and evidence.get("major") == major):
+        return {"status": "accepted", "major": major,
+                "note": evidence.get("note") or "这版剪映打开并回写过本机引擎草稿",
+                "evidence": evidence}
     if schema.get("apply"):
         return {"status": "forced", "major": major,
                 "note": f"由 {SCHEMA_DRAFT_ENV} 指定草稿的 schema"}
     if major is not None and major not in BUILTIN_SCHEMAS:
-        return {"status": "unknown-major", "major": major,
+        return {"status": "unknown-major", "major": major, "evidence": evidence,
                 "note": "这台装的是没验证过的主版本：沿用模板字段；"
                         "在剪映里打开并保存任意草稿一次，下次就自动采纳该版本 schema"}
-    return {"status": "template", "major": major,
+    return {"status": "template", "major": major, "evidence": evidence,
             "note": "沿用 VectCutAPI 模板的 10.2/windows 版本块（11.6 实测可开）"}
 
 
@@ -234,13 +247,19 @@ def describe(app_path: os.PathLike | str = DEFAULT_APP,
              draft_root: os.PathLike | str = DEFAULT_DRAFT_ROOT) -> dict[str, Any]:
     refs = scan_reference_drafts(draft_root)
     schema = resolve_schema(references=refs, app_path=app_path, draft_root=draft_root)
-    report = support_report(schema)
+    try:  # 行为实证：这版剪映打开并回写过我们的引擎草稿（11.x 起唯一可得的实证）
+        import version_evidence as VE
+        evidence = VE.status_report(schema["app"].get("version"))
+    except Exception:  # 台账读不出来不影响版本决策
+        evidence = None
+    report = support_report(schema, evidence=evidence)
     return {
         "app": schema["app"],
         "schema": {k: schema[k] for k in ("version", "new_version", "source",
                                           "apply", "referenceDraft")},
         "platform": schema["platform"],
         "support": report,
+        "evidence": (report.get("evidence") or {}).get("count", 0),
         "references": len(refs),
         "referenceApps": sorted({str((r.get("platform") or {}).get("app_version")) for r in refs}),
         "draftRoot": str(draft_root),
@@ -266,6 +285,8 @@ def main() -> int:
               f'source={info["schema"]["source"]}')
         print(f'参考草稿: {info["references"]} 份，写入过版本: {info["referenceApps"]}')
         print(f'支持状态: {info["support"]["status"]} — {info["support"]["note"]}')
+        if info.get("evidence"):
+            print(f'行为实证: {info["evidence"]} 条（剪映打开并回写过本机引擎草稿）')
     return 0 if info["app"].get("exists") else 1
 
 

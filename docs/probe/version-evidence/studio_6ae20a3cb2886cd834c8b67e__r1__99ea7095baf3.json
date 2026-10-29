@@ -1,0 +1,36 @@
+{
+  "observedAt": "2026-10-29T15:31:49",
+  "draft": "studio_6ae20a3cb2886cd834c8b67e__r1",
+  "verdict": "accepted_by_app",
+  "reason": "引擎明文草稿已被剪映回写成原生加密格式：这版剪映解析并重存成功",
+  "app": {
+    "version": "11.6.0",
+    "build": "490",
+    "major": 11,
+    "path": "/Applications/VideoFusion-macOS.app"
+  },
+  "after": {
+    "draft": "studio_6ae20a3cb2886cd834c8b67e__r1",
+    "kind": "native",
+    "path": "/Users/apple/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6ae20a3cb2886cd834c8b67e__r1",
+    "files": {
+      "draft_info.json": {
+        "size": 113188,
+        "sha256": "fb70f6596cee7381"
+      },
+      "draft_content.json": {
+        "size": 151780,
+        "sha256": "40cb403a9acd3cf9"
+      },
+      "draft_meta_info.json": {
+        "size": 5056,
+        "sha256": "2a6feb4d136663c2"
+      }
+    },
+    "engineMarkers": [
+      "studio_export_meta.json"
+    ]
+  },
+  "note": "",
+  "id": "99ea7095baf3"
+}
