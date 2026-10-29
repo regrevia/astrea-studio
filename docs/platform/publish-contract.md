@@ -73,6 +73,30 @@ POST /api/production/publications/sweep
 把 `updatedAt` 推到一小时前后巡检，第一次 `scanned:1 recovered:[…]`，第二次 `scanned:0`；
 记录变成 `submission_unknown`，证据一条（`kind: "stale_sweep"`），`lastError` 写明要人工回读。
 
+## 发布作业必须能被 publish 泳道领走
+
+发布天然发生在成片 `succeeded` 之后，所以后端按「悬挂在已交付 run 上的收尾作业」放行
+（`publish_sau` / `publish_readback` 在 `POST_RUN_KINDS` 里）。放行名单少一个，作业会被当成
+补跑渲染静默取消：状态一直排队、租约到点、事件流里没有 `job.claimed`，界面只说「排队中」。
+
+这条链路只能在真机队列上看出来，所以有一条不发布任何东西的探针：
+
+```
+cd integrations/mac-worker && <venv-python> tools/check_publish_lane.py          # 只打印计划
+cd integrations/mac-worker && <venv-python> tools/check_publish_lane.py --apply  # 真插一条探针作业
+```
+
+探针插 `kind: publish_sau`、`payload: {}` 的作业；`PublishSpec.from_payload` 在任何 cookie 检查/
+子进程之前就会抛 `publish payload has no accountRef`，因此不会碰抖音、不会起浏览器。断言：
+
+- 作业被 `publish` 泳道领走（`leaseOwner` 是 worker、事件流有 `job.claimed` 且 `jobId` 就是这条作业）；
+- 失败原因是载荷校验（`publish payload has no …`），两秒内结束；
+- 没有 `job.cancelled`、没有 `publish:submitting`；跑完把探针作业和事件删掉。
+
+顺带修掉一个排查盲区：`claimNext` 之前用 `lean: true` 返回，`id` 虚拟字段没带上，领取事件
+写成 `jobId: ""`、取消分支按 `job.id` 更新等于空操作；现在与其它仓储一致用
+`lean({ virtuals: true })`，并有回归测试守住（`libs/mongodb/src/repositories/production.repository.spec.ts`）。
+
 ## 回读一条链接收尾
 
 `submission_unknown` 只能靠回读平台收尾，不能靠重投。入口：

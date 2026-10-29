@@ -100,8 +100,8 @@ export class ProductionJobRepository extends BaseRepository<ProductionJob> {
         },
         $inc: { leaseVersion: 1 },
       },
-      { sort: { createdAt: 1 }, new: true, lean: true },
-    ).exec()
+      { sort: { createdAt: 1 }, new: true },
+    ).lean({ virtuals: true }).exec()
     return claimed as unknown as ProductionJob | null
   }
 
