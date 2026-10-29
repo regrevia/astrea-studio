@@ -55,6 +55,28 @@ node scripts/verify/e2e-promo.mjs --project <项目 ID>
 
 第一版稿子念下来 40.05 s，超出「约 30 秒」，把每屏口播压短后重跑才落到 28.69 s——说明时长是被真实配音驱动的，不是写死的。
 
+## 5.1 一条命令跑完不碰 GUI 的自检
+
+```bash
+cd integrations/mac-worker
+<venv-python> tools/check_all.py            # 全量：离线契约 + 剪映段 + 发布泳道真机探针 + 版本依据
+<venv-python> tools/check_all.py --offline  # 只跑离线（不排真机作业，约 5 s）
+```
+
+输出四行一表，任一失败退出码非 0；`--json /tmp/report.json` 落一份机器可读结果。最近一次真机结果：
+
+| 项 | 耗时 | 结论 |
+| --- | --- | --- |
+| 发布段离线契约 | 0.1 s | PASS |
+| 剪映段离线自检 | 4.7 s | PASS（8/8） |
+| 发布泳道真机探针 | 48.8 s | PASS（claim 2.9 / cancelled-run 2.8 / stale-revision 3.0 / lease-expired 36.0 s） |
+| 剪映版本依据 | — | 11.6.0 build 490 · 沿用模板（无同主版本实证，不猜版本号）· 参考草稿 11 份（版本戳 10.2.0/5.9.0） |
+
+最后一行是版本适配层的诚实面：本机 11 份参考草稿的版本戳都是 10.2.0 / 5.9.0，没有一份是剪映
+11.x 自己保存的 schema，所以适配层不盖章、沿用 VectCutAPI 模板（该模板在 11.6 实测能开）。
+等这台机器上的剪映保存过一次 11.x 草稿，同一条命令的输出会变成「同主版本实证 schema …」，
+不需要改代码——这就是「新版本靠同主版本实证自动采纳，不猜」的可验证形态。
+
 ## 6. 成片落到哪个草稿箱
 
 制作台的项目选择器右侧新增「草稿箱」下拉：选中项目后可以直接把它绑到一个草稿箱（不选即后端默认箱），改动落到项目的 `materialGroupId` 上。后端 `attachMaterialForWorker` 早就按 `项目.materialGroupId → 用户默认分组` 的顺序解析，缺的是界面这一端——在此之前所有项目的 `materialGroupId` 都是空串。
