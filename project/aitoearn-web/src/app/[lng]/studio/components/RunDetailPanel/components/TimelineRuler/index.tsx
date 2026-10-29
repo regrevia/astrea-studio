@@ -6,7 +6,7 @@
  */
 'use client'
 
-import type { TimelineMarks } from '../../../../utils/timeline'
+import type { TimelineMarks } from '@/utils/studio/timeline'
 import { useTransClient } from '@/app/i18n/client'
 import { cn } from '@/utils/className'
 

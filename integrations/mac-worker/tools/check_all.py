@@ -57,7 +57,7 @@ CHECKS: list[dict[str, object]] = [
     {"name": "Web 文案 lint", "kind": "lint", "lint": "ui-copy", "group": "web",
      "cmd": ["node", str(Path.home() / ".dsh/skills/ui-restraint/scripts/ui-copy-lint.mjs"),
              "src/app/[lng]/studio"],
-     "cwd": str(WEB), "timeout": 240.0, "live": False, "baseline": 64},
+     "cwd": str(WEB), "timeout": 240.0, "live": False, "baseline": 0},
     {"name": "Web 中文排印", "kind": "lint", "lint": "zh", "group": "web",
      "cmd": ["node", str(Path.home() / ".agents/skills/zh-ui-type-lint/scripts/zh-lint.mjs"),
              "src/app/[lng]/studio"],
@@ -68,8 +68,9 @@ CHECKS: list[dict[str, object]] = [
      "cwd": str(WEB), "timeout": 240.0, "live": False, "baseline": 1},
 ]
 
-# 三套 lint 都是「改动不许把问题数推高」，不是零容忍：基线集中写在上面的 baseline 里，
-# 超过基线才 FAIL，并说清超了几条、是哪一类。
+# 三套 lint 都是「改动不许把问题数推高」：基线集中写在上面的 baseline 里，超过才 FAIL，
+# 并说清超了几条、是哪一类。文案这条现在是 0：studio 目录只剩界面文件，按渲染计划拼数据
+# 的模块已挪到 src/utils/studio（它们不是文案，之前 64 条全是那两份文件的类型与注释）。
 LINT_SUMMARY = {
     "ui-copy": r"ui-copy-lint:\s*(\d+) error\(s\),\s*(\d+) warning\(s\)",
     "zh": r"zh-lint:\s*(\d+) error\(s\),\s*(\d+) warning\(s\)",

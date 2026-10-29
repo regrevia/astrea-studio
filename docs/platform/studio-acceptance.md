@@ -70,17 +70,20 @@ cd integrations/mac-worker
 | --- | --- | --- |
 | 发布段离线契约 | 0.1 s | PASS |
 | 剪映段离线自检 | 4.7 s | PASS（8/8） |
-| 发布泳道真机探针 | 24.0 s | PASS（claim 3.2 / cancelled-run 3.2 / stale-revision 3.2 / lease-expired 11.0 / readback-retry 2.0 s） |
+| 发布泳道真机探针 | 72.0 s | PASS（claim 3.3 / cancelled-run 3.3 / stale-revision 3.3 / lease-expired 58.8 / readback-retry 2.0 s） |
 | 剪映版本依据 | — | 11.6.0 build 490 · 沿用模板（无同主版本实证，不猜版本号）· 参考草稿 11 份（版本戳 10.2.0/5.9.0） |
 | 后端生产 spec（`--with-web`） | 2.3 s | PASS（76/76：发布状态机、租约回收归位、回读） |
 | Web 类型检查（`--with-web`） | 2.0 s | PASS（`tsc --noEmit` 0 错误） |
-| Web 文案 lint（`--with-web`） | 0.0 s | PASS（64 条错误 / 138 条提醒，基线 64） |
-| Web 中文排印（`--with-web`） | 0.0 s | PASS（0 条错误 / 21 条提醒，基线 0） |
-| Web 样式 lint（`--with-web`） | 0.0 s | PASS（1 条问题，基线 1） |
+| Web 文案 lint（`--with-web`） | 0.0 s | PASS（0 条错误 / 121 条提醒，基线 0） |
+| Web 中文排印（`--with-web`） | 0.0 s | PASS（0 条错误 / 17 条提醒，基线 0） |
+| Web 样式 lint（`--with-web`） | 0.0 s | PASS（0 条问题，基线 1） |
 
-三套 lint 的判据是「不高于基线」而不是零容忍：范围固定在 `src/app/[lng]/studio`，基线值
-写在 `tools/check_all.py` 的 `baseline` 字段里（文案 64 / 排印 0 / 样式 1），超过一条就 FAIL 并
-报出条数；存量问题不清零，但每轮改动不能把它们推高。改完界面仍按仓库规则单独跑三套脚本。
+三套 lint 的判据是「不高于基线」：范围固定在 `src/app/[lng]/studio`，基线值写在
+`tools/check_all.py` 的 `baseline` 字段里（文案 0 / 排印 0 / 样式 1），超过一条就 FAIL 并报出
+条数。文案这条从 64 降到 0：原来的 64 条全部落在 `utils/material-timeline.ts` 与
+`utils/timeline.ts`——两份「按渲染计划拼数据」的模块，接口字段和注释被当成界面键值扫了出来；
+它们不是界面文案，已按职责挪到 `src/utils/studio/`，studio 目录只剩渲染界面的文件，于是恢复
+零容忍。warning 不清零；样式那条 1 是脚本自报的「未检出颜色/字号字面值，需人工 + 截图核对」。
 
 最后一行是版本适配层的诚实面：本机 11 份参考草稿的版本戳都是 10.2.0 / 5.9.0，没有一份是剪映
 11.x 自己保存的 schema，所以适配层不盖章、沿用 VectCutAPI 模板（该模板在 11.6 实测能开）。
