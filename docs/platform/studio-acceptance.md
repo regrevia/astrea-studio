@@ -300,6 +300,7 @@ job `6ae2a2b58f01834bace100de` 返回 `stage=draft_checked`、`output.canOpen=tr
 run 不会停在「等待人工导出」或写出空路径。发布侧同样按「平台重交付 → 库路径 → 母版」取文件：
 只有库路径时台账记的就是库里的那份；已经入库的 run 即使输出里残留「等待人工导出」也不会被挡在发布之外。
 `production.service.spec.ts` 79 项通过。
+认领入库到发布的字段、清理规则与失败码见 [claim-to-publish-contract.md](claim-to-publish-contract.md)。
 
 
 
