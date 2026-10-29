@@ -69,7 +69,7 @@ cd integrations/mac-worker
 | 项 | 耗时 | 结论 |
 | --- | --- | --- |
 | 发布段离线契约 | 0.1 s | PASS |
-| 剪映段离线自检 | 4.8 s | PASS（9/9） |
+| 剪映段离线自检 | 4.7 s | PASS（10/10） |
 | 发布泳道真机探针 | 72.0 s | PASS（claim 3.3 / cancelled-run 3.3 / stale-revision 3.3 / lease-expired 58.8 / readback-retry 2.0 s） |
 | 剪映版本依据 | — | 11.6.0 build 490 · 沿用模板（无同主版本实证，不猜版本号）· 参考草稿 11 份（版本戳 10.2.0/5.9.0） |
 | 后端生产 spec（`--with-web`） | 2.3 s | PASS（76/76：发布状态机、租约回收归位、回读） |
@@ -283,6 +283,10 @@ job `6ae2a2b58f01834bace100de` 返回 `stage=draft_checked`、`output.canOpen=tr
 草稿，然后走真实的 `_deploy` 落盘，断言 `draft_content.json` 的 `new_version`/`platform`、
 `draft_version.json` 的 `stamp.action=applied`、sidecar 的 `schema.source` 全部换成 11.9——即
 「新版本出现后不需要改代码，下一份生成的草稿会自动采纳」不是说法而是可复跑的一条用例（`t_adopt_at_deploy`）。
+「认领入库」这一步也补了离线用例（`t_claim`）：人工在剪映里导出的成片必须显式给路径，按草稿 sidecar
+的时长/画布体检，过了才归位到 `jobId/rN` 落点并留 accepted 证据；时长对不上就拒绝、原文件不动、
+留 rejected 证据；同一修订版重复认领返回 8 而不是覆盖——「不猜导出目录里最新文件」因此可离线复跑。
+
 
 
 「在剪映中打开」与「导出」分成两条任务记：`jianying_open` 只把工程开到剪映里，job 落 `stage=draft_opened`，

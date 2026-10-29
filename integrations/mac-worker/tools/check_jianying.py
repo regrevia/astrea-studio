@@ -10,6 +10,7 @@
      expectedCanvas/expectedDuration 八项齐全；同 project_name 的第二次部署另起目录
   5. 版本适配：读 App 版本、同主版本参考草稿才盖章、没实证就沿用模板；
      部署目录里留下 draft_version.json 供导出端追溯
+  6. 版本适配落地：同主版本实证出现后，真实 _deploy 落盘要采纳（draft_version.json 标 applied）
 
 跑法：python3 tools/check_jianying.py   （退出码 0=全过，1=有失败）
 """
@@ -468,6 +469,66 @@ def t_draft_inspect(tmp: Path) -> str:
     return "画布/时长/缺素材可读，加密草稿如实标注；sidecar 期望值对账能报差异"
 
 
+# ------------------------------------------------------------ 7) 人工导出认领
+def t_claim(tmp: Path, media: dict[str, Path]) -> str:
+    """人工导出的成片认领：显式路径 + 体检 + 归位，拒绝也要留证据。"""
+    import argparse
+
+    saved_evidence = X.EVIDENCE
+    X.EVIDENCE = tmp / "claim_evidence"
+    outdir = tmp / "claim_out"
+    job = "job-selfcheck-claim"
+
+    def args_for(**kw):
+        base = {"job_id": job, "revision": 1, "draft_path": "", "canvas": "1280x720",
+                "expect_duration": 6.0, "platform": "douyin", "outdir": str(outdir)}
+        base.update(kw)
+        return argparse.Namespace(**base)
+
+    try:
+        require(X.claim_export(str(tmp / "nope.mp4"), args_for()) == 2,
+                "不存在的路径竟然认领成功了")
+        note = tmp / "note.txt"
+        note.write_text("not a video", encoding="utf-8")
+        require(X.claim_export(str(note), args_for()) == 2,
+                "非 mp4/mov 竟然认领成功了")
+        require(X.claim_export(str(media["video"]), args_for(job_id="")) == 2,
+                "没 jobId 竟然认领成功了")
+
+        # 时长对不上：拒绝、留 rejected 证据、原文件不动
+        wrong = tmp / "claim_bad.mp4"
+        shutil.copy2(media["video"], wrong)
+        require(X.claim_export(str(wrong), args_for(expect_duration=30.0)) == 6,
+                "时长差 24 秒竟然过了体检")
+        require(wrong.is_file(), "没通过体检却把成片搬走了")
+        rejected = list((X.EVIDENCE / job).glob("r1__*.rejected.json"))
+        require(len(rejected) == 1, "拒绝没留证据: %r" % rejected)
+        rec = json.loads(rejected[0].read_text(encoding="utf-8"))
+        require(rec.get("accepted") is False and rec.get("failed"),
+                "拒绝证据没写清失败项: %r" % rec.get("failed"))
+
+        good = tmp / "claim_good.mp4"
+        shutil.copy2(media["video"], good)
+        require(X.claim_export(str(good), args_for()) == 0, "合规成片认领失败")
+        _, final = X.plan_output(job, 1, "douyin", outdir)
+        require(final.is_file(), "认领后没归位到 plan_output 落点: %s" % final)
+        require(not good.exists(), "归位后源文件还在，等于复制了一份")
+        ok_ev = X.EVIDENCE / job / "r1__douyin.json"
+        require(ok_ev.is_file(), "认领成功没留证据")
+        require(json.loads(ok_ev.read_text(encoding="utf-8")).get("accepted") is True,
+                "成功证据没标 accepted")
+
+        # 同一修订版再认领一次：不覆盖已有成片
+        again = tmp / "claim_again.mp4"
+        shutil.copy2(media["video"], again)
+        require(X.claim_export(str(again), args_for()) == 8,
+                "同一修订版第二次认领覆盖了已有成片")
+        require(again.is_file() and final.is_file(), "拒绝覆盖时把文件弄丢了")
+    finally:
+        X.EVIDENCE = saved_evidence
+    return "显式路径 + 体检（时长差即拒、留证据）+ 归位到 jobId/r1，同版本重认领不覆盖"
+
+
 def main() -> int:
     print("[剪映链路离线自检] ffmpeg=%s" % FFMPEG)
     require(Path(FFMPEG).exists() and Path(FFPROBE).exists(), "缺 ffmpeg/ffprobe，无法自检")
@@ -489,6 +550,9 @@ def main() -> int:
         check("实证在真实落盘里被采纳", lambda: t_adopt_at_deploy(tmp))
         print("-- 6 打开前体检（只读，不开剪映）")
         check("画布/时长/素材、加密草稿、与 sidecar 对账", lambda: t_draft_inspect(tmp))
+
+        print("-- 7 人工导出认领（不猜最新文件）")
+        check("显式路径 + 体检 + 归位 + 拒绝留证据", lambda: t_claim(tmp, media))
 
     failed = [r for r in _results if not r[0]]
     print("\n结果: %d/%d 通过" % (len(_results) - len(failed), len(_results)))
