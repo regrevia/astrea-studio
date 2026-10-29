@@ -194,6 +194,63 @@ function normalizeRunOutput(
 }
 
 /**
+ * 发布状态只能按已发生的顺序往前走。没有这张表时一条 planned 的记录能被直接改成
+ * published，崩溃恢复也分不清「浏览器提交前挂掉」和「已经发出去但没回读」。
+ */
+const SUBMISSION_TRANSITIONS: Record<string, PublicationStatus[]> = {
+  // 浏览器动手前先落 submitting（beginSubmission），正常只能从这条进入终态集合
+  [PublicationStatus.SUBMITTING]: [
+    PublicationStatus.SUBMITTED_UNVERIFIED,
+    PublicationStatus.SUBMISSION_UNKNOWN,
+    PublicationStatus.SCHEDULED_REMOTE,
+    PublicationStatus.REVIEWING,
+    PublicationStatus.NOT_SUBMITTED,
+    PublicationStatus.WAITING_USER,
+    PublicationStatus.RECONCILING,
+  ],
+  // 没拿到确认时人工回读：可以先转到 reconciling，也可以直接给出结论
+  [PublicationStatus.SUBMISSION_UNKNOWN]: [
+    PublicationStatus.RECONCILING,
+    PublicationStatus.SUBMITTED_UNVERIFIED,
+    PublicationStatus.PUBLISHED,
+    PublicationStatus.NOT_SUBMITTED,
+  ],
+  [PublicationStatus.RECONCILING]: [
+    PublicationStatus.SUBMITTED_UNVERIFIED,
+    PublicationStatus.PUBLISHED,
+    PublicationStatus.NOT_SUBMITTED,
+  ],
+  // 有链接但没核验过：后续人工确认/驳回只能从这一层往上
+  [PublicationStatus.SUBMITTED_UNVERIFIED]: [
+    PublicationStatus.PUBLISHED,
+    PublicationStatus.REJECTED,
+    PublicationStatus.REVIEWING,
+  ],
+  // 放弃计划：没进浏览器就取消，只允许这一条出口
+  [PublicationStatus.PLANNED]: [PublicationStatus.NOT_SUBMITTED],
+}
+
+function assertSubmissionTransition(
+  from: PublicationStatus,
+  to: PublicationStatus,
+  remotePostId?: string,
+) {
+  if (to === PublicationStatus.PUBLISHED && !remotePostId) {
+    throw new AppException(
+      ResponseCode.ProductionInvalidState,
+      '标记为已发布必须带作品 ID；只有链接没 ID 时状态是 submitted_unverified',
+    )
+  }
+  const allowed = SUBMISSION_TRANSITIONS[from]
+  if (!allowed || !allowed.includes(to)) {
+    throw new AppException(
+      ResponseCode.ProductionInvalidState,
+      `发布状态不能从 ${from} 直接变成 ${to}`,
+    )
+  }
+}
+
+/**
  * Owns the production ledger: runs, render jobs, worker leases and publication
  * intents. Every state transition that matters for correctness is a conditionally
  * guarded Mongo update rather than a read-then-write.
@@ -1379,6 +1436,14 @@ export class ProductionService {
     if (!attempt || attempt.userId !== userId) {
       throw new AppException(ResponseCode.PublicationAttemptNotFound)
     }
+    // 同一份结果重复回写（调用方重试、页面刷新后重放）不该在证据里留第二份，
+    // 也不该再写一条时间线事件：直接返回原记录。
+    const sameResult = attempt.status === input.status
+      && (input.remotePostId === undefined || input.remotePostId === attempt.remotePostId)
+    if (sameResult) {
+      return attempt
+    }
+    assertSubmissionTransition(attempt.status, input.status, input.remotePostId)
     const updated = await this.attemptRepo.updateById(attemptId, {
       status: input.status,
       remotePostId: input.remotePostId ?? attempt.remotePostId,

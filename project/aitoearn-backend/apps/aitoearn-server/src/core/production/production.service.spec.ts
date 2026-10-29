@@ -115,7 +115,11 @@ function createService() {
   }
   const attemptRepo = {
     getByIdempotencyKey: vi.fn().mockResolvedValue(null),
+    getById: vi.fn(),
     create: vi.fn().mockImplementation(async (data: Record<string, unknown>) => ({ id: 'attempt-1', ...data })),
+    updateById: vi.fn().mockImplementation(async (id: string, update: Record<string, unknown>) => ({ id, ...update })),
+    listByRun: vi.fn().mockResolvedValue([]),
+    listByUser: vi.fn().mockResolvedValue([]),
   }
   const workerRepo = {
     updateById: vi.fn().mockImplementation(async (id: string, update: Record<string, unknown>) => ({ id, ...update })),
@@ -568,6 +572,103 @@ describe('cancelRun', () => {
       expect.objectContaining({ status: 'cancelled', currentStage: 'cancelled' }),
       { status: { $ne: 'cancelled' } },
     )
+  })
+})
+
+describe('publication submission state machine', () => {
+  const ATTEMPT = {
+    id: 'attempt-1',
+    userId: 'user-1',
+    runId: 'run-1',
+    status: 'submitting',
+    remotePostId: '',
+    remoteUrl: '',
+    evidence: [],
+  }
+
+  it('submitting 回写提交结果时记下链接和证据', async () => {
+    const { service, attemptRepo, eventRepo } = createService()
+    attemptRepo.getById.mockResolvedValue({ ...ATTEMPT })
+    attemptRepo.updateById.mockResolvedValue({ ...ATTEMPT, status: 'submitted_unverified' })
+
+    await service.recordSubmission('user-1', 'attempt-1', {
+      status: 'submitted_unverified' as never,
+      remoteUrl: 'https://www.douyin.com/video/7456000000000000000',
+      evidence: { readback: 'ok' },
+    })
+
+    const patch = attemptRepo.updateById.mock.calls[0][1]
+    expect(patch.status).toBe('submitted_unverified')
+    expect(patch.remoteUrl).toBe('https://www.douyin.com/video/7456000000000000000')
+    expect(patch.evidence).toHaveLength(1)
+    expect(eventRepo.append).toHaveBeenCalledTimes(1)
+  })
+
+  it('没进浏览器就标已发布会被拒绝，也不写库', async () => {
+    const { service, attemptRepo } = createService()
+    attemptRepo.getById.mockResolvedValue({ ...ATTEMPT, status: 'planned' })
+
+    await expect(service.recordSubmission('user-1', 'attempt-1', {
+      status: 'published' as never,
+      remotePostId: '7456000000000000000',
+    })).rejects.toThrow('发布状态不能从 planned 直接变成 published')
+    expect(attemptRepo.updateById).not.toHaveBeenCalled()
+  })
+
+  it('标已发布必须带作品 ID', async () => {
+    const { service, attemptRepo } = createService()
+    attemptRepo.getById.mockResolvedValue({ ...ATTEMPT, status: 'submitted_unverified' })
+
+    await expect(service.recordSubmission('user-1', 'attempt-1', {
+      status: 'published' as never,
+    })).rejects.toThrow('必须带作品 ID')
+    expect(attemptRepo.updateById).not.toHaveBeenCalled()
+  })
+
+  it('同一份结果重复回写不产生第二份证据', async () => {
+    const { service, attemptRepo, eventRepo } = createService()
+    const settled = {
+      ...ATTEMPT,
+      status: 'published',
+      remotePostId: '7456000000000000000',
+      remoteUrl: 'https://www.douyin.com/video/7456000000000000000',
+      evidence: [{ at: '2026-10-29T00:00:00.000Z' }],
+    }
+    attemptRepo.getById.mockResolvedValue(settled)
+
+    const result = await service.recordSubmission('user-1', 'attempt-1', {
+      status: 'published' as never,
+      remotePostId: '7456000000000000000',
+    })
+
+    expect(result).toBe(settled)
+    expect(attemptRepo.updateById).not.toHaveBeenCalled()
+    expect(eventRepo.append).not.toHaveBeenCalled()
+  })
+
+  it('submitting 的尝试不能再 beginSubmission 一次', async () => {
+    const { service, attemptRepo } = createService()
+    attemptRepo.getById.mockResolvedValue({ ...ATTEMPT })
+
+    await expect(service.beginSubmission('user-1', 'attempt-1'))
+      .rejects.toThrow('Cannot submit from status submitting')
+    expect(attemptRepo.updateById).not.toHaveBeenCalled()
+  })
+
+  it('拿不到确认的尝试可以先转 reconciling 再人工给结论', async () => {
+    const { service, attemptRepo } = createService()
+    attemptRepo.getById.mockResolvedValue({ ...ATTEMPT, status: 'submitting' })
+    attemptRepo.updateById.mockResolvedValue({ ...ATTEMPT, status: 'reconciling' })
+
+    await service.recordSubmission('user-1', 'attempt-1', { status: 'reconciling' as never })
+    expect(attemptRepo.updateById.mock.calls[0][1].status).toBe('reconciling')
+
+    attemptRepo.getById.mockResolvedValue({ ...ATTEMPT, status: 'reconciling' })
+    await service.recordSubmission('user-1', 'attempt-1', {
+      status: 'published' as never,
+      remotePostId: '7456000000000000001',
+    })
+    expect(attemptRepo.updateById.mock.calls[1][1].remotePostId).toBe('7456000000000000001')
   })
 })
 

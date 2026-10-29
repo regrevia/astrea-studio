@@ -204,6 +204,7 @@ PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib \
 | 认领成片入库 | 完成 | 实机 job `6ae2a8298f01834bace113fc`：`claimPath` 指向 1080×1920/30fps/6.0s 的 mp4，job `succeeded`、`claimed=true`，落 `library/端到端验收-一体化宣发工作台__6ae237a7/2026-10/…__douyin__r1.mp4`（188 KB）并写进 `library/index.jsonl`；素材指纹不符时 job `6ae2a8228f01834bace113b3` 失败，`reasonCode=draft_media_changed`（`认领失败 rc=12：草稿素材换了：media 1b0c4d60a2f4 != deadbeef0000`） |
 | 发布契约（离线） | 完成 | `publish_sau` 载荷→命令行、四类拒绝、状态判读（`submitted_unverified` / `submission_unknown` / `PublishError`）全部有测试：`tools/check_publish.py` 16/16，worker 测试 81 项；见 [publish-contract.md](publish-contract.md)；`--cookie yefen` 实测无头预检通过 |
 | 认领 → 发布台账 | 完成 | 认领过的 run 登记发布，`content.assetKey` 指向入库那一份而非产物目录临时路径；同载荷重复登记 `deduped:true`。attempt `6ae2ab4666b2fe676bafe43a` |
+| 发布状态机 | 完成 | 越级转移 400；`planned→submitting→submission_unknown→not_submitted` 真机走通；重复回写不加证据（attempt `6ae2ab4666b2fe676bafe43a`） |
 | 约 30 秒 1080×1920 端到端 | 完成 | 新项目 `6ae237a72a5e71e140145c45` 跑 3 版：全部 succeeded，ffprobe 1080×1920 / 30 fps / 30.0 s / 4.4 MB，落点在 `library/端到端验收-一体化宣发工作台__6ae237a7/`（[result.json](evidence/library-project/result.json) 的 `finalCheck`） |
 
 本轮还补齐了成片库的目录规范：目录与文件名统一 `<项目名slug>__<id8>`，历史 `studio/` 与纯 id 目录用 `library.py migrate` 一次搬完 121 个文件，`library.py verify` 对账干净（见 [asset-library.md](asset-library.md)、[library-project/README.md](evidence/library-project/README.md)）。

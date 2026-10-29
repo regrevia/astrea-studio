@@ -27,6 +27,31 @@ argv 不一样，所以发布类型必须显式带：
 
 `submitted_unverified` 这个名字是刻意的：页面说交了就记「已提交未核验」，不冒充「已发布」。
 
+## 状态只能往前走
+
+发布台账的状态不是随便写：`recordSubmission` 按一张转移表校验，越级直接 400。
+
+| 从 | 允许到 |
+| --- | --- |
+| `planned` | `not_submitted`（放弃计划） |
+| `submitting`（`beginSubmission` 先落库） | `submitted_unverified` / `submission_unknown` / `scheduled_remote` / `reviewing` / `not_submitted` / `waiting_user` / `reconciling` |
+| `submission_unknown` | `reconciling` / `submitted_unverified` / `published` / `not_submitted` |
+| `reconciling` | `submitted_unverified` / `published` / `not_submitted` |
+| `submitted_unverified` | `published` / `rejected` / `reviewing` |
+
+另外两条：标 `published` 必须带作品 ID（没 ID 就停在 `submitted_unverified`）；同一份结果重复
+回写直接返回原记录，不追加第二份证据、不写第二条时间线。
+
+实测（2026-10-29），attempt `6ae2ab4666b2fe676bafe43a`：
+
+1. `planned` 直接 reconcile 到 `published` → 400 `发布状态不能从 planned 直接变成 published`
+2. `beginSubmission` → `submitting`
+3. reconcile `submission_unknown`（带 error 说明没真调浏览器）→ 通过，证据 1 条
+4. 同一结果再回写一次 → 证据还是 1 条（总 2 条是第 5 步那次）
+5. reconcile `not_submitted` 收尾 → 通过，证据 2 条
+
+留的是诚实的「放弃提交」终态，没有伪造成功。
+
 ## Cookie
 
 发布前先跑 `sau douyin check --account <account>`；失效直接报错并提示重新登录，
