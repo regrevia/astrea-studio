@@ -87,11 +87,18 @@ cd integrations/mac-worker && <venv-python> tools/check_publish_lane.py --apply 
 ```
 
 探针插 `kind: publish_sau`、`payload: {}` 的作业；`PublishSpec.from_payload` 在任何 cookie 检查/
-子进程之前就会抛 `publish payload has no accountRef`，因此不会碰抖音、不会起浏览器。断言：
+子进程之前就会抛 `publish payload has no accountRef`，因此不会碰抖音、不会起浏览器。
+`--case` 三条，`--all` 一次跑完（每条都两秒上下）：`claim` / `cancelled-run` / `stale-revision`。
 
-- 作业被 `publish` 泳道领走（`leaseOwner` 是 worker、事件流有 `job.claimed` 且 `jobId` 就是这条作业）；
-- 失败原因是载荷校验（`publish payload has no …`），两秒内结束；
-- 没有 `job.cancelled`、没有 `publish:submitting`；跑完把探针作业和事件删掉。
+- `claim`：作业被 `publish` 泳道领走（`leaseOwner` 是 worker、`job.claimed` 的 `jobId` 就是这条
+  作业）；失败原因是载荷校验（`publish payload has no …`）；没有 `job.cancelled`、没有
+  `publish:submitting`。
+- `cancelled-run`：挂到一条 `cancelled` 的 run 上，领取阶段即被取消，状态 `cancelled`，
+  `job.cancelled` 带作业号、原因 `run cancelled`，worker 不会收到这条活。
+- `stale-revision`：run 是第 2 版、作业挂第 1 版，被取消，原因 `dropped: revision 1 superseded by 2`
+  ——旧稿不会被当成当前稿发出去。
+
+跑完把探针作业、事件（和临时造的 run）删掉，台账不留痕。
 
 顺带修掉一个排查盲区：`claimNext` 之前用 `lean: true` 返回，`id` 虚拟字段没带上，领取事件
 写成 `jobId: ""`、取消分支按 `job.id` 更新等于空操作；现在与其它仓储一致用
