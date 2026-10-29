@@ -259,6 +259,25 @@ export class PublicationAttemptRepository extends BaseRepository<PublicationAtte
     return await this.find({ userId }, { sort: { createdAt: -1 }, limit })
   }
 
+  /**
+   * 卡在 submitting 的记录：浏览器那条路走到一半进程没了，记录就永远停在提交中。
+   * 按 updatedAt 找出来才能交给人工回读，而不是自动重投一遍。
+   */
+  async listStaleByStatus(status: string, olderThan: Date, options: { userId?: string, limit?: number } = {}) {
+    return await this.find(
+      { status, updatedAt: { $lt: olderThan }, ...(options.userId ? { userId: options.userId } : {}) } as never,
+      { sort: { updatedAt: 1 }, limit: options.limit ?? 20 },
+    )
+  }
+
+  /** 只有仍然处在给定状态时才允许改，避免巡检和真实回写互相覆盖。 */
+  async updateStatusIn(id: string, from: string[], patch: Record<string, unknown>) {
+    return await this.updateOne(
+      { _id: id, status: { $in: from } } as never,
+      { $set: patch } as never,
+    )
+  }
+
   /** Count live (non-terminal) attempts sharing one real account. */
   async countActiveForAccount(accountRef: string) {
     return await this.count({

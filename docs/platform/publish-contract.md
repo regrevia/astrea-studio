@@ -52,6 +52,27 @@ argv 不一样，所以发布类型必须显式带：
 
 留的是诚实的「放弃提交」终态，没有伪造成功。
 
+## 提交中断了怎么收尾
+
+浏览器那条路走到一半进程没了（关机、崩溃、被杀），记录会停在 `submitting`，而库里没法
+区分「还没开始提交」和「已经点下去但没回读」。所以不做自动重投，只做降级：
+
+```
+POST /api/production/publications/sweep
+{ "olderThanMinutes": 15 }
+```
+
+超时仍为 `submitting` 的记录改成 `submission_unknown`（附 `kind: "stale_sweep"` 证据和一条
+时间线事件），下一步由人工回读平台确认发没发。重复跑是幂等的；巡检撞上真实回写时以真实
+回写为准，不覆盖终态、不写事件。
+
+默认 15 分钟，可配 1～10080 分钟；一次最多处理 20 条。目前只有手动触发（没有定时任务），
+因为真发一次是不可逆的，自动重投的风险比停在未确认大。
+
+实测（2026-10-29）：新登记 attempt `6ae2ae2b6d97de3d41203a1d` → `beginSubmission` 落 `submitting`；
+把 `updatedAt` 推到一小时前后巡检，第一次 `scanned:1 recovered:[…]`，第二次 `scanned:0`；
+记录变成 `submission_unknown`，证据一条（`kind: "stale_sweep"`），`lastError` 写明要人工回读。
+
 ## Cookie
 
 发布前先跑 `sau douyin check --account <account>`；失效直接报错并提示重新登录，

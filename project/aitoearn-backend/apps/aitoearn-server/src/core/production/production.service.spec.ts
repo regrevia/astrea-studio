@@ -120,6 +120,8 @@ function createService() {
     updateById: vi.fn().mockImplementation(async (id: string, update: Record<string, unknown>) => ({ id, ...update })),
     listByRun: vi.fn().mockResolvedValue([]),
     listByUser: vi.fn().mockResolvedValue([]),
+    listStaleByStatus: vi.fn().mockResolvedValue([]),
+    updateStatusIn: vi.fn(),
   }
   const workerRepo = {
     updateById: vi.fn().mockImplementation(async (id: string, update: Record<string, unknown>) => ({ id, ...update })),
@@ -572,6 +574,77 @@ describe('cancelRun', () => {
       expect.objectContaining({ status: 'cancelled', currentStage: 'cancelled' }),
       { status: { $ne: 'cancelled' } },
     )
+  })
+})
+
+describe('sweepStaleSubmissions', () => {
+  const STALE = {
+    id: 'attempt-stale',
+    userId: 'user-1',
+    runId: 'run-1',
+    status: 'submitting',
+    evidence: [{ at: '2026-10-29T00:00:00.000Z' }],
+  }
+
+  it('卡住的提交降级为未确认，并写一条人工回读事件', async () => {
+    const { service, attemptRepo, eventRepo } = createService()
+    attemptRepo.listStaleByStatus.mockResolvedValue([{ ...STALE }])
+    attemptRepo.updateStatusIn.mockResolvedValue({ ...STALE, status: 'submission_unknown' })
+
+    const result = await service.sweepStaleSubmissions('user-1', { olderThanMinutes: 30 })
+
+    expect(result.scanned).toBe(1)
+    expect(result.recovered).toEqual(['attempt-stale'])
+    expect(attemptRepo.listStaleByStatus.mock.calls[0][0]).toBe('submitting')
+    const patch = attemptRepo.updateStatusIn.mock.calls[0][2]
+    expect(patch.status).toBe('submission_unknown')
+    expect(patch.evidence).toHaveLength(2)
+    expect(patch.evidence[1]).toMatchObject({ kind: 'stale_sweep', olderThanMinutes: 30 })
+    expect(eventRepo.append).toHaveBeenCalledTimes(1)
+    expect(eventRepo.append.mock.calls[0][0]).toMatchObject({
+      runId: 'run-1',
+      stage: 'submission_unknown',
+      data: { attemptId: 'attempt-stale', olderThanMinutes: 30 },
+    })
+  })
+
+  it('巡检期间真实回写先落了库，就不动它也不写事件', async () => {
+    const { service, attemptRepo, eventRepo } = createService()
+    attemptRepo.listStaleByStatus.mockResolvedValue([{ ...STALE }, { ...STALE, id: 'attempt-raced' }])
+    attemptRepo.updateStatusIn
+      .mockResolvedValueOnce({ ...STALE, status: 'submission_unknown' })
+      .mockResolvedValueOnce(null)
+
+    const result = await service.sweepStaleSubmissions('user-1', {})
+
+    expect(result.scanned).toBe(2)
+    expect(result.recovered).toEqual(['attempt-stale'])
+    expect(eventRepo.append).toHaveBeenCalledTimes(1)
+  })
+
+  it('再跑一次什么都找不到，不会把已降级的记录接着改', async () => {
+    const { service, attemptRepo, eventRepo } = createService()
+    attemptRepo.listStaleByStatus.mockResolvedValue([])
+
+    const result = await service.sweepStaleSubmissions('user-1', {})
+
+    expect(result).toEqual({ scanned: 0, recovered: [] })
+    expect(attemptRepo.updateStatusIn).not.toHaveBeenCalled()
+    expect(eventRepo.append).not.toHaveBeenCalled()
+  })
+
+  it('默认按 15 分钟划线，阈值下限 1 分钟', async () => {
+    const { service, attemptRepo } = createService()
+    const before = Date.now()
+    await service.sweepStaleSubmissions('user-1', {})
+    const cut = (attemptRepo.listStaleByStatus.mock.calls[0][1] as Date).getTime()
+    expect(cut).toBeGreaterThanOrEqual(before - 15 * 60_000 - 5_000)
+    expect(cut).toBeLessThanOrEqual(Date.now() - 15 * 60_000 + 5_000)
+    expect(attemptRepo.listStaleByStatus.mock.calls[0][2]).toMatchObject({ userId: 'user-1', limit: 20 })
+
+    await service.sweepStaleSubmissions('user-1', { olderThanMinutes: 0 })
+    const clamped = (attemptRepo.listStaleByStatus.mock.calls[1][1] as Date).getTime()
+    expect(clamped).toBeGreaterThan(Date.now() - 2 * 60_000)
   })
 })
 

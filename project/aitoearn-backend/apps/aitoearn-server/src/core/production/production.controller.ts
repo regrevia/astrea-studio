@@ -137,6 +137,11 @@ const RecordSubmissionSchema = z.object({
 })
 class RecordSubmissionDto extends createZodDto(RecordSubmissionSchema, 'RecordSubmissionDto') {}
 
+const SweepSubmissionsSchema = z.object({
+  olderThanMinutes: z.number().int().min(1).max(7 * 24 * 60).optional().describe('多久没动静算中断，默认 15 分钟'),
+})
+class SweepSubmissionsDto extends createZodDto(SweepSubmissionsSchema, 'SweepSubmissionsDto') {}
+
 const RegisterWorkerSchema = z.object({
   name: z.string().min(1).describe('worker 名称'),
   capabilities: z.array(z.string()).default([]).describe('支持的作业类型'),
@@ -416,6 +421,12 @@ export class ProductionController {
     @Body() body: RecordSubmissionDto,
   ) {
     return await this.production.recordSubmission(token.id, id, body)
+  }
+
+  @ApiDoc({ summary: '巡检查出提交中断的记录', body: SweepSubmissionsDto.schema })
+  @Post('publications/sweep')
+  async sweepSubmissions(@GetToken() token: TokenInfo, @Body() body: SweepSubmissionsDto) {
+    return await this.production.sweepStaleSubmissions(token.id, body)
   }
 
   @ApiDoc({ summary: 'Worker 与运行时健康' })

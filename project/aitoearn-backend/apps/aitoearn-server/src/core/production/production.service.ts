@@ -1460,6 +1460,52 @@ export class ProductionService {
     return updated
   }
 
+  /**
+   * 提交中途进程崩掉时，记录会永远停在 submitting：不处理的话没人知道发没发出去，
+   * 处理成「可重投」又会重复发文。所以只把它降级成 submission_unknown，交给人工回读。
+   * 重复跑是幂等的：已经是 submission_unknown 的不再匹配。
+   */
+  async sweepStaleSubmissions(
+    userId: string,
+    input: { olderThanMinutes?: number, limit?: number } = {},
+  ) {
+    const olderThanMinutes = Math.max(1, input.olderThanMinutes ?? 15)
+    const olderThan = new Date(Date.now() - olderThanMinutes * 60_000)
+    const stale = await this.attemptRepo.listStaleByStatus(
+      PublicationStatus.SUBMITTING,
+      olderThan,
+      { userId, limit: input.limit ?? 20 },
+    )
+    const recovered: string[] = []
+    for (const attempt of stale) {
+      const patch = {
+        status: PublicationStatus.SUBMISSION_UNKNOWN,
+        lastError: '提交没有回执：进程中断，需人工回读；不会自动重投',
+        evidence: [
+          ...(attempt.evidence ?? []),
+          { at: new Date(), kind: 'stale_sweep', olderThanMinutes },
+        ],
+      }
+      const updated = await this.attemptRepo.updateStatusIn(
+        attempt.id,
+        [PublicationStatus.SUBMITTING],
+        patch,
+      )
+      // 巡检跑了但真实回写刚好先落库：不写事件，也不动终态。
+      if (!updated) {
+        continue
+      }
+      recovered.push(attempt.id)
+      await this.appendEvent(attempt.runId, {
+        kind: 'publication.updated',
+        stage: PublicationStatus.SUBMISSION_UNKNOWN,
+        message: '提交中断，已标记为未确认，请人工回读平台',
+        data: { attemptId: attempt.id, olderThanMinutes },
+      })
+    }
+    return { scanned: stale.length, recovered }
+  }
+
   async listAttempts(userId: string, runId?: string) {
     if (runId) {
       await this.getRun(userId, runId)

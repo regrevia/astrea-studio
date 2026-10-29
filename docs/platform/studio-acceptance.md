@@ -205,6 +205,7 @@ PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib \
 | 发布契约（离线） | 完成 | `publish_sau` 载荷→命令行、四类拒绝、状态判读（`submitted_unverified` / `submission_unknown` / `PublishError`）全部有测试：`tools/check_publish.py` 16/16，worker 测试 81 项；见 [publish-contract.md](publish-contract.md)；`--cookie yefen` 实测无头预检通过 |
 | 认领 → 发布台账 | 完成 | 认领过的 run 登记发布，`content.assetKey` 指向入库那一份而非产物目录临时路径；同载荷重复登记 `deduped:true`。attempt `6ae2ab4666b2fe676bafe43a` |
 | 发布状态机 | 完成 | 越级转移 400；`planned→submitting→submission_unknown→not_submitted` 真机走通；重复回写不加证据（attempt `6ae2ab4666b2fe676bafe43a`） |
+| 提交中断巡捡 | 完成 | `POST publications/sweep` 把超时 `submitting` 降级为 `submission_unknown`；幂等，撞上真实回写不覆盖（离线 4 例，真机 attempt `6ae2ae2b6d97de3d41203a1d`：首次 recovery，二次 empty） |
 | 约 30 秒 1080×1920 端到端 | 完成 | 新项目 `6ae237a72a5e71e140145c45` 跑 3 版：全部 succeeded，ffprobe 1080×1920 / 30 fps / 30.0 s / 4.4 MB，落点在 `library/端到端验收-一体化宣发工作台__6ae237a7/`（[result.json](evidence/library-project/result.json) 的 `finalCheck`） |
 
 本轮还补齐了成片库的目录规范：目录与文件名统一 `<项目名slug>__<id8>`，历史 `studio/` 与纯 id 目录用 `library.py migrate` 一次搬完 121 个文件，`library.py verify` 对账干净（见 [asset-library.md](asset-library.md)、[library-project/README.md](evidence/library-project/README.md)）。
