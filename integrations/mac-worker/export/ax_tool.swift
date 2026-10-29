@@ -310,6 +310,30 @@ case "click-at":
     }
     print("click-at \(Int(x)),\(Int(y)) count=\(n)")
 
+case "scroll":
+    // 在指定点滚轮，不移动真实光标：滚轮事件自带 location，指针不会被挪走。
+    // 剪映首页这类 CEF 列表的卡片不在 AX 树里，只能滚动之后重新读树。
+    guard rest.count >= 3, let sx = Double(rest[0]), let sy = Double(rest[1]), let dy = Double(rest[2]) else {
+        FileHandle.standardError.write("usage: ax_tool scroll <x> <y> <dy> [--count n]\n".data(using: .utf8)!); exit(2)
+    }
+    let sc = max(1, Int(flag["count"] ?? "1") ?? 1)
+    let before = CGEvent(source: nil)?.location ?? .zero
+    focusApp(pid)
+    usleep(120_000)
+    let pt = CGPoint(x: sx, y: sy)
+    for _ in 0..<sc {
+        if let e = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1,
+                           wheel1: Int32(dy), wheel2: 0, wheel3: 0) {
+            e.location = pt
+            e.post(tap: .cghidEventTap)
+        }
+        usleep(90_000)
+    }
+    if flag["keep-cursor"] == nil { CGWarpMouseCursorPosition(before) }
+    let after = CGEvent(source: nil)?.location ?? .zero
+    let moved = abs(after.x - before.x) > 1 || abs(after.y - before.y) > 1
+    print("scroll \(Int(sx)),\(Int(sy)) dy=\(Int(dy)) x\(sc) 光标\(moved ? "被移动了" : "未移动")")
+
 case "type":
     // 往当前焦点控件里输入任意文本。调用方先用 click-at 点中控件、需要时 key cmd+a 全选。
     let text = rest.joined(separator: " ")
