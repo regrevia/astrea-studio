@@ -234,6 +234,21 @@ def t_build_timeline(tmp: Path, media: dict[str, Path]) -> str:
                stats["subtitles"]))
 
 
+def _make_src_draft(tmp: Path, name: str = "src_draft") -> Path:
+    """一份最小的 VectCutAPI 风格模板草稿，供落盘/采纳用例反复用。"""
+    src = tmp / name
+    src.mkdir(parents=True, exist_ok=True)
+    (src / "draft_content.json").write_text(json.dumps({
+        "id": "OLD-ID", "duration": 5000000, "fps": 30.0,
+        "canvas_config": {"width": 1080, "height": 1920, "ratio": "9:16"},
+        "tracks": [{"type": "video"}], "materials": {"videos": [{"id": "m1", "path": "assets/a.png"}]},
+    }, ensure_ascii=False), encoding="utf-8")
+    (src / "draft_meta_info.json").write_text(json.dumps({
+        "draft_name": "selfcheck", "draft_fold_path": str(src),
+    }, ensure_ascii=False), encoding="utf-8")
+    return src
+
+
 # ---------------------------------------------------------------- 4) sidecar
 def t_sidecar(tmp: Path, media: dict[str, Path]) -> str:
     payload = {"runId": "run-selfcheck-001", "revision": "1",
@@ -247,16 +262,7 @@ def t_sidecar(tmp: Path, media: dict[str, Path]) -> str:
     require(extra["expectedDuration"] == 5.0 and extra["expectedCanvas"] ==
             {"width": 1080, "height": 1920}, "期望规格不对: %r" % extra)
 
-    src = tmp / "src_draft"
-    src.mkdir(parents=True, exist_ok=True)
-    (src / "draft_content.json").write_text(json.dumps({
-        "id": "OLD-ID", "duration": 5000000, "fps": 30.0,
-        "canvas_config": {"width": 1080, "height": 1920, "ratio": "9:16"},
-        "tracks": [{"type": "video"}], "materials": {"videos": [{"id": "m1", "path": "assets/a.png"}]},
-    }, ensure_ascii=False), encoding="utf-8")
-    (src / "draft_meta_info.json").write_text(json.dumps({
-        "draft_name": "selfcheck", "draft_fold_path": str(src),
-    }, ensure_ascii=False), encoding="utf-8")
+    src = _make_src_draft(tmp)
 
     saved_root = E.DRAFT_ROOT
     E.DRAFT_ROOT = tmp / "draft_root"
@@ -363,6 +369,70 @@ def t_version_layer(tmp):
     return "12.x 无实证=keep-template，有实证=reference-same-major；adapter=%s" % E.ADAPTER_VERSION
 
 
+def t_adopt_at_deploy(tmp: Path) -> str:
+    """同主版本实证出现后，真实落盘必须采纳：resolve → _deploy → draft_version.json。
+
+    前面 t_version_layer 验的是「算不算采纳」，这条验「采纳有没有真的写进草稿」：
+    把本机版本模拟成剪映 11.9、草稿箱里放一份 11.9 自己存的草稿，再走一遍真实的
+    _deploy，草稿内容与 draft_version.json 都要变成 11.9 的 schema。
+    """
+    import plistlib
+
+    app = tmp / "adopt" / "VideoFusion-macOS.app" / "Contents"
+    app.mkdir(parents=True)
+    with (app / "Info.plist").open("wb") as fh:
+        plistlib.dump({"CFBundleIdentifier": "com.lemon.lvpro",
+                       "CFBundleShortVersionString": "11.9.0",
+                       "CFBundleVersion": "512"}, fh)
+    refs_dir = tmp / "adopt" / "drafts"
+    ref = refs_dir / "saved_by_119"
+    ref.mkdir(parents=True)
+    (ref / "draft_content.json").write_text(json.dumps({
+        "version": 360000, "new_version": "119.0.0",
+        "platform": {"app_id": 3704, "app_version": "11.9.0", "os": "mac"},
+        "last_modified_platform": {"app_version": "11.9.0", "os": "mac"},
+    }, ensure_ascii=False), encoding="utf-8")
+
+    schema = V.resolve_schema(app_version="11.9.0", app_build="512",
+                              app_path=app.parent,
+                              references=V.scan_reference_drafts(refs_dir))
+    require(schema["apply"] and schema["source"] == "reference-same-major",
+            "同主版本实证没被采纳: %r" % schema.get("source"))
+
+    payload = {"runId": "run-adopt-001", "revision": "1", "appBuild": "test-build", "spec": {}}
+    spec = {"width": 1080, "height": 1920, "scenes": [{"say": "x", "duration": 3.0}]}
+    built = {"draft_id": "DRAFT_ADOPT", "duration": 5.0, "report": {"counts": {}}}
+    extra = E._sidecar_extra(payload, spec, built)
+    src = _make_src_draft(tmp, "adopt_src")
+
+    saved_resolve, saved_root = V.resolve_schema, E.DRAFT_ROOT
+    V.resolve_schema = lambda *a, **k: dict(schema)
+    E.DRAFT_ROOT = tmp / "adopt_root"
+    try:
+        dest = E._deploy(src, "adopt__r1", sidecar_extra=extra)
+    finally:
+        V.resolve_schema = saved_resolve
+        E.DRAFT_ROOT = saved_root
+
+    content = json.loads((dest / "draft_content.json").read_text(encoding="utf-8"))
+    require(content.get("new_version") == "119.0.0",
+            "落盘没采纳参考草稿的 new_version: %r" % content.get("new_version"))
+    platform = content.get("platform") or {}
+    require(platform.get("app_version") == "11.9.0" and platform.get("os") == "mac",
+            "落盘版本块没换成本机版本: %r" % platform)
+
+    version = json.loads((dest / "draft_version.json").read_text(encoding="utf-8"))
+    stamp = version.get("stamp") or {}
+    require(stamp.get("action") == "applied", "落盘记录没标 applied: %r" % stamp)
+    require((version.get("schema") or {}).get("source") == "reference-same-major",
+            "落盘记录的来源不对: %r" % version.get("schema"))
+    side = X.load_sidecar(dest)
+    require((side.get("schema") or {}).get("source") == "reference-same-major",
+            "sidecar 里的来源不对: %r" % side.get("schema"))
+    return ("11.9 实证 → new_version=119.0.0 / platform=11.9.0 mac / stamp=applied，"
+            "参考草稿 %s" % schema.get("referenceDraft"))
+
+
 def t_draft_inspect(tmp: Path) -> str:
     """打开前的只读体检：画布/时长/素材都在，缺素材要说出来，加密不冒充失败。"""
     from export.draft_inspect import inspect
@@ -416,6 +486,7 @@ def main() -> int:
         check("8 个身份字段 + 第二次部署另起目录", lambda: t_sidecar(tmp, media))
         print("-- 5 剪映版本适配（新版本不靠猜）")
         check("无实证沿用模板 / 有实证采纳 schema", lambda: t_version_layer(tmp))
+        check("实证在真实落盘里被采纳", lambda: t_adopt_at_deploy(tmp))
         print("-- 6 打开前体检（只读，不开剪映）")
         check("画布/时长/素材、加密草稿、与 sidecar 对账", lambda: t_draft_inspect(tmp))
 

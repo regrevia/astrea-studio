@@ -69,7 +69,7 @@ cd integrations/mac-worker
 | 项 | 耗时 | 结论 |
 | --- | --- | --- |
 | 发布段离线契约 | 0.1 s | PASS |
-| 剪映段离线自检 | 4.7 s | PASS（8/8） |
+| 剪映段离线自检 | 4.8 s | PASS（9/9） |
 | 发布泳道真机探针 | 72.0 s | PASS（claim 3.3 / cancelled-run 3.3 / stale-revision 3.3 / lease-expired 58.8 / readback-retry 2.0 s） |
 | 剪映版本依据 | — | 11.6.0 build 490 · 沿用模板（无同主版本实证，不猜版本号）· 参考草稿 11 份（版本戳 10.2.0/5.9.0） |
 | 后端生产 spec（`--with-web`） | 2.3 s | PASS（76/76：发布状态机、租约回收归位、回读） |
@@ -279,6 +279,11 @@ job `6ae2a2b58f01834bace100de` 返回 `stage=draft_checked`、`output.canOpen=tr
 09:43 同一 run 的 job `6ae2a4338f01834bace105e9` 带上内部信息：`canvas=1080×1920`、`durationSec=11.234`、`fps=30`、`trackCount=7`、`media={videos:15,audios:4,images:0}`、`missingMedia=[]`。
 
 ## 10. 剪映打开工程 + 版本适配层（2026-10-29）
+同主版本实证这条现在验到草稿级：离线自检把本机版本模拟成剪映 11.9、草稿箱里放一份 11.9 自己保存的
+草稿，然后走真实的 `_deploy` 落盘，断言 `draft_content.json` 的 `new_version`/`platform`、
+`draft_version.json` 的 `stamp.action=applied`、sidecar 的 `schema.source` 全部换成 11.9——即
+「新版本出现后不需要改代码，下一份生成的草稿会自动采纳」不是说法而是可复跑的一条用例（`t_adopt_at_deploy`）。
+
 
 「在剪映中打开」与「导出」分成两条任务记：`jianying_open` 只把工程开到剪映里，job 落 `stage=draft_opened`，
 任务的 `status` / `output` 不变；`jianying_export` 才碰成片。屏幕锁定判 `screen_locked`，剪映被占用判 `export_user_busy`，
