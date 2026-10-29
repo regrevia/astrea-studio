@@ -1461,6 +1461,27 @@ export class ProductionService {
   }
 
   /**
+   * worker 回读完作品链接后写回台账：只有 published（带作品 ID）和 not_submitted 两种结论。
+   * 结论本身由 worker 的渲染回读给出，这里只管台账能不能收——越级、缺 ID 一律拒。
+   */
+  async applySubmissionReadback(
+    userId: string,
+    attemptId: string,
+    input: {
+      status: PublicationStatus
+      remotePostId?: string
+      remoteUrl?: string
+      evidence?: Record<string, unknown>
+    },
+  ) {
+    const allowed = [PublicationStatus.PUBLISHED, PublicationStatus.NOT_SUBMITTED]
+    if (!allowed.includes(input.status)) {
+      throw new AppException(ResponseCode.ProductionInvalidState)
+    }
+    return this.recordSubmission(userId, attemptId, input)
+  }
+
+  /**
    * 提交中途进程崩掉时，记录会永远停在 submitting：不处理的话没人知道发没发出去，
    * 处理成「可重投」又会重复发文。所以只把它降级成 submission_unknown，交给人工回读。
    * 重复跑是幂等的：已经是 submission_unknown 的不再匹配。

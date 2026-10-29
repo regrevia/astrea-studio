@@ -94,7 +94,13 @@ python3 tools/reconcile_publish.py --url https://www.douyin.com/video/<id> --acc
 - 分类只看渲染出来的文字，不看 HTML 源码：脚本里本来就带「验证码」等字样，看源码会把真作品误判成登录墙。
 - 拉作品列表抽不到 ID 时返回空列表，**不能据此判定「没发出去」**。
 
-实测（2026-10-29，账号 `yefen`）：`--works yefen` 读到 4 条真实作品；对真实作品 `7602658672556153993` 回读得 `published` + 标题；对不存在的 `7456000000000000000` 回读得 `unknown`（页面里读不到作品标记），`reconcile_publish.py` 判为「没有明确结论，台账不动」。
+回读也做成了 worker 作业：`publish_readback`（lane `publish`），payload `{url, account?, attemptId?}`。
+worker 只做三件事——渲染回读、翻成台账能收的结论、调用
+`POST /api/production/worker/publications/:id/readback` 写回（x-worker-token 认证，绑定 token 的 userId）。
+没有结论或没给 `attemptId` 时，作业照样成功返回 `{state, applied:false, reason}`，**不写台账**。
+后端只收 `published`（必须带作品 ID）和 `not_submitted`，其余状态直接拒（12853）。
+
+实测（2026-10-29，账号 `yefen`）：`--works yefen` 读到 4 条真实作品；对真实作品 `7602658672556153993` 回读得 `published` + 标题；对不存在的 `7456000000000000000` 回读得 `unknown`（页面里读不到作品标记），`reconcile_publish.py` 判为「没有明确结论，台账不动」。后端接口侧新增 `applySubmissionReadback`，单测覆盖「published 带 ID 收下 / published 无 ID 拒 / 越级状态拒」。
 
 ## Cookie
 

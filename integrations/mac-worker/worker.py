@@ -30,6 +30,7 @@ from config import CONFIG_DIR, STUDIO_HOME, WorkerConfig, job_log_path
 import pylocator
 import capabilities
 from publish_sau import PublishError, submit as publish_submit
+from publish_sau import run_readback_job
 from render_mpt import RenderError, render as render_mpt
 from slides_render import SlidesError, render_from_payload as render_slides
 from motion_render_engine import render_motion, MotionError
@@ -485,6 +486,10 @@ class Worker:
                     run_patch={"publicationHint": status},
                 )
                 log.info("job %s returned publication evidence: %s", job_id, status)
+            elif kind == "publish_readback":
+                result = run_readback_job(payload, self.client)
+                self.client.complete(job_id, lease, result)
+                log.info("job %s readback: %s applied=%s", job_id, result.get("state"), result.get("applied"))
             elif kind == "capture_web":
                 result = capture_to_materials(
                     payload, STUDIO_HOME / "captures" / job_id

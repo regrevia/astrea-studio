@@ -142,6 +142,15 @@ const SweepSubmissionsSchema = z.object({
 })
 class SweepSubmissionsDto extends createZodDto(SweepSubmissionsSchema, 'SweepSubmissionsDto') {}
 
+// 回读只能给两个结论：看到了作品，或者平台明说没有。其他状态一律不接受。
+const WorkerReadbackSchema = z.object({
+  status: z.enum([PublicationStatus.PUBLISHED, PublicationStatus.NOT_SUBMITTED]).describe('回读结论'),
+  remotePostId: z.string().min(1).optional().describe('回读到的作品 ID'),
+  remoteUrl: z.string().optional().describe('作品链接'),
+  evidence: z.record(z.string(), z.unknown()).optional().describe('回读证据'),
+})
+class WorkerReadbackDto extends createZodDto(WorkerReadbackSchema, 'WorkerReadbackDto') {}
+
 const RegisterWorkerSchema = z.object({
   name: z.string().min(1).describe('worker 名称'),
   capabilities: z.array(z.string()).default([]).describe('支持的作业类型'),
@@ -524,6 +533,18 @@ export class ProductionWorkerController {
   ) {
     const worker = await this.auth(token)
     return await this.production.completeJob(worker.id, id, body.leaseVersion, body.result, body.runPatch ?? {})
+  }
+
+  @Public()
+  @HttpCode(200)
+  @Post('publications/:id/readback')
+  async readback(
+    @Headers('x-worker-token') token: string | undefined,
+    @Param('id') id: string,
+    @Body() body: WorkerReadbackDto,
+  ) {
+    const worker = await this.auth(token)
+    return await this.production.applySubmissionReadback(worker.userId, id, body)
   }
 
   @Public()

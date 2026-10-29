@@ -648,6 +648,77 @@ describe('sweepStaleSubmissions', () => {
   })
 })
 
+describe('applySubmissionReadback', () => {
+  const UNKNOWN = {
+    id: 'attempt-unknown',
+    userId: 'user-1',
+    runId: 'run-1',
+    status: 'submission_unknown',
+    remotePostId: '',
+    remoteUrl: '',
+    evidence: [{ at: '2026-10-29T00:00:00.000Z', kind: 'stale_sweep' }],
+  }
+
+  it('回读看到作品就回写 published，带作品 ID 和回读证据', async () => {
+    const { service, attemptRepo, eventRepo } = createService()
+    attemptRepo.getById.mockResolvedValue({ ...UNKNOWN })
+    attemptRepo.updateById.mockResolvedValue({ ...UNKNOWN, status: 'published' })
+
+    const updated = await service.applySubmissionReadback('user-1', 'attempt-unknown', {
+      status: 'published' as never,
+      remotePostId: '7602658672556153993',
+      remoteUrl: 'https://www.douyin.com/video/7602658672556153993',
+      evidence: { kind: 'readback', state: 'published', title: '成片' },
+    })
+
+    expect(updated.status).toBe('published')
+    const patch = attemptRepo.updateById.mock.calls[0][1]
+    expect(patch.status).toBe('published')
+    expect(patch.remotePostId).toBe('7602658672556153993')
+    expect(patch.evidence).toHaveLength(2)
+    expect(patch.evidence[1]).toMatchObject({ kind: 'readback', state: 'published' })
+    expect(eventRepo.append.mock.calls[0][0]).toMatchObject({ stage: 'published', data: { attemptId: 'attempt-unknown' } })
+  })
+
+  it('平台明说没有这条作品，退回可重投', async () => {
+    const { service, attemptRepo } = createService()
+    attemptRepo.getById.mockResolvedValue({ ...UNKNOWN })
+    attemptRepo.updateById.mockResolvedValue({ ...UNKNOWN, status: 'not_submitted' })
+
+    await service.applySubmissionReadback('user-1', 'attempt-unknown', {
+      status: 'not_submitted' as never,
+      evidence: { kind: 'readback', state: 'not_found' },
+    })
+
+    expect(attemptRepo.updateById.mock.calls[0][1]).toMatchObject({ status: 'not_submitted' })
+  })
+
+  it('回读不出结论的状态一律不收：scheduled_remote 之类越级回写直接拒', async () => {
+    const { service, attemptRepo } = createService()
+    attemptRepo.getById.mockResolvedValue({ ...UNKNOWN })
+
+    await expect(service.applySubmissionReadback('user-1', 'attempt-unknown', {
+      status: 'scheduled_remote' as never,
+    })).rejects.toThrow()
+    expect(attemptRepo.updateById).not.toHaveBeenCalled()
+
+    await expect(service.applySubmissionReadback('user-1', 'attempt-unknown', {
+      status: 'unknown' as never,
+    })).rejects.toThrow()
+    expect(attemptRepo.updateById).not.toHaveBeenCalled()
+  })
+
+  it('回读说 published 但没带作品 ID，台账不收', async () => {
+    const { service, attemptRepo } = createService()
+    attemptRepo.getById.mockResolvedValue({ ...UNKNOWN })
+
+    await expect(service.applySubmissionReadback('user-1', 'attempt-unknown', {
+      status: 'published' as never,
+    })).rejects.toThrow('必须带作品 ID')
+    expect(attemptRepo.updateById).not.toHaveBeenCalled()
+  })
+})
+
 describe('publication submission state machine', () => {
   const ATTEMPT = {
     id: 'attempt-1',

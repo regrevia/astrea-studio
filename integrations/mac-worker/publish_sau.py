@@ -538,3 +538,40 @@ def reconcile_payload(result: "Readback") -> dict[str, Any] | None:
             "evidence": {"kind": "readback", "state": result.state, "detail": result.detail},
         }
     return None
+
+
+def run_readback_job(payload: dict[str, Any], client: Any = None, fetch_readback=None) -> dict[str, Any]:
+    """回读作业：读链接 → 翻成台账能收的结论 → 写回。
+
+    没有明确结论、或者没告诉要写给哪条记录时，什么都不写，只把结论报给后台，
+    等人决定。宁可留着 submission_unknown，也不替平台猜「发了」。
+    """
+    url = str(payload.get("url") or payload.get("remoteUrl") or "").strip()
+    if not url:
+        raise PublishError("缺 url：不知道该回读哪条作品")
+    account = str(payload.get("account") or "")
+    attempt_id = str(payload.get("attemptId") or "")
+    do_read = fetch_readback or readback
+    result = do_read(url, account=account)
+    out: dict[str, Any] = {
+        "url": url,
+        "state": result.state,
+        "postId": result.post_id,
+        "title": result.title,
+        "detail": result.detail,
+        "applied": False,
+    }
+    if result.state not in ("published", "not_found", "unknown"):
+        raise PublishError("回读给了不认识的结论：%s" % result.state)
+    writeback = reconcile_payload(result)
+    if writeback is None:
+        out["reason"] = "no_conclusion"
+        return out
+    if not attempt_id:
+        out["reason"] = "no_attempt"
+        return out
+    if client is not None:
+        client.report_readback(attempt_id, writeback)
+        out["applied"] = True
+        out["status"] = writeback["status"]
+    return out

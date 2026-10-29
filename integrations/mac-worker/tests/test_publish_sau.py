@@ -235,3 +235,52 @@ class PublishReconcilePayloadTest(unittest.TestCase):
 
     def test_unknown_writes_nothing(self):
         self.assertIsNone(P.reconcile_payload(P.Readback(state="unknown", post_id="7456000000000000001")))
+
+
+class PublishReadbackJobTest(unittest.TestCase):
+    """回读作业：明确结论才写回，其余一律只报不写。"""
+
+    def setUp(self):
+        self.sent = []
+
+        class FakeClient:
+            def report_readback(inner, attempt_id, payload):
+                self.sent.append((attempt_id, payload))
+
+        self.client = FakeClient()
+
+    def run_job(self, state, post_id="", attempt_id="attempt-1"):
+        def fake(url, account=""):
+            return P.Readback(state=state, post_id=post_id, title="成片", detail="HTTP 200")
+        return P.run_readback_job(
+            {"url": "https://www.douyin.com/video/7456000000000000001",
+             "attemptId": attempt_id}, self.client, fake)
+
+    def test_published_is_written_back_with_the_work_id(self):
+        out = self.run_job("published", "7456000000000000001")
+        self.assertTrue(out["applied"])
+        attempt_id, payload = self.sent[0]
+        self.assertEqual(attempt_id, "attempt-1")
+        self.assertEqual(payload["status"], "published")
+        self.assertEqual(payload["remotePostId"], "7456000000000000001")
+
+    def test_not_found_goes_back_to_resubmittable(self):
+        out = self.run_job("not_found", "7456000000000000001")
+        self.assertTrue(out["applied"])
+        self.assertEqual(self.sent[0][1]["status"], "not_submitted")
+
+    def test_unknown_is_reported_but_never_written(self):
+        out = self.run_job("unknown", "7456000000000000001")
+        self.assertFalse(out["applied"])
+        self.assertEqual(out["reason"], "no_conclusion")
+        self.assertEqual(self.sent, [])
+
+    def test_missing_attempt_id_reports_only(self):
+        out = self.run_job("published", "7456000000000000001", attempt_id="")
+        self.assertFalse(out["applied"])
+        self.assertEqual(out["reason"], "no_attempt")
+        self.assertEqual(self.sent, [])
+
+    def test_missing_url_is_an_error(self):
+        with self.assertRaises(P.PublishError):
+            P.run_readback_job({"attemptId": "a"}, self.client, lambda *a, **k: None)

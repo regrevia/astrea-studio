@@ -88,6 +88,14 @@ class StudioClient:
             {"leaseVersion": lease_version, "result": result, "runPatch": run_patch or {}},
         )
 
+    def report_readback(self, attempt_id: str, payload: dict[str, Any]) -> Any:
+        """把回读结论写回台账；只有 published / not_submitted 两种结论会走到这里。"""
+        return self._call(
+            "POST",
+            f"/api/production/worker/publications/{attempt_id}/readback",
+            payload,
+        )
+
     def fail(self, job_id: str, lease_version: int, error: str, status: str = "failed") -> Any:
         return self._call(
             "POST",
