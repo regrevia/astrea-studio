@@ -1492,6 +1492,33 @@ describe('completeJob 认领成片', () => {
     expect((update['output'] as Record<string, unknown>)['manualExportReason']).toBeUndefined()
   })
 
+  it('认领结果只带入库路径时也当作成片路径，不让 run 变成没有成片', async () => {
+    const { service, runRepo, jobRepo } = createService()
+    jobRepo.finish.mockResolvedValue(true)
+    jobRepo.getById.mockResolvedValue({ id: 'job-7', runId: 'run-7', revision: 1, stage: 'jianying:claim', progress: 60 })
+    runRepo.getById.mockResolvedValue({ id: 'run-7', revision: 1, status: 'waiting_user', output: {} })
+
+    await service.completeJob('worker-1', 'job-7', 1, {
+      stage: 'exported',
+      output: {
+        claimed: true,
+        libraryPath: '/Users/apple/CreatorStudio/library/p/2026-10/a__douyin__r1.mp4',
+        libraryAssetId: 'a',
+        md5: 'md5-a',
+      },
+    })
+
+    const update = runRepo.updateByRevision.mock.calls[0][2] as Record<string, unknown>
+    expect(update['status']).toBe('succeeded')
+    expect(update['output']).toMatchObject({
+      claimed: true,
+      videoPath: '/Users/apple/CreatorStudio/library/p/2026-10/a__douyin__r1.mp4',
+      libraryPath: '/Users/apple/CreatorStudio/library/p/2026-10/a__douyin__r1.mp4',
+      libraryAssetId: 'a',
+      md5: 'md5-a',
+    })
+  })
+
   it('认领结果只有 output 内层带字段时也能取到入库信息', async () => {
     const { service, runRepo, jobRepo } = createService()
     jobRepo.finish.mockResolvedValue(true)

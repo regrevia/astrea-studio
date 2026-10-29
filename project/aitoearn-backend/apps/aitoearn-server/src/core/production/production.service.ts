@@ -132,7 +132,12 @@ function normalizeRunOutput(
   // 认领人工导出的成片：产物落在 result.output 里（videoPath/library*），
   // 和老链路（result.videoKey 走对象存储）不是一套字段，这里按 claimed 兜住。
   const claimed = result['claimed'] === true || outputMeta['claimed'] === true
-  const metaVideo = claimed && typeof outputMeta['videoPath'] === 'string' ? outputMeta['videoPath'] : ''
+  // 认领结果里 videoPath 与 libraryPath 是同一份成片的两个叫法；只给后者时也要认，
+  // 否则 run 明明入库了却被当成「没有成片」，发布和详情播放都拿不到文件。
+  const metaVideo = claimed
+    ? [outputMeta['videoPath'], outputMeta['libraryPath']]
+      .find(value => typeof value === 'string' && value) as string | undefined ?? ''
+    : ''
   const videoKey = typeof result['videoKey'] === 'string' ? result['videoKey'] : metaVideo
   const requiresManualExport = result['requiresManualExport'] === true
     || outputMeta['requiresManualExport'] === true

@@ -73,7 +73,7 @@ cd integrations/mac-worker
 | worker 分发单元测试 | 0.0 s | PASS（18/18：认领参数拼装/退出码归因/产物定位、入库证据/字段兜底/失败留痕不丢文件、归位收尾与中转清理） |
 | 发布泳道真机探针 | 72.0 s | PASS（claim 3.3 / cancelled-run 3.3 / stale-revision 3.3 / lease-expired 58.8 / readback-retry 2.0 s） |
 | 剪映版本依据 | — | 11.6.0 build 490 · 沿用模板（无同主版本实证，不猜版本号）· 参考草稿 11 份（版本戳 10.2.0/5.9.0） |
-| 后端生产 spec（`--with-web`） | 2.3 s | PASS（76/76：发布状态机、租约回收归位、回读） |
+| 后端生产 spec（`--with-web`） | 2.3 s | PASS（77/77：发布状态机、租约回收归位、回读、认领成片落库） |
 | Web 类型检查（`--with-web`） | 2.0 s | PASS（`tsc --noEmit` 0 错误） |
 | Web 文案 lint（`--with-web`） | 0.0 s | PASS（0 条错误 / 121 条提醒，基线 0） |
 | Web 中文排印（`--with-web`） | 0.0 s | PASS（0 条错误 / 17 条提醒，基线 0） |
@@ -296,6 +296,8 @@ job `6ae2a2b58f01834bace100de` 返回 `stage=draft_checked`、`output.canOpen=tr
 认领/导出两条成功路径共用同一段收尾（`claim_dispatch.finish`）：入库成功才清 `out/<jobId>/rN` 中转目录，
 入库失败则 `videoPath` 保留原文件、不伪造库路径；若自定义库目录恰好落在这个中转目录里，清理会跳过，
 不会把刚入库的成片一起删掉。`tests/test_claim_dispatch.py` 3 项盯这条。
+后端侧补了一条对应断言：认领结果只给 `libraryPath` 而没给 `videoPath` 时，按同一份成片认，
+run 不会停在「等待人工导出」或写出空路径；`production.service.spec.ts` 77 项通过。
 
 
 
