@@ -994,6 +994,51 @@ describe('planPublication', () => {
     })
   })
 
+  it('认领过的 run 只有入库路径时，发布台账里记的仍是库里的那一份', async () => {
+    const { service, runRepo, attemptRepo } = createService()
+    runRepo.getByIdForUser.mockResolvedValue({
+      ...SUCCEEDED_RUN,
+      output: {
+        libraryPath: '/Users/apple/CreatorStudio/library/p/2026-10/only-lib__douyin__r1.mp4',
+        platforms: {},
+      },
+    })
+
+    await service.planPublication('user-1', {
+      runId: 'run-1',
+      platform: 'douyin',
+      dispatcher: 'sau',
+      accountRef: 'acc-1',
+    })
+
+    expect(attemptRepo.create.mock.calls[0][0].content).toEqual({
+      assetKey: '/Users/apple/CreatorStudio/library/p/2026-10/only-lib__douyin__r1.mp4',
+    })
+  })
+
+  it('成片已入库的 run 不会被残留的「等待人工导出」标记挡住发布', async () => {
+    const { service, runRepo, attemptRepo } = createService()
+    runRepo.getByIdForUser.mockResolvedValue({
+      ...SUCCEEDED_RUN,
+      output: {
+        requiresManualExport: true,
+        libraryPath: '/Users/apple/CreatorStudio/library/p/2026-10/claimed__douyin__r1.mp4',
+        platforms: {},
+      },
+    })
+
+    await service.planPublication('user-1', {
+      runId: 'run-1',
+      platform: 'douyin',
+      dispatcher: 'sau',
+      accountRef: 'acc-1',
+    })
+
+    expect(attemptRepo.create.mock.calls[0][0].content).toEqual({
+      assetKey: '/Users/apple/CreatorStudio/library/p/2026-10/claimed__douyin__r1.mp4',
+    })
+  })
+
   it('认领入库过的 run 记的是入库那一份，不是产物目录里的临时路径', async () => {
     const { service, runRepo, attemptRepo } = createService()
     runRepo.getByIdForUser.mockResolvedValue({
