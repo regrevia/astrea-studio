@@ -1217,6 +1217,28 @@ describe('任务领取与心跳', () => {
     expect(jobRepo.updateByStatusIn).not.toHaveBeenCalled()
   })
 
+  it('发布作业也挂在已交付的 run 上：成片成功之后才轮到发布', async () => {
+    const { service, runRepo, jobRepo } = createService()
+    jobRepo.listByStatus.mockResolvedValue([])
+    jobRepo.claimNext.mockResolvedValue({
+      id: 'job-publish',
+      runId: 'run-1',
+      revision: 1,
+      attempt: 1,
+      kind: 'publish_sau',
+      lane: 'publish',
+      stage: 'queued',
+      payload: { draftPath: '/tmp/draft' },
+    })
+    runRepo.getById.mockResolvedValue({ id: 'run-1', status: 'succeeded', revision: 1 })
+    const job = await service.claimJob(
+      { id: 'worker-1', userId: 'user-1', capabilities: ['publish_sau'] },
+      'publish',
+    )
+    expect(job).not.toBeNull()
+    expect(jobRepo.updateByStatusIn).not.toHaveBeenCalled()
+  })
+
   it('同一条 run 的渲染任务在交付后仍然不补跑', async () => {
     const { service, runRepo, jobRepo } = createService()
     jobRepo.claimNext.mockResolvedValue({

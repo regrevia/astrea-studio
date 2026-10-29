@@ -17,9 +17,18 @@ LOG="${STUDIO_WEB_LOG:-/tmp/studio-web-3001.log}"
 if [ "${1:-}" != "--no-build" ]; then
   echo "== 构建前端"
   ( cd "$WEB" && ./node_modules/.bin/next build )
+fi
+
+# 静态资源每次都同步：`next build` 之后单独跑 --no-build 时，standalone 里没有
+# 这次构建的 chunk，页面能开但 JS 全 404，界面停在未登录的壳上——不会报错，只是白屏。
+if [ -d "$WEB/.next/static" ]; then
   mkdir -p "$STANDALONE/.next"
   rm -rf "$STANDALONE/.next/static"
   cp -a "$WEB/.next/static" "$STANDALONE/.next/static"
+fi
+if [ -d "$WEB/public" ]; then
+  mkdir -p "$STANDALONE/public"
+  cp -a "$WEB/public/." "$STANDALONE/public/"
 fi
 
 [ -f "$STANDALONE/server.js" ] || { echo "没有构建产物：$STANDALONE/server.js，先不带 --no-build 跑一次" >&2; exit 1; }
