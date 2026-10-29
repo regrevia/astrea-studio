@@ -118,6 +118,18 @@ class JianyingOpenTest(unittest.TestCase):
         self.assertIn("draft_media_missing", str(ctx.exception))
         self.assertIn("素材不全", str(ctx.exception))
 
+    def test_check_mode_blames_spec_mismatch_on_the_draft(self) -> None:
+        stdout = ('{"canOpen": false, "blockers": ["spec_mismatch"], '
+                  '"mismatches": ["duration 11.0 != 30.0s"]}')
+        done = subprocess.CompletedProcess([], 2, stdout=stdout, stderr="")
+        with mock.patch.object(worker, "screen_locked", return_value=False), \
+                mock.patch.object(worker.subprocess, "run", return_value=done):
+            with self.assertRaises(worker.JianyingError) as ctx:
+                self._call({"draftPath": str(self.draft), "check": True})
+        self.assertIn("draft_spec_mismatch", str(ctx.exception))
+        self.assertIn("对不上", str(ctx.exception))
+        self.assertIn("duration 11.0 != 30.0s", str(ctx.exception))
+
     def test_hard_failure_raises_with_reason(self) -> None:
         done = subprocess.CompletedProcess([], 7, stdout="", stderr="boom")
         with mock.patch.object(worker, "screen_locked", return_value=False), \

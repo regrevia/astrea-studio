@@ -201,6 +201,8 @@ def check(name: str, draft_path: str | None = None) -> int:
         blockers.append("app_missing")
     if details["missingMedia"]:
         blockers.append("media_missing")
+    if details["mismatches"]:
+        blockers.append("spec_mismatch")
     info = {
         "draft": name,
         "draftPath": str(draft),
@@ -220,6 +222,9 @@ def check(name: str, draft_path: str | None = None) -> int:
         "media": details["media"],
         "missingMedia": details["missingMedia"][:10],
         "schema": details["schema"],
+        "stampState": details["stampState"],
+        "expected": details["expected"],
+        "mismatches": details["mismatches"],
     }
     print(json.dumps(info, ensure_ascii=False))
     return 0 if info["canOpen"] else 2

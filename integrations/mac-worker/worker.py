@@ -70,13 +70,14 @@ REASON_CODES = (
     "export_probe_failed",
     "draft_not_found",
     "draft_media_missing",
+    "draft_spec_mismatch",
     "jianying_app_missing",
     "jianying_open_failed",
 )
 
 
-def _check_blockers(stdout: str) -> list[str]:
-    """从 `open_draft.py --check` 的 JSON 里取阻塞项，取不到就当没有。"""
+def _check_payload(stdout: str) -> dict:
+    """从 `open_draft.py --check` 的 JSON 行里取体检结论，取不到就当没有。"""
     import json as _json
     for line in reversed((stdout or "").strip().splitlines()):
         line = line.strip()
@@ -86,10 +87,18 @@ def _check_blockers(stdout: str) -> list[str]:
             data = _json.loads(line)
         except ValueError:
             continue
-        blockers = data.get("blockers")
-        if isinstance(blockers, list):
-            return [b for b in blockers if isinstance(b, str)]
-    return []
+        if isinstance(data, dict):
+            return data
+    return {}
+
+
+def _check_blockers(stdout: str) -> list[str]:
+    blockers = _check_payload(stdout).get("blockers")
+    return [b for b in blockers if isinstance(b, str)] if isinstance(blockers, list) else []
+
+
+def _check_field(stdout: str, key: str):
+    return _check_payload(stdout).get(key)
 
 
 def reason_text(code: str, message: str) -> str:
@@ -659,12 +668,19 @@ class Worker:
                 tail = ((probed.stdout or "") + (probed.stderr or "")).strip()[-400:]
                 blockers = _check_blockers(probed.stdout)
                 code = {"media_missing": "draft_media_missing",
+                        "spec_mismatch": "draft_spec_mismatch",
                         "app_missing": "jianying_app_missing"}.get(
                             blockers[0] if blockers else "", "draft_not_found")
-                label = {"draft_media_missing": "草稿引用的素材不全",
+                label = {"draft_spec_mismatch": "草稿和这次任务对不上",
+                         "draft_media_missing": "草稿引用的素材不全",
                          "jianying_app_missing": "这台机器没装剪映",
                          "draft_not_found": "草稿目录不在"}[code]
-                raise JianyingError(reason_text(code, f"{label}：{tail or '无输出'}"))
+                detail = tail or "无输出"
+                if code == "draft_spec_mismatch":
+                    diffs = _check_field(probed.stdout, "mismatches")
+                    if isinstance(diffs, list) and diffs:
+                        detail = "；".join(str(x) for x in diffs)
+                raise JianyingError(reason_text(code, f"{label}：{detail}"))
             import json as _json
             try:
                 info = _json.loads((probed.stdout or "").strip().splitlines()[-1])

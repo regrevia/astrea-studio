@@ -383,7 +383,16 @@ def t_draft_inspect(tmp: Path) -> str:
     (enc / "draft_info.json").write_bytes(b"\x1a\x00ciphertext")
     wrapped = inspect(enc)
     require(wrapped["encrypted"] and not wrapped["infoReadable"], "加密草稿判断错: %r" % wrapped)
-    return "画布/时长/缺素材可读，加密草稿如实标注"
+
+    (d / "studio_export_meta.json").write_text(json.dumps({
+        "runId": "run-1", "expectedCanvas": {"width": 1080, "height": 1920},
+        "expectedDuration": 30.0, "fps": 30, "tracks": 2,
+    }), encoding="utf-8")
+    reconciled = inspect(d)
+    require(reconciled["expected"]["durationSec"] == 30.0, "读不出 sidecar 期望: %r" % reconciled["expected"])
+    require(any("tracks" in m for m in reconciled["mismatches"]),
+            "轨道数对不上却没报: %r" % reconciled["mismatches"])
+    return "画布/时长/缺素材可读，加密草稿如实标注；sidecar 期望值对账能报差异"
 
 
 def main() -> int:
@@ -405,7 +414,7 @@ def main() -> int:
         print("-- 5 剪映版本适配（新版本不靠猜）")
         check("无实证沿用模板 / 有实证采纳 schema", lambda: t_version_layer(tmp))
         print("-- 6 打开前体检（只读，不开剪映）")
-        check("画布/时长/素材、加密草稿", lambda: t_draft_inspect(tmp))
+        check("画布/时长/素材、加密草稿、与 sidecar 对账", lambda: t_draft_inspect(tmp))
 
     failed = [r for r in _results if not r[0]]
     print("\n结果: %d/%d 通过" % (len(_results) - len(failed), len(_results)))

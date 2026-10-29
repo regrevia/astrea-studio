@@ -244,7 +244,7 @@ worker 调 `export/open_draft.py --name <草稿目录名> --wait-idle`：只打�
 ## 11. 打开工程这条分支的自检
 
 `jianying_open` 会把剪映带到前台，所以每个分支都要有测试兜住，不靠手工点：缺 `draftPath` 直接拒（不猜最新草稿）、
-目录不存在报 `draft_not_found`、屏幕锁着判 `screen_locked` 且完全不启 `open_draft.py`、rc=9 退避成 `export_user_busy`、
+目录不存在报 `draft_not_found`、素材缺失报 `draft_media_missing`、跟任务期望对不上报 `draft_spec_mismatch`、没装剪映报 `jianying_app_missing`、屏幕锁着判 `screen_locked` 且完全不启 `open_draft.py`、rc=9 退避成 `export_user_busy`、
 rc=2 判 `export_draft_not_open`、成功落 `stage=draft_opened` 且命令行里带的正是草稿目录名。七个用例在
 `integrations/mac-worker/tests/test_jianying_open.py`，随 worker 套件一起跑（当前 49 个）。
 
@@ -257,3 +257,8 @@ rc=2 判 `export_draft_not_open`、成功落 `stage=draft_opened` 且命令行�
 
 剪映 11.6 会加密保存 `draft_info.json`，这时内部字段读不到，报 `encrypted:true`、
 `infoReadable:false`——只是读不到，不是坏草稿，照样能开。
+
+体检还会跟平台写的 `studio_export_meta.json` 对账：`expected` 是这份草稿本该有的画布/时长/
+帧率/轨道，`mismatches` 列出实际差异，有差异就把 `spec_mismatch` 放进 `blockers`——这样拿错
+草稿在「真开」之前就挡住。版本戳 `stampState` 分 `present`（有版本块）、`missing`（旧草稿没写）、
+`unreadable`（文件在但读不出），不再一律 `null`。

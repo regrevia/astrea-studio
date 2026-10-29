@@ -8,7 +8,7 @@ from export.draft_inspect import inspect
 
 def _draft(tmp: Path, info: dict | None = None, *, encrypted: bool = False) -> Path:
     d = tmp / "draft_x__r1"
-    d.mkdir()
+    d.mkdir(parents=True)
     if encrypted:
         (d / "draft_info.json").write_bytes(b"\x1a\x9c\x00not-json")
     elif info is not None:
@@ -62,6 +62,53 @@ class DraftInspectTest(unittest.TestCase):
         info = inspect(Path("/tmp/definitely-not-a-draft-xyz"))
         self.assertFalse(info["isDir"])
         self.assertFalse(info["infoReadable"])
+
+    def test_sidecar_disagreement_is_reported_as_mismatch(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = _draft(Path(td), {
+                "canvas_config": {"width": 1080, "height": 1920},
+                "duration": 11_000_000, "fps": 30, "tracks": [{}], "materials": {},
+            })
+            (d / "studio_export_meta.json").write_text(json.dumps({
+                "runId": "run-1", "expectedCanvas": {"width": 1080, "height": 1920},
+                "expectedDuration": 30.0, "fps": 30, "tracks": 1,
+            }), encoding="utf-8")
+            info = inspect(d)
+        self.assertEqual(info["expected"]["durationSec"], 30.0)
+        self.assertTrue(any("duration" in m for m in info["mismatches"]), info["mismatches"])
+
+    def test_matching_sidecar_produces_no_mismatch(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = _draft(Path(td), {
+                "canvas_config": {"width": 1080, "height": 1920},
+                "duration": 30_000_000, "fps": 30, "tracks": [{}], "materials": {},
+            })
+            (d / "studio_export_meta.json").write_text(json.dumps({
+                "expectedCanvas": {"width": 1080, "height": 1920},
+                "expectedDuration": 30.0, "fps": 30, "tracks": 1,
+            }), encoding="utf-8")
+            info = inspect(d)
+        self.assertEqual(info["mismatches"], [])
+
+    def test_encrypted_draft_skips_reconcile_instead_of_failing(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = _draft(Path(td), encrypted=True)
+            (d / "studio_export_meta.json").write_text(json.dumps({
+                "expectedCanvas": {"width": 1080, "height": 1920}, "expectedDuration": 30.0,
+            }), encoding="utf-8")
+            info = inspect(d)
+        self.assertEqual(info["mismatches"], [])
+        self.assertEqual(info["expected"]["durationSec"], 30.0)
+
+    def test_broken_stamp_is_not_the_same_as_missing_stamp(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            missing = inspect(_draft(tmp / "a", {"materials": {}}))
+            d = _draft(tmp / "b", {"materials": {}})
+            (d / "draft_version.json").write_text("{not json", encoding="utf-8")
+            broken = inspect(d)
+        self.assertEqual(missing["stampState"], "missing")
+        self.assertEqual(broken["stampState"], "unreadable")
 
     def test_schema_stamp_is_surfaced_when_present(self):
         with tempfile.TemporaryDirectory() as td:
