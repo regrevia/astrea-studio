@@ -28,6 +28,12 @@ APP = "VideoFusion-macOS"
 APP_PATH = Path(os.environ.get("JIANYING_APP") or "/Applications/VideoFusion-macOS.app")
 PANEL_PREFIX = "导出-"
 
+# 输入通道阶梯（AXPress → 进程内投递 → 借物理指针）。本文件在 export/ 下，模块在上一层。
+_MW_ROOT = Path(__file__).resolve().parents[1]
+if str(_MW_ROOT) not in sys.path:
+    sys.path.insert(0, str(_MW_ROOT))
+import input_tiers  # noqa: E402
+
 
 def app_version() -> str:
     """剪映版本号（取自 bundle 的 Info.plist）。
@@ -300,6 +306,17 @@ def quiet_restore():
             pass
 
 
+def click_point(x, y, verify=None, tiers=("pid", "hid")):
+    """点屏幕坐标：先试不移动指针的通道，最后才借物理指针。
+
+    剪映 Qt/CEF 面板对 AXPress 和 postToPid 都无效（见 input_tiers 文件头），所以
+    pid 级只是留位、真正生效的是 hid。返回阶梯记录，用了哪一级要写进证据。
+    """
+    return input_tiers.ladder(
+        AX_TOOL, app=APP, x=int(x), y=int(y), tiers=tiers,
+        runner=run, verify=verify, pause=0.4)
+
+
 def press(needle: str, index: int = 0) -> bool:
     """对某个 AX 节点做 AXPress（按钮类走这条，不抢鼠标）。"""
     p = run([AX_TOOL, "click", APP, needle, "--via", "ax", "--index", str(index)])
@@ -429,7 +446,7 @@ def dismiss(panel_rect, tries=3) -> bool:
         return True
     px, py, pw, ph = panel_rect
     for _ in range(tries):
-        run([AX_TOOL, "click-at", str(px + int(pw * 0.5)), str(py + int(ph * 0.035))])
+        click_point(px + int(pw * 0.5), py + int(ph * 0.035))
         time.sleep(0.45)
         if not popups():
             return True
@@ -452,7 +469,7 @@ def read_options(row, panel_rect):
     """点开一个下拉，读出选项（文字+屏幕矩形），再关掉弹层。不改变选择。"""
     x, y, w, h = row["rect"]
     dismiss(panel_rect)
-    run([AX_TOOL, "click-at", str(x + w // 2), str(y + h // 2)])
+    click_point(x + w // 2, y + h // 2)
     deadline = time.time() + 2.5
     pop = None
     while time.time() < deadline:
@@ -538,7 +555,7 @@ def select(panel_rect, name: str, target: str, verbose=True) -> dict:
 
     x, y, w, h = row["rect"]
     dismiss(panel_rect)
-    run([AX_TOOL, "click-at", str(x + w // 2), str(y + h // 2)])
+    click_point(x + w // 2, y + h // 2)
     deadline = time.time() + 2.5
     pop = None
     while time.time() < deadline:
@@ -560,7 +577,7 @@ def select(panel_rect, name: str, target: str, verbose=True) -> dict:
         return res
 
     ox, oy, ow, oh = hit["rect"]
-    run([AX_TOOL, "click-at", str(ox + ow // 2), str(oy + oh // 2)])
+    click_point(ox + ow // 2, oy + oh // 2)
     closed = dismiss(panel_rect)
     res["popup_closed"] = closed
     time.sleep(0.4)

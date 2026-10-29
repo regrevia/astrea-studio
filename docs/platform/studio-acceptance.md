@@ -226,6 +226,7 @@ PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib \
 - 点完导出立刻 `restore_front(return_pid)`：前台还给用户原来的 App（实测 `pid=1313 Google Chrome`）。
 - `waitIdle>0` 时，用户一直在用机器就整轮不动鼠标（退出码 9 `export_user_busy`）；`waitIdle=0` 才允许立刻开始。
 - 想零打扰出片就走内置引擎（`TIMELINE_RENDER` / `RENDER_FFMPEG`），那一路完全不碰 GUI。
+- 为什么不给「只属于剪映窗口的第二个光标」：实测 AXPress / `postToPid` 在剪映上返回成功但界面不动，只有 HID 生效，详见 [应用内点击的三级阶梯](gui-input-tiers.md)。
 
 ## 9. 任务书七项：当前状态与证据
 

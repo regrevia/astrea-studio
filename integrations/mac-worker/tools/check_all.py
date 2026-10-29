@@ -43,7 +43,7 @@ CHECKS: list[dict[str, object]] = [
     {"name": "剪映段离线自检", "kind": "python", "cmd": ["check_jianying.py"],
      "timeout": 240.0, "live": False, "group": "core"},
     {"name": "worker 分发单元测试", "kind": "unittest",
-     "cmd": ["tests.test_claim_dispatch", "tests.test_export_landing"],
+     "cmd": ["tests.test_claim_dispatch", "tests.test_export_landing", "tests.test_input_tiers"],
      "timeout": 120.0,
      "live": False, "group": "core"},
     {"name": "发布泳道真机探针", "kind": "lane",
