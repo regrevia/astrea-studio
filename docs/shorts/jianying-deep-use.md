@@ -247,3 +247,9 @@ worker 调 `export/open_draft.py --name <草稿目录名> --wait-idle`：只打�
 目录不存在报 `draft_not_found`、屏幕锁着判 `screen_locked` 且完全不启 `open_draft.py`、rc=9 退避成 `export_user_busy`、
 rc=2 判 `export_draft_not_open`、成功落 `stage=draft_opened` 且命令行里带的正是草稿目录名。七个用例在
 `integrations/mac-worker/tests/test_jianying_open.py`，随 worker 套件一起跑（当前 49 个）。
+
+## 12. 只体检，不动手
+
+`python3 export/open_draft.py --name <草稿目录名> --check` 打印一行 JSON：草稿目录在不在、
+剪映装没装、当前是不是编辑器态、能不能开（`canOpen`）。全程不启动剪映、不点鼠标、不抢前台，
+人正在用机器时可以先跑它确认前置条件。退出码 0 = 能开，2 = 不能开。

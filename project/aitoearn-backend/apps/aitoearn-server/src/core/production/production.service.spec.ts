@@ -783,6 +783,41 @@ describe('任务领取与心跳', () => {
     expect(runUpdate?.[2]).toMatchObject({ status: 'running', currentStage: 'starting' })
   })
 
+  it('run 已交付时打开草稿的任务照领，不被当成重复渲染丢掉', async () => {
+    const { service, runRepo, jobRepo } = createService()
+    jobRepo.claimNext.mockResolvedValue({
+      id: 'job-open',
+      runId: 'run-1',
+      revision: 1,
+      attempt: 1,
+      kind: 'jianying_open',
+      stage: 'queued',
+      payload: { draftPath: '/tmp/draft' },
+    })
+    runRepo.getById.mockResolvedValue({ id: 'run-1', status: 'succeeded', revision: 1 })
+    const job = await service.claimJob(
+      { id: 'worker-1', userId: 'user-1', capabilities: ['jianying_open'] },
+      'render',
+    )
+    expect(job).not.toBeNull()
+    expect(jobRepo.updateByStatusIn).not.toHaveBeenCalled()
+  })
+
+  it('同一条 run 的渲染任务在交付后仍然不补跑', async () => {
+    const { service, runRepo, jobRepo } = createService()
+    jobRepo.claimNext.mockResolvedValue({
+      id: 'job-2', runId: 'run-1', revision: 1, attempt: 2,
+      kind: 'render_timeline', stage: 'queued', payload: {},
+    })
+    runRepo.getById.mockResolvedValue({ id: 'run-1', status: 'succeeded', revision: 1 })
+    const job = await service.claimJob(
+      { id: 'worker-1', userId: 'user-1', capabilities: ['render_timeline'] },
+      'render',
+    )
+    expect(job).toBeNull()
+    expect(jobRepo.updateByStatusIn).toHaveBeenCalled()
+  })
+
   it('心跳把阶段和进度同步回 run', async () => {
     const { service, runRepo, jobRepo } = createService()
     jobRepo.renewLease.mockResolvedValue({ id: 'job-1', runId: 'run-1', stage: 'timeline:script', progress: 4, leaseExpiresAt: new Date() })

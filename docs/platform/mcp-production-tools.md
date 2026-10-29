@@ -32,6 +32,10 @@
 
 ## `openJianyingDraft` 的契约
 
+参数 `draftPath` 可省略（用任务上次落的草稿）；`check=true` 只体检：确认草稿目录与剪映安装
+都在、报当前是不是编辑器态，**不启动剪映、不点鼠标、不抢前台**，人正在用机器时也能跑。
+返回 `stage=draft_checked`、`output.opened=false`，结论看 `output.canOpen`。
+
 打开工程是给人看的动作，不是流水线的一步，所以它和导出彻底分开：
 
 - 排一条 `jianying_open` 任务，worker 调 `export/open_draft.py --name <草稿目录>`；成功后 job 落 `stage = draft_opened`，任务的 `status` / `output` 一个字都不改。

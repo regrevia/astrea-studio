@@ -83,6 +83,7 @@ const ReviseRunSchema = z.object({
 const OpenJianyingDraftSchema = z.object({
   runId: z.string().describe('任务 ID'),
   draftPath: z.string().min(1).optional().describe('草稿目录；省略就用任务上次落的草稿'),
+  check: z.boolean().optional().describe('true 只体检（草稿目录和剪映都在不在），不打开、不抢前台'),
 })
 
 const SubmitRenderSchema = z.object({
@@ -291,7 +292,10 @@ export class ProductionMcpController {
   })
   async openJianyingDraft(params: z.infer<typeof OpenJianyingDraftSchema>) {
     const user = getUser()
-    const opened = await this.production.openDraft(user.id, params.runId, params.draftPath ? { draftPath: params.draftPath } : {})
+    const opened = await this.production.openDraft(user.id, params.runId, {
+      ...(params.draftPath ? { draftPath: params.draftPath } : {}),
+      ...(params.check ? { check: true } : {}),
+    })
     return toYamlTextResult(opened)
   }
 

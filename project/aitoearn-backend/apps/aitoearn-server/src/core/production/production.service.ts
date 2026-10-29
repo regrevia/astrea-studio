@@ -198,6 +198,15 @@ function normalizeRunOutput(
  * intents. Every state transition that matters for correctness is a conditionally
  * guarded Mongo update rather than a read-then-write.
  */
+const POST_RUN_KINDS = new Set<ProductionJobKind>([
+  ProductionJobKind.JIANYING_OPEN,
+  ProductionJobKind.JIANYING_EXPORT,
+])
+
+function isPostRunJob(job: { kind?: string }): boolean {
+  return POST_RUN_KINDS.has(job.kind as ProductionJobKind)
+}
+
 @Injectable()
 export class ProductionService {
   private readonly logger = new Logger(ProductionService.name)
@@ -650,7 +659,7 @@ export class ProductionService {
   async openDraft(
     userId: string,
     runId: string,
-    input: { draftPath?: string, waitIdle?: number },
+    input: { draftPath?: string, waitIdle?: number, check?: boolean },
   ) {
     const run = await this.getRun(userId, runId)
     if (run.status === ProductionRunStatus.CANCELLED) {
@@ -677,6 +686,7 @@ export class ProductionService {
         revision: run.revision,
         draftPath,
         ...(typeof input.waitIdle === 'number' ? { waitIdle: input.waitIdle } : {}),
+        ...(input.check ? { check: true } : {}),
       },
     } as unknown as Partial<ProductionJob>)
     await this.appendEvent(run.id, {
@@ -771,7 +781,26 @@ export class ProductionService {
         })
         continue
       }
-      if (run && (run.status === ProductionRunStatus.SUCCEEDED
+      if (run && isPostRunJob(job) && run.status === ProductionRunStatus.CANCELLED) {
+        // 收尾动作（打开草稿、人工导出后认领）挂在已经交付的 run 上很正常；
+        // 唯一不能放行的是 run 已被取消——那说明这一版不要了。
+        await this.jobRepo.updateByStatusIn(
+          job.id,
+          [ProductionJobStatus.QUEUED, ProductionJobStatus.RUNNING],
+          {
+            $set: { status: ProductionJobStatus.CANCELLED, finishedAt: new Date(), message: 'run cancelled' },
+            $inc: { leaseVersion: 1 },
+          },
+        )
+        await this.appendEvent(job.runId, {
+          kind: 'job.cancelled',
+          jobId: job.id,
+          stage: job.stage,
+          message: 'dropped: run cancelled',
+        })
+        continue
+      }
+      if (run && !isPostRunJob(job) && (run.status === ProductionRunStatus.SUCCEEDED
         || run.status === ProductionRunStatus.CANCELLED
         || run.status === ProductionRunStatus.FAILED)) {
         await this.jobRepo.updateByStatusIn(

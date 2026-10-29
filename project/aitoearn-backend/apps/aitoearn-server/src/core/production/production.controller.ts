@@ -91,6 +91,7 @@ const OpenDraftSchema = z.object({
   draftPath: z.string().optional().describe('草稿目录；省略就用任务里记下的剪映工程'),
   waitIdle: z.number().min(0).max(600).optional()
     .describe('等用户空闲多少秒再打开；0 表示立刻就开'),
+  check: z.boolean().optional().describe('true 只体检，不打开、不抢前台'),
 })
 class OpenDraftDto extends createZodDto(OpenDraftSchema, 'OpenProductionDraftDto') {}
 

@@ -180,12 +180,39 @@ def open_draft(name: str, wait: float = 25.0) -> int:
     return 2
 
 
+def check(name: str, draft_path: str | None = None) -> int:
+    """只体检、不开剪映：草稿目录在不在、App 装没装、当前是不是编辑器态。
+
+    `--check` 不点鼠标、不抢前台，所以可以在人正在用机器时跑；真打开才需要空闲。
+    """
+    import json
+    draft = Path(draft_path) if draft_path else DRAFT_ROOT / name
+    running = app_running()
+    editor = editor_open() if running else False
+    info = {
+        "draft": name,
+        "draftPath": str(draft),
+        "draftExists": draft.is_dir(),
+        "appPath": str(APP_PATH),
+        "appInstalled": APP_PATH.exists(),
+        "appRunning": running,
+        "editorOpen": editor,
+        "canOpen": draft.is_dir() and APP_PATH.exists(),
+    }
+    print(json.dumps(info, ensure_ascii=False))
+    return 0 if info["canOpen"] else 2
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", required=True, help="草稿名（草稿目录的 basename）")
+    ap.add_argument("--draft-path", help="草稿目录绝对路径；体检时用来核对非默认位置")
+    ap.add_argument("--check", action="store_true", help="只体检不开剪映，不碰鼠标")
     ap.add_argument("--wait-idle", type=float, default=0.0)
     ap.add_argument("--wait", type=float, default=25.0)
     args = ap.parse_args(argv)
+    if args.check:
+        return check(args.name, args.draft_path)
     if not P.quiet_start(args.wait_idle, restore=False, strict=True):
         print("排队：用户未空闲，这轮不点草稿", file=sys.stderr)
         return 9

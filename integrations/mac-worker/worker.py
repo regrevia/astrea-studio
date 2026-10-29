@@ -624,6 +624,33 @@ class Worker:
                 "draftName": draft.name,
                 "runId": payload.get("runId") or "",
                 "revision": int(payload.get("revision") or 1)}
+        if payload.get("check"):
+            # 只体检：不点鼠标、不抢前台，人正在用机器时也能跑。
+            sha = Path(__file__).with_name("export") / "open_draft.py"
+            try:
+                probed = subprocess.run(
+                    [sys.executable, str(sha), "--name", draft.name, "--check",
+                     "--draft-path", draft_path],
+                    capture_output=True, text=True, timeout=120,
+                )
+            except subprocess.TimeoutExpired:
+                raise JianyingError(reason_text("jianying_open_failed",
+                                                f"体检 120s 没结束（{draft.name}）"))
+            if probed.returncode != 0:
+                tail = ((probed.stdout or "") + (probed.stderr or "")).strip()[-400:]
+                raise JianyingError(reason_text(
+                    "draft_not_found", f"草稿体检没过：{tail or '无输出'}"))
+            import json as _json
+            try:
+                info = _json.loads((probed.stdout or "").strip().splitlines()[-1])
+            except (ValueError, IndexError):
+                raise JianyingError(reason_text("jianying_open_failed",
+                                                "体检输出不是 JSON"))
+            return dict(base, **{
+                "stage": "draft_checked",
+                "output": dict(info, opened=False),
+                "note": "只体检：草稿目录和剪映都在，没动剪映也没抢前台。",
+            })
         if screen_locked():
             return dict(base, **{
                 "stage": "blocked",

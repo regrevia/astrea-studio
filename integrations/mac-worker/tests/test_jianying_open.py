@@ -86,6 +86,27 @@ class JianyingOpenTest(unittest.TestCase):
         self.assertTrue(result["output"]["opened"])
         self.assertEqual(result["draftName"], self.draft.name)
 
+    def test_check_mode_never_launches_even_when_locked(self) -> None:
+        done = subprocess.CompletedProcess(
+            [], 0, stdout='{"draftExists": true, "canOpen": true}', stderr="")
+        with mock.patch.object(worker, "screen_locked", return_value=True), \
+                mock.patch.object(worker.subprocess, "run", return_value=done) as run:
+            result = self._call({"draftPath": str(self.draft), "check": True})
+        argv = run.call_args[0][0]
+        self.assertIn("--check", argv)
+        self.assertIn("--draft-path", argv)
+        self.assertEqual(result["stage"], "draft_checked")
+        self.assertFalse(result["output"]["opened"])
+        self.assertTrue(result["output"]["canOpen"])
+
+    def test_check_mode_reports_missing(self) -> None:
+        done = subprocess.CompletedProcess([], 2, stdout='{"canOpen": false}', stderr="")
+        with mock.patch.object(worker, "screen_locked", return_value=False), \
+                mock.patch.object(worker.subprocess, "run", return_value=done):
+            with self.assertRaises(worker.JianyingError) as ctx:
+                self._call({"draftPath": str(self.draft), "check": True})
+        self.assertIn("draft_not_found", str(ctx.exception))
+
     def test_hard_failure_raises_with_reason(self) -> None:
         done = subprocess.CompletedProcess([], 7, stdout="", stderr="boom")
         with mock.patch.object(worker, "screen_locked", return_value=False), \
