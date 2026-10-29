@@ -10,10 +10,13 @@
   2. check_jianying.py       剪映段离线自检（产出体检、产物绑定、时间线下发、sidecar、版本适配）
   3. check_publish_lane.py   发布泳道真机探针四条（claim / cancelled-run / stale-revision / lease-expired）
   4. jianying_versions.py    本机剪映版本与 schema 依据（同主版本实证才盖章）
+  5. 后端 production 单测    租约回收、发布状态机（vitest）
+  6. Web 类型检查            界面与后端类型的接线（tsc，--with-web 才跑）
 
 跑法：
-    <venv-python> tools/check_all.py            全部
-    <venv-python> tools/check_all.py --offline  只跑离线（不排真机作业）
+    <venv-python> tools/check_all.py             全部（含真机探针，约 1 分钟）
+    <venv-python> tools/check_all.py --offline   只跑离线（不排真机作业，约 5 s）
+    <venv-python> tools/check_all.py --with-web  加上后端单测与 Web 类型检查（多约 1 分钟）
     <venv-python> tools/check_all.py --json /tmp/x.json
 """
 from __future__ import annotations
@@ -27,14 +30,54 @@ from pathlib import Path
 
 MW = Path(__file__).resolve().parents[1]
 TOOLS = MW / "tools"
+REPO = MW.parents[1]
+BACKEND = REPO / "project/aitoearn-backend"
+WEB = REPO / "project/aitoearn-web"
 
-# (名字, 脚本, 参数, 超时秒, 是否联网/排队)
-CHECKS: list[tuple[str, str, list[str], float, bool]] = [
-    ("发布段离线契约", "check_publish.py", [], 180.0, False),
-    ("剪映段离线自检", "check_jianying.py", [], 240.0, False),
-    ("发布泳道真机探针", "check_publish_lane.py", ["--apply", "--all"], 300.0, True),
-    ("剪映版本依据", "jianying_versions.py", ["--json"], 60.0, False),
+# kind: python=本目录工具；lane=真机探针（压成一行结论）；version=版本依据；
+# shell=外部工作区的命令（后端单测、Web 类型检查），只有 --with-web 才跑。
+CHECKS: list[dict[str, object]] = [
+    {"name": "发布段离线契约", "kind": "python", "cmd": ["check_publish.py"],
+     "timeout": 180.0, "live": False, "group": "core"},
+    {"name": "剪映段离线自检", "kind": "python", "cmd": ["check_jianying.py"],
+     "timeout": 240.0, "live": False, "group": "core"},
+    {"name": "发布泳道真机探针", "kind": "lane",
+     "cmd": ["--apply", "--all"], "timeout": 300.0, "live": True, "group": "core"},
+    {"name": "剪映版本依据", "kind": "version", "cmd": ["--json"],
+     "timeout": 60.0, "live": False, "group": "core"},
+    {"name": "后端生产 spec", "kind": "shell",
+     "cmd": ["npx", "vitest", "run",
+             "apps/aitoearn-server/src/core/production/production.service.spec.ts"],
+     "cwd": str(BACKEND), "timeout": 300.0, "live": False, "group": "web",
+     "pattern": r"Tests\s+(\d+ passed[^\n]*)"},
+    {"name": "Web 类型检查", "kind": "shell", "cmd": ["pnpm", "run", "type-check"],
+     "cwd": str(WEB), "timeout": 600.0, "live": False, "group": "web",
+     "pattern": r"(Tasks:\s+.*)", "okDetail": "tsc --noEmit 通过（0 错误）"},
 ]
+
+
+def run_shell(entry: dict) -> tuple[bool, str, str]:
+    """外部命令（后端单测 / Web 类型检查）：成功看退出码，详情从输出里挑一行。"""
+    import re
+    started = time.time()
+    try:
+        proc = subprocess.run(
+            list(entry["cmd"]), cwd=str(entry["cwd"]), capture_output=True,
+            text=True, timeout=float(entry["timeout"]), check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return False, f'{float(entry["timeout"]):.0f}s 超时', f"{time.time() - started:.1f}s"
+    elapsed = f"{time.time() - started:.1f}s"
+    output = f'{proc.stdout or ""}\n{proc.stderr or ""}'
+    match = re.search(str(entry.get("pattern") or ""), output)
+    if proc.returncode == 0 and entry.get("okDetail") and not match:
+        detail = str(entry["okDetail"])
+    elif match:
+        detail = match.group(1).strip()[:120]
+    else:
+        tail = [line for line in output.splitlines() if line.strip()]
+        detail = tail[-1].strip()[:120] if tail else "无输出"
+    return proc.returncode == 0, detail, elapsed
 
 
 def run_one(script: str, argv: list[str], timeout: float) -> tuple[bool, str, str]:
@@ -119,29 +162,40 @@ def version_note() -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description="一体化宣发工作台全量自检")
     ap.add_argument("--offline", action="store_true", help="跳过真机排队探针")
+    ap.add_argument("--with-web", action="store_true", help="加上后端单测与 Web 类型检查")
     ap.add_argument("--json", default="", help="把结果写成 JSON")
     args = ap.parse_args()
 
     rows: list[dict[str, object]] = []
-    for name, script, argv, timeout, live in CHECKS:
-        if live and args.offline:
+    for entry in CHECKS:
+        name = str(entry["name"])
+        kind = str(entry["kind"])
+        group = str(entry.get("group") or "core")
+        if bool(entry.get("live")) and args.offline:
             rows.append({"name": name, "ok": True, "skipped": True,
                          "detail": "跳过（--offline）", "elapsed": "-"})
             continue
-        if script == "jianying_versions.py":
+        if group == "web" and not args.with_web:
+            rows.append({"name": name, "ok": True, "skipped": True,
+                         "detail": "跳过（加 --with-web 才跑）", "elapsed": "-"})
+            continue
+        if kind == "version":
             # 版本依据本身不是「过/不过」，缺剪映才判失败；细节看 version_note()。
             proc = subprocess.run(
-                [sys.executable, str(MW / script), "--json"],
-                cwd=str(MW), capture_output=True, text=True, timeout=timeout, check=False,
+                [sys.executable, str(MW / "jianying_versions.py"), "--json"],
+                cwd=str(MW), capture_output=True, text=True,
+                timeout=float(entry["timeout"]), check=False,
             )
-            ok = proc.returncode == 0
-            rows.append({"name": name, "ok": ok, "skipped": False,
+            rows.append({"name": name, "ok": proc.returncode == 0, "skipped": False,
                          "detail": version_note(), "elapsed": "-"})
             continue
-        if script == "check_publish_lane.py":
-            ok, detail, elapsed = run_lane(argv, timeout)
+        if kind == "lane":
+            ok, detail, elapsed = run_lane(list(entry["cmd"]), float(entry["timeout"]))
+        elif kind == "shell":
+            ok, detail, elapsed = run_shell(entry)
         else:
-            ok, detail, elapsed = run_one(script, argv, timeout)
+            ok, detail, elapsed = run_one(str(entry["cmd"][0]), list(entry["cmd"][1:]),
+                                          float(entry["timeout"]))
         rows.append({"name": name, "ok": ok, "skipped": False,
                      "detail": detail, "elapsed": elapsed})
 

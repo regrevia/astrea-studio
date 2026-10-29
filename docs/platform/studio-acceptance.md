@@ -63,7 +63,7 @@ cd integrations/mac-worker
 <venv-python> tools/check_all.py --offline  # 只跑离线（不排真机作业，约 5 s）
 ```
 
-输出四行一表，任一失败退出码非 0；`--json /tmp/report.json` 落一份机器可读结果。最近一次真机结果：
+输出一表，任一失败退出码非 0；`--json /tmp/report.json` 落一份机器可读结果。最近一次真机结果：
 
 | 项 | 耗时 | 结论 |
 | --- | --- | --- |
@@ -71,6 +71,8 @@ cd integrations/mac-worker
 | 剪映段离线自检 | 4.7 s | PASS（8/8） |
 | 发布泳道真机探针 | 48.8 s | PASS（claim 2.9 / cancelled-run 2.8 / stale-revision 3.0 / lease-expired 36.0 s） |
 | 剪映版本依据 | — | 11.6.0 build 490 · 沿用模板（无同主版本实证，不猜版本号）· 参考草稿 11 份（版本戳 10.2.0/5.9.0） |
+| 后端生产 spec（`--with-web`） | 2.3 s | PASS（76/76：发布状态机、租约回收归位、回读） |
+| Web 类型检查（`--with-web`） | 3.2 s | PASS（`tsc --noEmit` 0 错误） |
 
 最后一行是版本适配层的诚实面：本机 11 份参考草稿的版本戳都是 10.2.0 / 5.9.0，没有一份是剪映
 11.x 自己保存的 schema，所以适配层不盖章、沿用 VectCutAPI 模板（该模板在 11.6 实测能开）。
