@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import argparse
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -13,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+import config  # noqa: E402
 import publish_sau as P  # noqa: E402
 
 PASS = 0
@@ -120,13 +123,57 @@ def t_output_parsing() -> None:
             require(not run.called, "cookie 失效时没有起浏览器进程")
 
 
+def cookie_preflight(account: str, timeout: int) -> int:
+    """只验「这个账号现在能不能发」：cookie 文件在不在、内容还有没有效。
+
+    检查本身跑无头 chromium（不弹窗、不抢前台），但会联网，所以单独用 --cookie 触发，
+    不混进默认的离线体检。
+    """
+    print("cookie 预检：%s" % account)
+    if not P.SAU_PYTHON.exists():
+        print("  FAIL SAU venv 不在：%s（先跑 deploy/bootstrap_sau.sh）" % P.SAU_PYTHON)
+        return 2
+    cookie_file = config.SAU_CHECKOUT / "cookies" / ("douyin_%s.json" % account)
+    if not cookie_file.is_file():
+        print("  FAIL 没有 cookie 文件：%s" % cookie_file)
+        print("       修：%s sau_cli.py douyin login --account %s" % (P.SAU_PYTHON, account))
+        return 2
+    print("  ok   cookie 文件在：%s" % cookie_file.name)
+    try:
+        proc = subprocess.run(
+            [str(P.SAU_PYTHON), "sau_cli.py", "douyin", "check", "--account", account],
+            cwd=str(config.SAU_CHECKOUT), capture_output=True, text=True,
+            timeout=timeout, check=False,
+            env={"PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+                 "HOME": str(Path.home()), "TZ": "Asia/Shanghai",
+                 "LANG": "en_US.UTF-8", "PYTHONUNBUFFERED": "1",
+                 "DOUYIN_COOKIE_AUTH_HEADLESS": "true"},
+        )
+    except subprocess.TimeoutExpired:
+        print("  FAIL 检查超时（%ds）：可能网络不通或页面卡住" % timeout)
+        return 2
+    tail = ((proc.stdout or "") + (proc.stderr or "")).strip().splitlines()
+    if proc.returncode == 0 and "invalid" not in (proc.stdout or ""):
+        print("  ok   cookie 有效（sau douyin check 通过）")
+        return 0
+    print("  FAIL cookie 失效或检查失败（rc=%d）：%s" % (proc.returncode, tail[-1] if tail else ""))
+    print("       修：%s sau_cli.py douyin login --account %s" % (P.SAU_PYTHON, account))
+    return 2
+
+
 def main() -> int:
+    ap = argparse.ArgumentParser(description="发布段离线体检；加 --cookie 顺带验账号 cookie")
+    ap.add_argument("--cookie", metavar="ACCOUNT", help="顺带跑 sau douyin check（无头，不弹窗）")
+    ap.add_argument("--timeout", type=int, default=180, help="cookie 预检超时秒数")
+    args = ap.parse_args()
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
         t_payload(tmp)
         t_argv(tmp)
     t_output_parsing()
     print("\n结果: %d/%d 通过" % (PASS, PASS + FAIL))
+    if PASS + FAIL and FAIL == 0 and args.cookie:
+        return cookie_preflight(args.cookie, args.timeout)
     return 0 if FAIL == 0 else 2
 
 

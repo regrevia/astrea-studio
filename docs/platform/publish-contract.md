@@ -32,6 +32,16 @@ argv 不一样，所以发布类型必须显式带：
 发布前先跑 `sau douyin check --account <account>`；失效直接报错并提示重新登录，
 不进入上传流程——避免半路失败留下「不知道发没发」的状态。
 
+这条检查跑的是无头 chromium（`DOUYIN_COOKIE_AUTH_HEADLESS=true`），不弹窗、不抢前台，
+但会联网。可以单独预检：
+
+```
+<venv-python> tools/check_publish.py --cookie yefen --timeout 90
+```
+
+输出两种结局：`cookie 文件在` + `cookie 有效` → 可发；文件不在或 `sau douyin check` 不通过 →
+直接给重新登录的命令。实测 `yefen`：文件在、`sau douyin check` 通过（2026-10-29）。
+
 ## 离线体检
 
 ```
@@ -39,5 +49,6 @@ cd integrations/mac-worker
 <venv-python> tools/check_publish.py     # 16/16 通过，不开浏览器
 ```
 
-覆盖：载荷解析与四类拒绝、视频/图文 argv 分流、URL 回读、零退出无确认、非零退出、cookie 失效不起进程。
+覆盖：载荷解析与四类拒绝、视频/图文 argv 分流、URL 回读、零退出无确认、非零退出、cookie 失效不起进程；
+加 `--cookie` 才额外跑一次真实 cookie 预检。
 真发一版仍然要在机器空闲时人工跑，脚本不替代那一步。
