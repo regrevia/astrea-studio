@@ -157,6 +157,10 @@ worker 只做三件事——渲染回读、翻成台账能收的结论、调用
 `POST publications/:id/readback-job` → 作业在 `publish` 泳道被领取并跑完（21s）→ `result.applied=false, state=unknown` →
 记录回到 `submission_unknown`，证据两条（`readback_enqueued`、`readback_no_conclusion`），run 状态不动。
 
+入口本身也进了真机探针：`tools/check_publish_lane.py --apply --case readback-retry` 造一条回执不明的记录，
+调 `publications/:id/readback-job` 断言排出一条 `publish_readback`、payload 绑 `attemptId`、记录转 `reconciling`，
+再点一次与「没有链接」两种都被拒；排上立刻取消，只验入口不跑真回读。完整验收 `--all` 现在是五条一起跑。
+
 实测（2026-10-29，账号 `yefen`）：`--works yefen` 读到 4 条真实作品；对真实作品 `7602658672556153993` 回读得 `published` + 标题；对不存在的 `7456000000000000000` 回读得 `unknown`（页面里读不到作品标记），`reconcile_publish.py` 判为「没有明确结论，台账不动」。后端接口侧新增 `applySubmissionReadback`，单测覆盖「published 带 ID 收下 / published 无 ID 拒 / 越级状态拒」。
 
 ## Cookie

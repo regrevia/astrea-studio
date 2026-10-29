@@ -5,7 +5,7 @@
 收尾作业」当成补跑渲染取消过一次（`POST_RUN_KINDS` 漏了 `publish_sau`），表现是作业
 永远排队、最后租约过期、界面只说「排队中」。这类回归只在真机队列上看得出来。
 
-三种探针（都只造 `payload: {}` 的 `publish_sau` 作业，不碰抖音、不起浏览器）：
+四种探针只造 `payload: {}` 的 `publish_sau` 作业，不碰抖音、不起浏览器；第五种只验回读入口：
 
 - `claim`：挂到一条已交付的 run 上，应当被 `publish` 泳道领走，然后在载荷校验处
   两秒内失败（`publish payload has no …`）——证明正常领取路径通。
@@ -13,6 +13,9 @@
   `run cancelled`——证明取消分支真的按作业号落库（`job.id` 曾经是空的，取消等于空操作）。
 - `stale-revision`：run 是第 2 版、作业还是第 1 版，应当被取消并写明
   `superseded by revision 2`——证明旧稿不会被当成当前稿发布。
+- `readback-retry`：造一条 `submission_unknown` 记录，`POST publications/:id/readback-job`
+  应当排出一条 `publish_readback` 并把记录翻成 `reconciling`；再点一次被拒、无链接被拒。
+  排上立刻取消（只验入口，不让 worker 去读一条不存在的链接）。
 
 探针作业（必要时还有临时 run）跑完就删，台账不留痕。
 
@@ -21,6 +24,7 @@
     python3 tools/check_publish_lane.py --apply --case claim              # 正常领取
     python3 tools/check_publish_lane.py --apply --case cancelled-run      # run 已取消
     python3 tools/check_publish_lane.py --apply --case stale-revision     # 旧稿作业
+    python3 tools/check_publish_lane.py --apply --case readback-retry     # 回读入口
 """
 
 from __future__ import annotations
@@ -32,6 +36,9 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
+from pathlib import Path
 
 MONGO_URI = (
     "mongodb://aitoearn:flClCq2wU6tzDpILsV1VdyE0kHOb@127.0.0.1:27017/aitoearn?authSource=admin"
@@ -41,8 +48,10 @@ WORKER_ID = "6ad9ee47437a9be7260961a6"  # mac-1
 USER_ID = "6ad9e38c8d350ba17d570e2b"
 PROJECT_ID = "6ae237a72a5e71e140145c45"  # 端到端验收项目
 WAIT_SECONDS = 60
+API = "http://127.0.0.1:8080/api"
+TOKEN_FILE = Path("/tmp/auto_token.txt")
 
-CASES = ("claim", "cancelled-run", "stale-revision", "lease-expired")
+CASES = ("claim", "cancelled-run", "stale-revision", "lease-expired", "readback-retry")
 LEASE_WAIT_SECONDS = 150  # 回收器每分钟扫一次
 
 
@@ -115,6 +124,47 @@ def create_attempt(run_id: str) -> str:
     return mongo(js).splitlines()[-1].strip()
 
 
+def create_readback_attempt(run_id: str, url: str = "https://www.douyin.com/video/7000000000000000001") -> str:
+    """造一条「回执不明」的记录：它已经有链接（或故意没有），但没人替它核对过。"""
+    post_id = "7000000000000000001" if url else ""
+    js = (
+        "const now=new Date();"
+        f"const r=db.publicationAttempt.insertOne({{userId:'{USER_ID}',runId:'{run_id}',"
+        f"projectId:'{PROJECT_ID}',platform:'douyin',dispatcher:'sau',accountRef:'yefen',"
+        "accountName:'yefen',revision:1,idempotencyKey:'round31-readback-probe-'+Date.now(),"
+        "plannedAt:now,status:'submission_unknown',content:{},"
+        f"remotePostId:'{post_id}',"
+        f"remoteUrl:'{url}',"
+        "evidence:[],lastError:'',createdAt:now,updatedAt:now});"
+        "print(String(r.insertedId))"
+    )
+    return mongo(js).splitlines()[-1].strip()
+
+
+def _rejected(status: int, body: dict) -> bool:
+    """后台业务错误也是 HTTP 200，code 非 0 才算拒了。"""
+    return status >= 400 or str(body.get("code")) not in ("0", "None")
+
+
+def api_post(path: str) -> tuple[int, dict]:
+    """调本机后台；4xx 也返回状态码，好让探针断言「第二次点会被拒」。"""
+    token = TOKEN_FILE.read_text().strip()
+    req = urllib.request.Request(
+        f"{API}/{path}",
+        data=b"{}",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 —— 本机后台
+            return resp.status, json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        try:
+            return exc.code, json.loads(exc.read().decode())
+        except json.JSONDecodeError:
+            return exc.code, {}
+
+
 def insert_expired_job(run_id: str, attempt_id: str) -> str:
     """running 作业 + 已经过期的租约：等价于 worker 被 kill -9 之后再没人续约。"""
     js = (
@@ -158,11 +208,12 @@ def count_pending_jobs(run_id: str, exclude_job_id: str) -> int:
 def read_state(job_id: str) -> dict:
     js = (
         f"const j=db.productionJob.findOne({{_id:ObjectId('{job_id}')}},"
-        "{status:1,message:1,lastError:1,leaseOwner:1});"
+        "{status:1,message:1,lastError:1,leaseOwner:1,kind:1,payload:1});"
         f"const ev=db.productionEvent.find({{jobId:'{job_id}'}},"
         "{kind:1,message:1,jobId:1}).toArray();"
         "print(JSON.stringify({job:j&&{status:j.status,message:j.message,lastError:j.lastError,"
-        "leaseOwner:j.leaseOwner},events:ev.map(e=>({kind:e.kind,message:e.message,"
+        "leaseOwner:j.leaseOwner,kind:j.kind,payload:j.payload},"
+        "events:ev.map(e=>({kind:e.kind,message:e.message,"
         "jobId:e.jobId&&String(e.jobId)}))}))"
     )
     raw = mongo(js)
@@ -170,12 +221,12 @@ def read_state(job_id: str) -> dict:
     return json.loads(line or "{}")
 
 
-def cleanup(job_id: str, run_ids: list[str], attempt_id: str = "") -> None:
+def cleanup(job_id: str, run_ids: list[str], attempt_ids: tuple[str, ...] = ()) -> None:
     js = (
         f"db.productionEvent.deleteMany({{jobId:'{job_id}'}});"
         f"db.productionJob.deleteOne({{_id:ObjectId('{job_id}')}});"
     )
-    if attempt_id:
+    for attempt_id in attempt_ids:
         js += f"db.publicationAttempt.deleteOne({{_id:ObjectId('{attempt_id}')}});"
     for run_id in run_ids:
         js += (
@@ -194,6 +245,16 @@ def plan(case: str) -> dict:
                 "被 publish 泳道领走（job.claimed 带作业号）",
                 "失败原因是载荷校验（publish payload has no …），两秒内结束",
                 "不查 cookie、不上传、没有 job.cancelled",
+            ],
+        }
+    if case == "readback-retry":
+        return {
+            "case": case,
+            "run": "临时 succeeded run（跑完即删）",
+            "expect": [
+                "POST 回读作业被接受，台账推到 reconciling，排出一条 publish_readback",
+                "同一记录再点一次被后端拒掉（不重复排、不重复读同一条链接）",
+                "链接为空时拒绝排作业；结论由 worker 回写，探针不投真发布",
             ],
         }
     if case == "cancelled-run":
@@ -225,8 +286,55 @@ def plan(case: str) -> dict:
 
 
 def run_case(case: str, wait_seconds: float) -> dict:
+    started = time.time()
     created_runs: list[str] = []
     attempt_id = ""
+    api_checks: dict[str, bool] = {}
+    extra_attempts: list[str] = []
+    if case == "readback-retry":
+        run_id = create_run("succeeded", 1)
+        created_runs.append(run_id)
+        attempt_id = create_readback_attempt(run_id)
+        first_code, first_body = api_post(f"production/publications/{attempt_id}/readback-job")
+        first_data = first_body.get("data") or {}
+        job_id = str(first_data.get("jobId") or "")
+        # 排上就立刻快照并取消：worker 可能在一秒内领取，探针只验「排队入口」，
+        # 不把真回读跑起来（那会去开浏览器读一条不存在的链接）。
+        job = (read_state(job_id).get("job") or {}) if job_id else {}
+        if job_id:
+            mongo(
+                f"db.productionJob.updateOne({{_id:ObjectId('{job_id}')}},"
+                "{$set:{status:'cancelled'}});print('cancelled')"
+            )
+        second_code, second_body = api_post(f"production/publications/{attempt_id}/readback-job")
+        # 没有链接的记录不该被排回读：读不到东西的作业只会白跑一趟。
+        bare_id = create_readback_attempt(run_id, url="")
+        bare_code, bare_body = api_post(f"production/publications/{bare_id}/readback-job")
+        extra_attempts.append(bare_id)
+        attempt = read_attempt(attempt_id)
+        queued = job.get("kind") == "publish_readback"
+        api_checks = {
+            "enqueue_accepted": first_code in (200, 201) and str(first_body.get("code")) == "0",
+            "attempt_reconciling": attempt.get("status") == "reconciling",
+            "readback_job_queued": queued,
+            "job_payload_bound": (job.get("payload") or {}).get("attemptId") == attempt_id,
+            "second_click_rejected": _rejected(second_code, second_body),
+            "no_duplicate_readback": count_pending_jobs(run_id, job_id) == 0,
+            "no_url_rejected": _rejected(bare_code, bare_body),
+        }
+        ok = all(api_checks.values())
+        # 这条分支在 try 之前 return，走不到末尾的 finally：自己收尾，台账不留痕。
+        cleanup(job_id, created_runs, tuple([attempt_id] + extra_attempts))
+        print("probe cleaned", file=sys.stderr)
+        return {
+            "case": case, "jobId": job_id, "runId": run_id,
+            "elapsedSeconds": round(time.time() - started, 1),
+            "status": job.get("status"), "leaseOwner": job.get("leaseOwner"),
+            "message": (second_body.get("message") or "")[:120],
+            "attemptStatus": attempt.get("status", ""),
+            "events": [], "eventDetails": [], "checks": api_checks,
+            "verdict": "PASS" if ok else "FAIL",
+        }
     if case == "claim":
         run_id = pick_succeeded_run()
         job_revision = 1
@@ -246,7 +354,6 @@ def run_case(case: str, wait_seconds: float) -> dict:
 
     if case != "lease-expired":
         job_id = insert_probe(run_id, job_revision)
-    started = time.time()
     try:
         wait_for = LEASE_WAIT_SECONDS if case == "lease-expired" else wait_seconds
         while time.time() - started < wait_for:
@@ -325,14 +432,18 @@ def run_case(case: str, wait_seconds: float) -> dict:
             "status": status,
             "leaseOwner": job.get("leaseOwner"),
             "message": (job.get("message") or job.get("lastError") or "")[:120],
-            "attemptStatus": read_attempt(attempt_id).get("status", "") if case == "lease-expired" else "",
+            "attemptStatus": (
+            read_attempt(attempt_id).get("status", "")
+            if case in ("lease-expired", "readback-retry") else ""
+        ),
             "events": kinds,
             "eventDetails": events,
             "checks": checks,
             "verdict": "PASS" if ok else "FAIL",
         }
     finally:
-        cleanup(job_id, created_runs, attempt_id if case == "lease-expired" else "")
+        ids = tuple([attempt_id] + extra_attempts) if attempt_id else tuple(extra_attempts)
+        cleanup(job_id, created_runs, ids)
         print("probe cleaned", file=sys.stderr)
 
 
@@ -340,7 +451,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--apply", action="store_true", help="真插探针作业（默认只打印计划）")
     ap.add_argument("--case", default="claim", choices=CASES, help="跑哪一条探针")
-    ap.add_argument("--all", action="store_true", help="三条依次跑")
+    ap.add_argument("--all", action="store_true", help="五条依次跑")
     ap.add_argument("--wait", type=float, default=WAIT_SECONDS, help="等待秒数")
     args = ap.parse_args(argv)
 

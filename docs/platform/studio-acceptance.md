@@ -70,7 +70,7 @@ cd integrations/mac-worker
 | --- | --- | --- |
 | 发布段离线契约 | 0.1 s | PASS |
 | 剪映段离线自检 | 4.7 s | PASS（8/8） |
-| 发布泳道真机探针 | 48.8 s | PASS（claim 2.9 / cancelled-run 2.8 / stale-revision 3.0 / lease-expired 36.0 s） |
+| 发布泳道真机探针 | 24.0 s | PASS（claim 3.2 / cancelled-run 3.2 / stale-revision 3.2 / lease-expired 11.0 / readback-retry 2.0 s） |
 | 剪映版本依据 | — | 11.6.0 build 490 · 沿用模板（无同主版本实证，不猜版本号）· 参考草稿 11 份（版本戳 10.2.0/5.9.0） |
 | 后端生产 spec（`--with-web`） | 2.3 s | PASS（76/76：发布状态机、租约回收归位、回读） |
 | Web 类型检查（`--with-web`） | 2.0 s | PASS（`tsc --noEmit` 0 错误） |
@@ -234,7 +234,7 @@ PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib \
 | 可验证 scene patch | 完成 | 补丁落新 revision、可连续叠加、底稿仍可审计；[scene-patch-accumulate.json](evidence/scene-patch-accumulate.json)、[scene-patch-ui.png](evidence/scene-patch-ui.png) |
 | 剪映工程 + 独立导出任务 | 完成 | 导出与渲染拆成两条 job，认领只排任务不驱动面板，`claimPath`/`allowGui` 互斥；[claim-export-branches](evidence/claim-export-branches) |
 | 认领成片入库 | 完成 | 实机 job `6ae2a8298f01834bace113fc`：`claimPath` 指向 1080×1920/30fps/6.0s 的 mp4，job `succeeded`、`claimed=true`，落 `library/端到端验收-一体化宣发工作台__6ae237a7/2026-10/…__douyin__r1.mp4`（188 KB）并写进 `library/index.jsonl`；素材指纹不符时 job `6ae2a8228f01834bace113b3` 失败，`reasonCode=draft_media_changed`（`认领失败 rc=12：草稿素材换了：media 1b0c4d60a2f4 != deadbeef0000`） |
-| 发布契约（离线） | 完成 | `publish_sau` 载荷→命令行、四类拒绝、状态判读（`submitted_unverified` / `submission_unknown` / `PublishError`）全部有测试：`tools/check_publish.py` 16/16，worker 测试 81 项；见 [publish-contract.md](publish-contract.md)；`--cookie yefen` 实测无头预检通过；`tools/check_publish_lane.py` 用**故意缺字段**的 `publish_sau` 探针跑通三条队列路径（`--all`，各 2.8 s 全 PASS）：`claim` 被 `publish` 泳道领取、`job.claimed` 带作业号、在载荷校验处失败（`publish payload has no accountRef`）、不查 cookie 不上传；`cancelled-run` 与 `stale-revision` 在领取阶段被取消，`job.cancelled` 带作业号且写明 `run cancelled` / `revision 1 superseded by 2`，worker 从未收到这条活；`lease-expired` 造一条租约过期的 running 作业和一条 `submitting` 提交，回收器把作业判 `lease expired`、提交落回 `submission_unknown`（不再无声卡在进行中）、run 保持 `succeeded`不加任务 |
+| 发布契约（离线） | 完成 | `publish_sau` 载荷→命令行、四类拒绝、状态判读（`submitted_unverified` / `submission_unknown` / `PublishError`）全部有测试：`tools/check_publish.py` 16/16，worker 测试 81 项；见 [publish-contract.md](publish-contract.md)；`--cookie yefen` 实测无头预检通过；`tools/check_publish_lane.py` 用**故意缺字段**的 `publish_sau` 探针跑通四条队列路径（`--all`，各 2.8 s 全 PASS）：`claim` 被 `publish` 泳道领取、`job.claimed` 带作业号、在载荷校验处失败（`publish payload has no accountRef`）、不查 cookie 不上传；`cancelled-run` 与 `stale-revision` 在领取阶段被取消，`job.cancelled` 带作业号且写明 `run cancelled` / `revision 1 superseded by 2`，worker 从未收到这条活；`lease-expired` 造一条租约过期的 running 作业和一条 `submitting` 提交，回收器把作业判 `lease expired`、提交落回 `submission_unknown`（不再无声卡在进行中）、run 保持 `succeeded`不加任务；`readback-retry` 造一条回执不明的记录，调 `POST publications/:id/readback-job` 排出一条 `publish_readback`（payload 绑 `attemptId`）、记录翻成 `reconciling`，再点一次与无链接两种都被拒——回读入口不再靠手点验证，每次 `--all` 都验一遍 |
 | 认领 → 发布台账 | 完成 | 认领过的 run 登记发布，`content.assetKey` 指向入库那一份而非产物目录临时路径；同载荷重复登记 `deduped:true`。attempt `6ae2ab4666b2fe676bafe43a` |
 | 发布状态机 | 完成 | 越级转移 400；`planned→submitting→submission_unknown→not_submitted` 真机走通；重复回写不加证据（attempt `6ae2ab4666b2fe676bafe43a`） |
 | 链接回读收尾 | 完成 | 无头渲染回读作品链接，只给 `published` / `not_found` / `unknown` 三档；`published` 才带作品 ID 回写台账，`unknown` 不动（离线 30/30、单测 94 条；真机 `yefen` 读到 4 条作品，真实作品 `7602658672556153993` → `published`，不存在的 ID → `unknown` 未写库；worker 作业 `publish_readback` 与后端 `POST production/worker/publications/:id/readback` 打通，后端只收 `published`（带 ID）/`not_submitted`，越级 12853）；界面入口 `POST publications/:id/readback-job` 已通（作业被 `publish` 泳道领取、21s 跑完，`unknown` 时记录退回 `submission_unknown` 并记 `readback_no_conclusion`，run 不动；重复点击、非 `submission_unknown`、无链接三类都拒；界面真机点过：`回执不明` 行有「回读链接」，点一下提示「已排队回读，稍后回来看结论」、该行转「核对中」，作业 21s 后跑完、无结论退回 `提交结果不明`） |
@@ -249,7 +249,7 @@ PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib \
 bash scripts/dev/patch-backend-container.sh          # 后端热补丁
 cd integrations/mac-worker && PYTHONPATH=$PWD <venv-python> -m unittest discover -s tests -p 'test_*.py'
 cd integrations/mac-worker && <venv-python> tools/check_publish.py      # 发布契约离线体检
-cd integrations/mac-worker && <venv-python> tools/check_publish_lane.py --apply --all  # 发布泳道三态探针（只造必败作业，不发布）
+cd integrations/mac-worker && <venv-python> tools/check_publish_lane.py --apply --all  # 发布泳道五条探针（只造必败作业 / 只验回读入口，不发布）
 cd project/aitoearn-backend && ./node_modules/.bin/tsc -p apps/aitoearn-server/tsconfig.app.json --noEmit
 cd project/aitoearn-web && npx tsc --noEmit
 ```
