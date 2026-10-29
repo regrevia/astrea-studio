@@ -61,7 +61,7 @@ node scripts/verify/e2e-promo.mjs --project <项目 ID>
 cd integrations/mac-worker
 <venv-python> tools/check_all.py              # 全量：离线契约 + 剪映段 + 发布泳道真机探针 + 版本依据
 <venv-python> tools/check_all.py --offline    # 只跑离线（不排真机作业，约 5 s）
-<venv-python> tools/check_all.py --with-web   # 再加上后端 production 单测与 Web 类型检查（多约 4 s）
+<venv-python> tools/check_all.py --with-web   # 再加上后端单测、Web 类型检查与三套 lint（多约 5 s）
 ```
 
 输出一表，任一失败退出码非 0；`--json /tmp/report.json` 落一份机器可读结果。最近一次结果（真机探针 + `--with-web`）：
@@ -73,7 +73,14 @@ cd integrations/mac-worker
 | 发布泳道真机探针 | 48.8 s | PASS（claim 2.9 / cancelled-run 2.8 / stale-revision 3.0 / lease-expired 36.0 s） |
 | 剪映版本依据 | — | 11.6.0 build 490 · 沿用模板（无同主版本实证，不猜版本号）· 参考草稿 11 份（版本戳 10.2.0/5.9.0） |
 | 后端生产 spec（`--with-web`） | 2.3 s | PASS（76/76：发布状态机、租约回收归位、回读） |
-| Web 类型检查（`--with-web`） | 3.2 s | PASS（`tsc --noEmit` 0 错误） |
+| Web 类型检查（`--with-web`） | 2.0 s | PASS（`tsc --noEmit` 0 错误） |
+| Web 文案 lint（`--with-web`） | 0.0 s | PASS（64 条错误 / 138 条提醒，基线 64） |
+| Web 中文排印（`--with-web`） | 0.0 s | PASS（0 条错误 / 21 条提醒，基线 0） |
+| Web 样式 lint（`--with-web`） | 0.0 s | PASS（1 条问题，基线 1） |
+
+三套 lint 的判据是「不高于基线」而不是零容忍：范围固定在 `src/app/[lng]/studio`，基线值
+写在 `tools/check_all.py` 的 `baseline` 字段里（文案 64 / 排印 0 / 样式 1），超过一条就 FAIL 并
+报出条数；存量问题不清零，但每轮改动不能把它们推高。改完界面仍按仓库规则单独跑三套脚本。
 
 最后一行是版本适配层的诚实面：本机 11 份参考草稿的版本戳都是 10.2.0 / 5.9.0，没有一份是剪映
 11.x 自己保存的 schema，所以适配层不盖章、沿用 VectCutAPI 模板（该模板在 11.6 实测能开）。

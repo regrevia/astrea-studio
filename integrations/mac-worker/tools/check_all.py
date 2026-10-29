@@ -12,6 +12,7 @@
   4. jianying_versions.py    本机剪映版本与 schema 依据（同主版本实证才盖章）
   5. 后端 production 单测    租约回收、发布状态机（vitest）
   6. Web 类型检查            界面与后端类型的接线（tsc，--with-web 才跑）
+  7. Web 三套 lint           文案/中文排印/样式，按**不高于基线**判定（--with-web 才跑）
 
 跑法：
     <venv-python> tools/check_all.py             全部（含真机探针，约 1 分钟）
@@ -53,7 +54,26 @@ CHECKS: list[dict[str, object]] = [
     {"name": "Web 类型检查", "kind": "shell", "cmd": ["pnpm", "run", "type-check"],
      "cwd": str(WEB), "timeout": 600.0, "live": False, "group": "web",
      "pattern": r"(Tasks:\s+.*)", "okDetail": "tsc --noEmit 通过（0 错误）"},
+    {"name": "Web 文案 lint", "kind": "lint", "lint": "ui-copy", "group": "web",
+     "cmd": ["node", str(Path.home() / ".dsh/skills/ui-restraint/scripts/ui-copy-lint.mjs"),
+             "src/app/[lng]/studio"],
+     "cwd": str(WEB), "timeout": 240.0, "live": False, "baseline": 64},
+    {"name": "Web 中文排印", "kind": "lint", "lint": "zh", "group": "web",
+     "cmd": ["node", str(Path.home() / ".agents/skills/zh-ui-type-lint/scripts/zh-lint.mjs"),
+             "src/app/[lng]/studio"],
+     "cwd": str(WEB), "timeout": 240.0, "live": False, "baseline": 0},
+    {"name": "Web 样式 lint", "kind": "lint", "lint": "style", "group": "web",
+     "cmd": ["node", str(Path.home() / ".dsh/tools/style-lint.mjs"),
+             "src/app/[lng]/studio"],
+     "cwd": str(WEB), "timeout": 240.0, "live": False, "baseline": 1},
 ]
+
+# 三套 lint 都是「改动不许把问题数推高」，不是零容忍：基线集中写在上面的 baseline 里，
+# 超过基线才 FAIL，并说清超了几条、是哪一类。
+LINT_SUMMARY = {
+    "ui-copy": r"ui-copy-lint:\s*(\d+) error\(s\),\s*(\d+) warning\(s\)",
+    "zh": r"zh-lint:\s*(\d+) error\(s\),\s*(\d+) warning\(s\)",
+}
 
 
 def run_shell(entry: dict) -> tuple[bool, str, str]:
@@ -78,6 +98,32 @@ def run_shell(entry: dict) -> tuple[bool, str, str]:
         tail = [line for line in output.splitlines() if line.strip()]
         detail = tail[-1].strip()[:120] if tail else "无输出"
     return proc.returncode == 0, detail, elapsed
+
+
+def run_lint(entry: dict) -> tuple[bool, str, str]:
+    """lint：解析问题条数并与基线比，不比退出码（这几套脚本有存量问题时本身非零）。"""
+    import re
+    started = time.time()
+    try:
+        proc = subprocess.run(list(entry["cmd"]), cwd=str(entry["cwd"]), capture_output=True,
+                              text=True, timeout=float(entry["timeout"]), check=False)
+    except subprocess.TimeoutExpired:
+        return False, f'{float(entry["timeout"]):.0f}s 超时', f"{time.time() - started:.1f}s"
+    elapsed = f"{time.time() - started:.1f}s"
+    output = f'{proc.stdout or ""}\n{proc.stderr or ""}'
+    baseline = int(entry.get("baseline") or 0)
+    kind = str(entry.get("lint"))
+    if kind in LINT_SUMMARY:
+        match = re.search(LINT_SUMMARY[kind], output)
+        if not match:
+            return False, "解析不到问题条数（脚本可能改了输出格式）", elapsed
+        errors, warnings = int(match.group(1)), int(match.group(2))
+        ok = errors <= baseline
+        detail = f"{errors} 条错误 / {warnings} 条提醒（基线 {baseline}）"
+        return ok, detail, elapsed
+    problems = len(re.findall(r"ERROR \[P\d\]", output))
+    ok = problems <= baseline
+    return ok, f"{problems} 条问题（基线 {baseline}）", elapsed
 
 
 def run_one(script: str, argv: list[str], timeout: float) -> tuple[bool, str, str]:
@@ -189,7 +235,9 @@ def main() -> int:
             rows.append({"name": name, "ok": proc.returncode == 0, "skipped": False,
                          "detail": version_note(), "elapsed": "-"})
             continue
-        if kind == "lane":
+        if kind == "lint":
+            ok, detail, elapsed = run_lint(entry)
+        elif kind == "lane":
             ok, detail, elapsed = run_lane(list(entry["cmd"]), float(entry["timeout"]))
         elif kind == "shell":
             ok, detail, elapsed = run_shell(entry)

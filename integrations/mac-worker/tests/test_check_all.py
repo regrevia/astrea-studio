@@ -52,5 +52,35 @@ class SummarizeLaneTest(unittest.TestCase):
         self.assertIn("没有返回任何结果", detail)
 
 
+def _fake_lint(output: str) -> dict:
+    return {"name": "假 lint", "kind": "lint", "lint": "ui-copy", "baseline": 64,
+            "timeout": 10.0, "cwd": ".", "cmd": ["python3", "-c", f"print({output!r})"]}
+
+
+class LintBaselineTest(unittest.TestCase):
+    def test_at_baseline_passes(self):
+        ok, detail, _ = C.run_lint(_fake_lint("ui-copy-lint: 64 error(s), 138 warning(s) in 32 file(s)."))
+        self.assertTrue(ok)
+        self.assertIn("基线 64", detail)
+
+    def test_one_more_error_fails(self):
+        ok, detail, _ = C.run_lint(_fake_lint("ui-copy-lint: 65 error(s), 138 warning(s) in 32 file(s)."))
+        self.assertFalse(ok)
+        self.assertIn("65 条错误", detail)
+
+    def test_style_counts_p_severity_problems(self):
+        entry = {"name": "假样式", "kind": "lint", "lint": "style", "baseline": 1,
+                 "timeout": 10.0, "cwd": ".",
+                 "cmd": ["python3", "-c", "print('ERROR [P1] a');print('ERROR [P1] b')"]}
+        ok, detail, _ = C.run_lint(entry)
+        self.assertFalse(ok)
+        self.assertIn("2 条问题", detail)
+
+    def test_unparseable_output_fails_loudly(self):
+        ok, detail, _ = C.run_lint(_fake_lint("脚本崩了"))
+        self.assertFalse(ok)
+        self.assertIn("解析不到", detail)
+
+
 if __name__ == "__main__":
     unittest.main()
