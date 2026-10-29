@@ -59,11 +59,12 @@ node scripts/verify/e2e-promo.mjs --project <项目 ID>
 
 ```bash
 cd integrations/mac-worker
-<venv-python> tools/check_all.py            # 全量：离线契约 + 剪映段 + 发布泳道真机探针 + 版本依据
-<venv-python> tools/check_all.py --offline  # 只跑离线（不排真机作业，约 5 s）
+<venv-python> tools/check_all.py              # 全量：离线契约 + 剪映段 + 发布泳道真机探针 + 版本依据
+<venv-python> tools/check_all.py --offline    # 只跑离线（不排真机作业，约 5 s）
+<venv-python> tools/check_all.py --with-web   # 再加上后端 production 单测与 Web 类型检查（多约 4 s）
 ```
 
-输出一表，任一失败退出码非 0；`--json /tmp/report.json` 落一份机器可读结果。最近一次真机结果：
+输出一表，任一失败退出码非 0；`--json /tmp/report.json` 落一份机器可读结果。最近一次结果（真机探针 + `--with-web`）：
 
 | 项 | 耗时 | 结论 |
 | --- | --- | --- |
