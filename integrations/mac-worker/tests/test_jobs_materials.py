@@ -142,5 +142,27 @@ class MaterialsJobTest(_Base):
             jobs.submit("materials", {"root": str(self.root)})
 
 
+class DeliverablesTest(unittest.TestCase):
+    """认领回来的成片在 out/ 下，也要出现在交付清单里（Web 的影片列表读这个接口）。"""
+
+    def test_claim_outputs_are_listed_beside_render_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "deliver").mkdir()
+            (root / "out" / "jobA" / "r1").mkdir(parents=True)
+            (root / "deliver" / "a.mp4").write_bytes(b"x" * 16)
+            (root / "out" / "jobA" / "r1" / "jobA__r1__douyin.mp4").write_bytes(b"y" * 32)
+            saved = (jobs.DELIVER_DIR, jobs.CLAIM_DIR)
+            jobs.DELIVER_DIR, jobs.CLAIM_DIR = root / "deliver", root / "out"
+            try:
+                rows = jobs.deliverables(10)
+            finally:
+                jobs.DELIVER_DIR, jobs.CLAIM_DIR = saved
+            self.assertEqual(sorted(r["name"] for r in rows),
+                             ["a.mp4", "jobA__r1__douyin.mp4"])
+            self.assertEqual({r["name"]: r["source"] for r in rows}["jobA__r1__douyin.mp4"], "claim")
+
+
 if __name__ == "__main__":
     unittest.main()
+

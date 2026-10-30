@@ -167,6 +167,32 @@ PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib \
 返回 0 即草稿已开，再对 job `6ae1ab69ed8f33a90f5c77a5` 重发 `startJianyingExport{allowGui:true}`，
 验收项是 `~/CreatorStudio/out/6ae1ab69ed8f33a90f5c77a5/r2/` 出现 mp4 且 `videoQa.ok=true`。
 
+### 9.1.2 认领入库已用真成片跑通（rc 0，且平台可见）
+
+真人在剪映里导出 `studio_6ae20a3cb2886cd834c8b67e__r1`，文件放在仓库 `output/` 下，随后本轮认领：
+
+```
+$ python3 export/jianying_export.py \
+    --claim output/studio_6ae20a3cb2886cd834c8b67e__r1.mp4 \
+    --job-id 6ae20a3cb2886cd834c8b67b --revision 1 \
+    --draft-path ".../com.lveditor.draft/studio_6ae20a3cb2886cd834c8b67e__r1"
+认领: … (10.88 MB)
+  校验 has_duration  OK  实测 11.215238
+  校验 duration      OK  11.22s vs 期望 11.23s (±0.40)
+  校验 resolution    OK  1080x1920 vs 期望 1080x1920
+  校验 fps           OK  30.000 vs 期望 30.000
+已归位 → /Users/apple/CreatorStudio/out/6ae20a3cb2886cd834c8b67b/r1/6ae20a3cb2886cd834c8b67b__r1__unknown.mp4
+证据 → docs/probe/export-panel/runs/6ae20a3cb2886cd834c8b67b/r1__.json
+RC=0
+```
+
+- 体检四项（时长/画幅/帧率/分辨率）全 OK，`accepted: true`，证据 JSON 与自动导出同一份 schema。
+- 平台侧现在能看到它：`GET /deliverables` 的 `jobs.deliverables()` 除了 `deliver/` 也扫认领归位的
+  `out/<jobId>/rN/`，每条带 `source: "render" | "claim"`。实测返回
+  `{"name":"6ae20a3cb2886cd834c8b67b__r1__unknown.mp4","bytes":11403320,"source":"claim",…}`。
+- 缺口：这次没传 `--platform`，文件名尾缀是 `__unknown`。认领时该给平台名（发布泳道要用同一份
+  绑定），这是用法问题不是代码 bug；下一轮认领必带 `--platform douyin`。
+
 ### 9.1.1 草稿打不开这一跳已解决（本轮），真导出只剩「等人空闲」
 
 「首页里看不到草稿、所以开不了」这个根因本轮查清了，规则见

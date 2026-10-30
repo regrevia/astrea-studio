@@ -38,6 +38,8 @@ from config import REPO_ROOT, STUDIO_HOME
 
 JOBS_DIR = Path(os.environ.get("JOBS_DIR", STUDIO_HOME / "state" / "jobs")).expanduser()
 DELIVER_DIR = Path(os.environ.get("DELIVER_DIR", STUDIO_HOME / "deliver")).expanduser()
+# 剪映认领的成片按 (jobId, rN) 归位在 out/ 下，和引擎产物不同目录，但都是「能交出去的成片」
+CLAIM_DIR = Path(os.environ.get("STUDIO_OUT", STUDIO_HOME / "out")).expanduser()
 SCRIPTS = {
     "paper": REPO_ROOT / "deploy" / "schematic_preview.py",
 }
@@ -379,16 +381,19 @@ def run_job(job_id: str) -> int:
 # ---------------------------------------------------------------- 成片清单
 
 def deliverables(limit: int = 50) -> list[dict]:
-    if not DELIVER_DIR.is_dir():
-        return []
     rows = []
-    for p in DELIVER_DIR.rglob("*"):
-        if p.is_file() and p.suffix.lower() in (".mp4", ".wav", ".mov", ".m4a"):
+    for root, source in ((DELIVER_DIR, "render"), (CLAIM_DIR, "claim")):
+        if not root.is_dir():
+            continue
+        for p in root.rglob("*"):
+            if not p.is_file() or p.suffix.lower() not in (".mp4", ".wav", ".mov", ".m4a"):
+                continue
             st = p.stat()
             rows.append({
                 "name": p.name,
                 "path": str(p),
                 "bytes": st.st_size,
+                "source": source,
                 "mtime": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(st.st_mtime)),
             })
     rows.sort(key=lambda r: r["mtime"], reverse=True)
