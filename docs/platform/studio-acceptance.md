@@ -190,8 +190,12 @@ RC=0
 - 平台侧现在能看到它：`GET /deliverables` 的 `jobs.deliverables()` 除了 `deliver/` 也扫认领归位的
   `out/<jobId>/rN/`，每条带 `source: "render" | "claim"`。实测返回
   `{"name":"6ae20a3cb2886cd834c8b67b__r1__unknown.mp4","bytes":11403320,"source":"claim",…}`。
-- 缺口：这次没传 `--platform`，文件名尾缀是 `__unknown`。认领时该给平台名（发布泳道要用同一份
-  绑定），这是用法问题不是代码 bug；下一轮认领必带 `--platform douyin`。
+- 缺口已在本轮补上：第一次认领没传 `--platform`，尾缀落成 `__unknown`。同一份成片随后带
+  `--platform douyin` 重新认领，`rc 0`，归位成 `6ae20a3cb2886cd834c8b67b__r1__douyin.mp4`
+  （11 403 320 B，11.2152 s / 1080×1920 / 30.0 fps），`/deliverables` 里这条 `source` 为 `claim`；
+  证据 [`cli-claim-platform-named.json`](evidence/claim-export-branches/cli-claim-platform-named.json)。
+  现在缺 `platform` / `draftPath` 会在起进程前就失败（`worker` 不再默认抖音、`claim.build_argv` 同样拒空白、
+  `plan_output` 不再给 `__unknown` 落点），见 [claim-to-publish-contract.md](claim-to-publish-contract.md)。
 
 ### 9.1.1 草稿打不开这一跳已解决（本轮），真导出只剩「等人空闲」
 

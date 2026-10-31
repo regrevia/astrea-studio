@@ -45,6 +45,7 @@ CHECKS: list[dict[str, object]] = [
     {"name": "worker 分发单元测试", "kind": "unittest",
      "cmd": ["tests.test_claim_dispatch", "tests.test_draft_listing",
             "tests.test_export_landing", "tests.test_input_tiers",
+            "tests.test_jianying_open",
             "tests.test_jobs_materials", "tests.test_materials",
             "tests.test_plain_guard", "tests.test_version_evidence"],
      "timeout": 120.0,
