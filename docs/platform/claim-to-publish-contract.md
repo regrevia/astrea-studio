@@ -41,6 +41,9 @@
   不写 `libraryPath`/`md5`，也不清 `out/<jobId>/rN`：成片仍在，可人工处理，但不假装已入库。
 - 归一化只在有产物（或草稿、平台、文案体检、视频体检任一）时才更新 run，避免把渲染阶段的字段清空。
 
+真机证据：[`cli-claim-platform-named.json`](evidence/claim-export-branches/cli-claim-platform-named.json)——同一份手动
+导出成片带 `--platform douyin` 重新认领，rc 0，产物从 `__unknown` 归位成 `__r1__douyin.mp4`，7 项体检全 OK。
+
 ## 2. 中转目录清理规则
 
 入库成功才清 `out/<jobId>/rN`；且成片落点在 `rN` 之内时跳过——自定义 `STUDIO_LIBRARY` 指到中转目录里时，

@@ -1,0 +1,62 @@
+{
+  "jobId": "6ae20a3cb2886cd834c8b67b",
+  "revision": 1,
+  "claim": "/Users/apple/CreatorStudio/out/6ae20a3cb2886cd834c8b67b/r1/6ae20a3cb2886cd834c8b67b__r1__unknown.mp4",
+  "draft": "studio_6ae20a3cb2886cd834c8b67e__r1",
+  "draftPath": "/Users/apple/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6ae20a3cb2886cd834c8b67e__r1",
+  "platform": "douyin",
+  "probe": {
+    "path": "/Users/apple/CreatorStudio/out/6ae20a3cb2886cd834c8b67b/r1/6ae20a3cb2886cd834c8b67b__r1__unknown.mp4",
+    "format": "mov,mp4,m4a,3gp,3g2,mj2",
+    "duration": 11.215238,
+    "size": 11403320,
+    "width": 1080,
+    "height": 1920,
+    "codec": "h264",
+    "pix_fmt": "yuv420p",
+    "fps": 30.0,
+    "audio_codec": "aac",
+    "audio_rate": "44100",
+    "audio_channels": 2
+  },
+  "expect": {
+    "duration": 11.234,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30.0
+  },
+  "checks": {
+    "has_duration": {
+      "ok": true,
+      "detail": "实测 11.215238"
+    },
+    "has_width": {
+      "ok": true,
+      "detail": "实测 1080"
+    },
+    "has_height": {
+      "ok": true,
+      "detail": "实测 1920"
+    },
+    "has_fps": {
+      "ok": true,
+      "detail": "实测 30.0"
+    },
+    "duration": {
+      "ok": true,
+      "detail": "11.22s vs 期望 11.23s (±0.40)"
+    },
+    "resolution": {
+      "ok": true,
+      "detail": "1080x1920 vs 期望 1080x1920"
+    },
+    "fps": {
+      "ok": true,
+      "detail": "30.000 vs 期望 30.000"
+    }
+  },
+  "final": "/Users/apple/CreatorStudio/out/6ae20a3cb2886cd834c8b67b/r1/6ae20a3cb2886cd834c8b67b__r1__douyin.mp4",
+  "accepted": true,
+  "failed": [],
+  "at": "2026-10-31T18:40:25"
+}
