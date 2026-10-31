@@ -78,13 +78,13 @@
 | 项 | 现状 |
 | --- | --- |
 | `allowGui=true` 真实导出（含导出面板操作） | 未跑过全自动一轮；步骤与判据在 [导出面板实测矩阵](../probe/export-panel/platform-matrix.md) |
-| 真实 `jianying_open` 打开草稿 | 能力已注册，未在真机确认窗口被拉起 |
+| 真实 `jianying_open` 打开草稿 | `open_draft.py --name … --surface` 已在真机返回 0、`lsof` 确认打开目标草稿（[studio-acceptance §9.1.1](studio-acceptance.md)）；「打开前先 `ensure_plain`」这套完整流程还没有真机录像 |
 | 带 `remotePostId` 的 `published` 回读 | 只有 `state: unknown` 的失败样本，无成功样本 |
 | 真实抖音发布 | 不可逆，需人工明确授权素材/标题/标签后才做 |
 | 剪映 11.x 同主版本版本戳 | 本机 11.6.0，参考草稿为 10.2.0/5.9.0，线上如实报「沿用模板」 |
 
 ## 6. 对应验收
 
-`integrations/mac-worker/tools/check_all.py` 里相关行：`worker 分发单元测试`（认领拼装/退出码/收尾 + 入库证据/兜底/失败不丢文件）、
-`剪映段离线自检`（含 `t_claim` 用真文件走 `claim_export`）、`后端生产 spec`（归一化与发布取文件）、
+`integrations/mac-worker/tools/check_all.py` 里相关行：`worker 分发单元测试`（认领拼装/退出码/收尾 + 入库证据/兜底/失败不丢文件 +
+打开前 `ensure_plain`、认领缺 `platform` 不落进程）、`剪映段离线自检`（含 `t_claim` 用真文件走 `claim_export`）、`后端生产 spec`（归一化与发布取文件）、
 `发布泳道真机探针`（队列路径：领取/取消/过期租约/回读）。真机导出与发布成功仍见第 5 节。
