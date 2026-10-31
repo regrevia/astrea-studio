@@ -13,8 +13,8 @@
 | 把旧草稿顶到首页 | `export/draft_listing.py surface` | 改 `root_meta_info.json` 里该条 `tm_draft_modified` → 重启剪映 | 会动草稿索引（自动备份，可 `restore`） | round 43 实证：只改草稿目录里的 meta 无效 |
 | 关闭/重启剪映 | `open_draft.py restart_app` | `osascript quit` + 重新 `open -a` | 会打断人正在剪的会话，需说明 | round 43/44 使用 |
 | 驱动导出面板 | `export/jianying_export.py` | AX 读面板控件（`ExportOkBtn`/`ExportFileNameInput`/`ExportPathInput`…）→ 三级通道阶梯 `ax → pid → hid`，用 `verify()` 判有效 | **草稿必须已打开**；面板是 Qt，AXPress 对部分控件无效 ⇒ 最终落到 `hid`（借真实指针）；空闲门禁不过直接 rc 9 | round 43 面板探针/参数回读通过；完整导出未跑通（见 §4） |
-| 认领产物 | `export/jianying_export.py --claim <路径>` | ffprobe 校验时长/画幅/帧率 → 落库 + 台账 | 只读认领；必须显式给路径，拒绝「目录里最新文件」 | 历史轮次 12/12 通过；本轮待用户导出后跑真成片 |
-| 加密草稿的自救 | `export/plain_guard.py` | 打开前存明文快照；回写成密文后先备份密文再写回明文 | 只对「手里还有明文」的草稿有效 | round 45 真机：识别 r1 为密文、对明文 r1 存快照成功 |
+| 认领产物 | `export/jianying_export.py --claim <路径>` | ffprobe 校验时长/画幅/帧率 → 落库 + 台账 | 只读认领；必须显式给路径、`--job-id`、`--revision`、`--platform`，拒绝「目录里最新文件」，参数缺一即 `rc=2` | 历史轮次 12/12；本轮真机：手动导出后认领 rc 0（11.215s / 1080×1920），入库并进交付清单 |
+| 加密草稿的自救 | `export/plain_guard.py` | 打开前存明文快照；回写成密文后先备份密文再写回明文；`status` 报 `stale`（快照后明文又改过）与 `changedSinceSnapshot` | 只对「手里还有明文」的草稿有效；密文状态不算过期（那正是快照存在的理由） | round 45 真机：识别 r1 为密文、对明文 r1 存快照成功；本轮补离线用例 |
 | 平台侧发布 | `worker.py` → `publish_sau` | social-auto-upload 驱动浏览器发布并回读 `remotePostId` | 账号已登录、发布内容齐全、**必须人工点头** | 泳道探针 4/4 通过；真发未做 |
 | 探针/巡检 | `kind:"probe"`、`tools/check_all.py` | AX 窗口/控件探针、10 行离线+真机自检 | 无 | round 45 `--offline` 10/10 |
 
@@ -32,8 +32,9 @@
 ## 3. 一次完整链路现在长什么样
 
 ```
-jianying 任务 → 明文草稿落盘 → plain_guard 快照 → jianying_open 打开（首页双击）
-   → 导出面板出现 → （导出这一步目前由人点，见 §4）→ --claim 认领产线
+jianying 任务 → 明文草稿落盘 → plain_guard 快照 → jianying_open 打开（首页双击；起进程前
+   worker 再走一次 ensure_plain，失败只记日志不拦打开）→ 导出面板出现
+   → （导出这一步目前由人点，见 §4）→ --claim 认领产线
    → publish 泳道（人工点头后）→ 回读 remotePostId
 ```
 

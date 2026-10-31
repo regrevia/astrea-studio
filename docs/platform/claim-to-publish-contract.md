@@ -32,6 +32,9 @@
 规则：
 
 - `claimed` 为真表示「这是人工导出后被认领的成片」，后端据此清掉 `manualExportReason`。
+- `platform` 与 `draftPath` 必须由载荷显式给出：缺 `platform` 在起进程前就失败（`worker` 不再
+  默认 `douyin`，`claim.build_argv` 同样拒空白），`plan_output` 也不会再给出 `__unknown` 落点——
+  产物名里的平台段是发布取文件的依据，猜错等于把成片归错档。
 - `videoPath` 与 `libraryPath` 指同一份文件；**发布取文件顺序是 平台重交付 key → `libraryPath` → `videoPath`**，
   因为库内路径是唯一保证在本机存在、且过过指纹闸的那份。
 - 入库失败（`library.land` 抛错）时工作机返回 `claimed: true` 但**只有**原始 `videoPath`，

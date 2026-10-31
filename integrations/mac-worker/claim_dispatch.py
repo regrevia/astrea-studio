@@ -30,6 +30,8 @@ def build_argv(python: str, script: Path, *, claim_path: str, job_id: str,
     认领必须带齐 (jobId, revision, platform, draftPath)：少任何一项都只能靠猜，
     而「猜导出目录里最新文件」在并发导出时必然拿错别人的片子。
     """
+    if not str(platform or "").strip():
+        raise ValueError("认领成片需要 platform：没有平台就核对不了画幅，产物也无法定名")
     argv = [
         str(python), str(script),
         "--claim", str(claim_path),

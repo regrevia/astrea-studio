@@ -35,6 +35,13 @@ class BuildArgvTest(unittest.TestCase):
         )
         self.assertEqual(argv[argv.index("--canvas") + 1], "1080x1920")
 
+    def test_blank_platform_is_rejected_before_spawning(self):
+        for value in ("", "   "):
+            with self.assertRaises(ValueError):
+                claim.build_argv("py", Path("/s.py"), claim_path="/a.mp4",
+                                 job_id="j", revision=1, platform=value,
+                                 outdir="/o", draft_path="/d")
+
 
 class FailureTest(unittest.TestCase):
     def test_known_codes_map_to_named_reasons(self):

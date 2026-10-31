@@ -130,6 +130,26 @@ class JianyingOpenTest(unittest.TestCase):
         self.assertIn("对不上", str(ctx.exception))
         self.assertIn("duration 11.0 != 30.0s", str(ctx.exception))
 
+    def test_claim_without_platform_is_rejected(self) -> None:
+        with mock.patch.object(worker.subprocess, "run") as run:
+            with self.assertRaises(worker.JianyingError) as ctx:
+                self.worker.do_jianying_export(
+                    "job-1", {"draftPath": str(self.draft), "claimPath": "/tmp/a.mp4"},
+                    _progress)
+        run.assert_not_called()
+        self.assertIn("platform", str(ctx.exception))
+
+    def test_open_snapshots_plaintext_draft_first(self) -> None:
+        (self.draft / "draft_info.json").write_text(
+            '{"canvases": [{"width": 1080, "height": 1920}]}', encoding="utf-8")
+        done = subprocess.CompletedProcess([], 0, stdout="opened", stderr="")
+        with mock.patch.object(worker, "screen_locked", return_value=False), \
+                mock.patch.object(worker.subprocess, "run", return_value=done):
+            result = self._call({"draftPath": str(self.draft)})
+        self.assertEqual(result["plainGuard"], "snapshot")
+        self.assertTrue(
+            (self.draft.parent / ".studio-plain" / self.draft.name / "manifest.json").is_file())
+
     def test_hard_failure_raises_with_reason(self) -> None:
         done = subprocess.CompletedProcess([], 7, stdout="", stderr="boom")
         with mock.patch.object(worker, "screen_locked", return_value=False), \

@@ -494,6 +494,10 @@ def t_claim(tmp: Path, media: dict[str, Path]) -> str:
                 "非 mp4/mov 竟然认领成功了")
         require(X.claim_export(str(media["video"]), args_for(job_id="")) == 2,
                 "没 jobId 竟然认领成功了")
+        require(X.claim_export(str(media["video"]), args_for(revision="")) == 2,
+                "没 revision 竟然认领成功了")
+        require(X.claim_export(str(media["video"]), args_for(platform="")) == 2,
+                "没 platform 竟然认领成功了")
 
         # 时长对不上：拒绝、留 rejected 证据、原文件不动
         wrong = tmp / "claim_bad.mp4"
@@ -511,6 +515,12 @@ def t_claim(tmp: Path, media: dict[str, Path]) -> str:
         shutil.copy2(media["video"], good)
         require(X.claim_export(str(good), args_for()) == 0, "合规成片认领失败")
         _, final = X.plan_output(job, 1, "douyin", outdir)
+        try:
+            X.plan_output(job, 1, "", outdir)
+        except ValueError:
+            pass
+        else:
+            require(False, "没有 platform 竟然算出了 __unknown 落点")
         require(final.is_file(), "认领后没归位到 plan_output 落点: %s" % final)
         require(not good.exists(), "归位后源文件还在，等于复制了一份")
         ok_ev = X.EVIDENCE / job / "r1__douyin.json"

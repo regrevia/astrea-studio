@@ -675,6 +675,15 @@ class Worker:
                 "output": {"opened": False},
                 "note": "屏幕锁着，这轮没动剪映；解锁后再点一次。",
             })
+        # 打开前先过明文守卫：剪映保存会把 draft_info.json 换成密文，先存一份明文快照，
+        # 下次引擎读草稿/还原才有底本。守卫失败只写日志，绝不拦这次打开。
+        try:
+            from export import plain_guard as PG
+            guard = PG.ensure_plain(draft)
+            base["plainGuard"] = guard.get("action")
+            print("明文守卫：%s" % guard.get("action"), file=sys.stderr)
+        except Exception as exc:  # noqa: BLE001 —— 尽力而为，不能挡打开
+            print("明文守卫跳过：%s" % exc, file=sys.stderr)
         progress(20, "jianying:open_draft")
         opener = Path(__file__).with_name("export") / "open_draft.py"
         try:
@@ -722,7 +731,9 @@ class Worker:
         run_id = payload.get("runId") or ""
         revision = int(payload.get("revision") or 1)
         draft_path = str(payload.get("draftPath") or payload.get("draft_path") or "")
-        platform = str(payload.get("platform") or "douyin")
+        platform_hint = str(payload.get("platform") or "").strip()
+        # 历史调用方不带 platform 时，自动导出仍退回 douyin；认领不走这条退路（见下）。
+        platform = platform_hint or "douyin"
         outdir = str(payload.get("outdir") or (STUDIO_HOME / "out"))
         base = {
             "jobId": job_id, "runId": run_id, "revision": revision,
@@ -734,6 +745,9 @@ class Worker:
             # 体检（时长/画布/帧率）与自动导出同一套，过了才入库。
             if not draft_path:
                 raise JianyingError("认领成片需要 draftPath：没有草稿就无从核对时长与画布")
+            if not platform_hint:
+                raise JianyingError("认领成片需要 platform：没有平台无法核对画幅，产物也无法定名")
+            base["platform"] = platform_hint
             progress(20, "jianying:claim")
             script = Path(__file__).with_name("export") / "jianying_export.py"
             argv = claim.build_argv(

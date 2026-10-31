@@ -462,9 +462,13 @@ def plan_output(job_id: str, revision: int, platform: str, outdir,
     旧实现是「导出完去 ~/Movies 挑最新文件」——并发导出时必然拿错别人的片子，
     而且重跑一次就把上一版覆盖掉。这里先算死落点，跑完只往这里归位。
     """
+    platform = str(platform or "").strip()
+    if not platform:
+        # 落成 __unknown 的成片没法核对画幅、也没法按平台归档，宁可算不出落点
+        raise ValueError("plan_output 需要 platform：产物名必须带平台")
     out_dir = Path(outdir).expanduser() / str(job_id) / ("r%d" % int(revision))
     final = out_dir / ("%s__r%d__%s.%s" % (
-        job_id, int(revision), platform or "unknown",
+        job_id, int(revision), platform,
         str(container or "mp4").lstrip(".")))
     return out_dir, final
 
@@ -495,6 +499,9 @@ def claim_export(path: str, args) -> int:
         return 2
     if not args.revision:
         print("要 --revision：认领的成片必须绑到修订版", file=sys.stderr)
+        return 2
+    if not str(getattr(args, "platform", "") or "").strip():
+        print("要 --platform：认领的成片必须绑到平台", file=sys.stderr)
         return 2
     draft_path = args.draft_path or ""
     sidecar = load_sidecar(draft_path) if draft_path else {}

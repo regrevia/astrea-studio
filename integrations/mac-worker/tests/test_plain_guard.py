@@ -201,5 +201,32 @@ class ListStoresTest(unittest.TestCase):
             self.assertTrue(rows[0]["draftExists"])
 
 
+class StaleSnapshotTest(unittest.TestCase):
+    def test_edited_draft_marks_snapshot_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = make_draft(Path(tmp))
+            PG.snapshot(target)
+            self.assertFalse(PG.status(target)["stale"])
+            (target / "draft_info.json").write_text('{"canvases": []}', encoding="utf-8")
+            state = PG.status(target)
+            self.assertTrue(state["stale"])
+            self.assertEqual(state["changedSinceSnapshot"], ["draft_info.json"])
+            self.assertTrue(state["restorable"])  # 过期但还能还原，只是要人看一眼
+
+    def test_encrypted_draft_is_not_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = make_draft(Path(tmp))
+            PG.snapshot(target)
+            encrypt_in_place(target)
+            self.assertEqual(PG.status(target)["changedSinceSnapshot"], [])
+
+    def test_no_snapshot_is_not_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = make_draft(Path(tmp))
+            state = PG.status(target)
+            self.assertFalse(state["stale"])
+            self.assertEqual(state["changedSinceSnapshot"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

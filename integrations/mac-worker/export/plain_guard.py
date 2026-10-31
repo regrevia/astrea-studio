@@ -124,9 +124,27 @@ def read_manifest(target: Path, store: Path | None = None) -> dict | None:
         return None
 
 
+def stale_files(target: Path, manifest: dict | None) -> list[str]:
+    """快照之后又被改过的明文文件（sha256 对不上）：快照已经过期，还原会把新改动抹掉。
+
+    只比「当前还是明文」的文件：被剪映改写成密文是快照存在的理由，不算过期。
+    """
+    if not manifest or not Path(target).is_dir():
+        return []
+    changed = []
+    for entry in manifest.get("files") or []:
+        path = Path(target) / str(entry.get("name") or "")
+        if not path.is_file() or not is_plaintext(path):
+            continue
+        if entry.get("sha256") and _sha256(path) != entry["sha256"]:
+            changed.append(path.name)
+    return changed
+
+
 def status(target: Path, store: Path | None = None) -> dict:
     target = Path(target).expanduser()
     manifest = read_manifest(target, store)
+    changed = stale_files(target, manifest) if target.is_dir() else []
     return {
         "draft": target.name,
         "draftDir": str(target),
@@ -136,6 +154,9 @@ def status(target: Path, store: Path | None = None) -> dict:
         "hasSnapshot": bool(manifest),
         "snapshotAt": (manifest or {}).get("createdAt"),
         "restorable": bool(manifest) and target.is_dir(),
+        # 快照过期：草稿在快照之后又被改过（引擎重建、手工编辑），还原前要看一眼
+        "stale": bool(changed),
+        "changedSinceSnapshot": changed,
     }
 
 
