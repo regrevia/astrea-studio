@@ -69,12 +69,28 @@ def _md5(path: Path) -> str:
 
 def search_wikimedia(query: str, kind: str = "video", limit: int = 5,
                      max_mb: int = 60) -> list[dict]:
-    """Commons 文件搜索。kind=video 用 filetype:video，image 用 filetype:bitmap。"""
+    """Commons 文件搜索。kind=video 用 filetype:video，image 用 filetype:bitmap。
+
+    Commons 的头部结果常是 `.ogv`（Theora，剪映不认）或上百 MB 的 4K 源，按扩展名和体积
+    筛完可能一条不剩。所以先按体积多取几倍，**筛空时再补一次按容器格式的搜索**。
+    """
     ftype = "video" if kind == "video" else "bitmap"
+    want = max(1, min(limit, 20))
+    mime = "video/webm" if kind == "video" else "image/jpeg"
+    attempts = ["filetype:%s" % ftype, "filemime:%s" % mime]
+    for extra in attempts:
+        rows = _search_pages("%s %s" % (query, extra), kind, want, max_mb)
+        if rows:
+            return rows
+    return []
+
+
+def _search_pages(term: str, kind: str, want: int, max_mb: int) -> list[dict]:
+    """跑一次 Commons 搜索，把不可用格式和超预算体积的都筛掉。"""
     params = {
         "action": "query", "format": "json", "generator": "search",
-        "gsrsearch": "%s filetype:%s" % (query, ftype), "gsrnamespace": "6",
-        "gsrlimit": str(max(1, min(limit, 20))),
+        "gsrsearch": term, "gsrnamespace": "6",
+        "gsrlimit": str(min(want * 4, 50)),
         "prop": "imageinfo", "iiprop": "url|size|mime|extmetadata|user",
     }
     data = _curl_json("https://commons.wikimedia.org/w/api.php?" + urllib.parse.urlencode(params))
@@ -104,7 +120,7 @@ def search_wikimedia(query: str, kind: str = "video", limit: int = 5,
     # 原始文件常常上百 MB（4K 源），超出预算的不要：下载慢、转码也慢
     if max_mb:
         out = [x for x in out if not x["bytes"] or x["bytes"] <= max_mb * 1024 * 1024]
-    return out
+    return out[:want]
 
 
 def find_duplicate(root: Path, md5: str) -> dict | None:

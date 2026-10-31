@@ -129,5 +129,67 @@ class FindDuplicateTest(unittest.TestCase):
             self.assertIsNone(M.find_duplicate(root, md5))
 
 
+class SearchOversampleTest(unittest.TestCase):
+    """Commons 头部结果是超大 4K 源或 .ogv 时，筛完不能一条不剩。"""
+
+    def _page(self, pid: str, name: str, mb: int) -> dict:
+        return {"pageid": pid, "title": "File:" + name,
+                "imageinfo": [{"url": "https://upload.wikimedia.org/x/" + name,
+                               "size": mb * 1024 * 1024, "mime": "video/webm",
+                               "extmetadata": {}}]}
+
+    def test_oversize_heads_do_not_empty_the_result(self):
+        pages = {"1": self._page("1", "a4k.webm", 400),
+                 "2": self._page("2", "b4k.webm", 300),
+                 "3": self._page("3", "c4k.webm", 200),
+                 "4": self._page("4", "d4k.webm", 120),
+                 "5": self._page("5", "ok1.webm", 8),
+                 "6": self._page("6", "ok2.webm", 6)}
+        seen = {}
+
+        def fake_json(url):
+            seen["url"] = url
+            return {"query": {"pages": pages}}
+
+        old = M._curl_json
+        M._curl_json = fake_json
+        try:
+            rows = M.search_wikimedia("ocean waves", "video", limit=2, max_mb=60)
+        finally:
+            M._curl_json = old
+        self.assertEqual([r["title"] for r in rows], ["ok1.webm", "ok2.webm"])
+        self.assertIn("gsrlimit=8", seen["url"])
+
+    def test_ogv_heads_fall_back_to_webm_search(self):
+        ogv = {"1": self._page("1", "Ocean surface waves 02.ogv", 58),
+               "2": self._page("2", "Ocean surface waves 03.ogv", 20)}
+        webm = {"3": self._page("3", "Ocean waves.webm", 12)}
+        urls = []
+
+        def fake_json(url):
+            urls.append(url)
+            return {"query": {"pages": webm if "filemime" in url else ogv}}
+
+        old = M._curl_json
+        M._curl_json = fake_json
+        try:
+            rows = M.search_wikimedia("ocean waves", "video", limit=2)
+        finally:
+            M._curl_json = old
+        self.assertEqual([r["title"] for r in rows], ["Ocean waves.webm"])
+        self.assertEqual(len(urls), 2)
+        self.assertIn("filemime%3Avideo%2Fwebm", urls[1])
+
+    def test_limit_is_respected_after_filter(self):
+        pages = {str(i): self._page(str(i), "v%d.webm" % i, 4) for i in range(1, 7)}
+        old = M._curl_json
+        M._curl_json = lambda url: {"query": {"pages": pages}}
+        try:
+            rows = M.search_wikimedia("ocean", "video", limit=1)
+        finally:
+            M._curl_json = old
+        self.assertEqual(len(rows), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

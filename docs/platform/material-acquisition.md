@@ -24,6 +24,9 @@
 - `materials.py verify [--root DIR]`：台账体检——文件缺失 / 空文件 / md5 不符三类别出来，有问题退出码 1。
 - 默认 `STUDIO_LIBRARY` = `~/CreatorStudio/library`，素材与成片同在库根下、分 `_assets/` 与 `<project>/`。
 - `--max-mb`（默认 60）挡掉 Commons 上 170MB~2GB 的 4K 原始文件：下载慢、后续转码也慢。
+- 搜索会先按 `filetype:video|bitmap` 多取 4 倍候选；如果按扩展名（剪映只认 mp4/mov/m4v/webm/mkv）
+  和体积筛完一条不剩，再补一次 `filemime:video/webm`（图片 `image/jpeg`）搜索。Commons 的头部结果
+  经常是 `.ogv`（Theora，剪映不认）或 4K 原片，只搜一次会给出「搜不到素材」的假空结果。
 
 ### 1.1 平台入口（任务队列 + Web 搜素材）
 
@@ -47,7 +50,11 @@ curl -s http://127.0.0.1:8899/jobs/<id>   # result.items[*] = {path,md5,license,
   → `succeeded`，落到
   `/Users/apple/CreatorStudio/library/_assets/wikimedia/2026-10/cat-lapping-water-off-ground-in__wikimedia__54669255.webm`
   （10.3MB，`CC BY-SA 4.0`，md5 `42ca72062f631a3d0fc54884dc6d94e3`），`.json` sidecar 同步落盘。
-- 测试：`tests/test_jobs_materials.py`（搜空/坏 kind/条数钳制/下载落盘/sidecar/去重/dry-run）
+- 测试：`tests/test_jobs_materials.py`（搜空/坏 kind/条数钳制/下载落盘/sidecar/去重/dry-run）、
+  `tests/test_materials.py::SearchOversampleTest`（4K 原片占头部不空、`.ogv` 占头部会退到 `filemime:video/webm`）
+- 真机实证（本轮）：`GET /materials/search?q=ocean+waves&kind=video&n=2` 从 `count:0` 变成 `count:2`
+  （`Hurricane Jova 2023 waves in Pacific Palisades, CA.webm` 5MB、`Irminger Bow in Waves (OOI).webm` 33MB）——
+  同一个 query 之前空，是因为头部全是 58/56/50MB 的 `.ogv`；现在退到 `filemime` 那次搜索就有货了。
 
 ## 2. 卡点分析
 
