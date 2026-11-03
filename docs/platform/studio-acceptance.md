@@ -167,8 +167,8 @@ rc=2: 等待用户空闲 ≥30s 再操作（最多等 300s）…
 **收尾所需动作**：把剪映窗口拖到当前桌面（或切到它所在桌面）后执行
 
 ```
-PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib \
-  /Users/apple/CreatorStudio/runtime/integrations/mac-worker/.python3 \
+PYTHONPATH=~/CreatorStudio/runtime/lib \
+  ~/CreatorStudio/runtime/integrations/mac-worker/.python3 \
   integrations/mac-worker/export/open_draft.py --name studio_6ae13f0f791bd5bc23ed991a__r2
 ```
 
@@ -189,7 +189,7 @@ $ python3 export/jianying_export.py \
   校验 duration      OK  11.22s vs 期望 11.23s (±0.40)
   校验 resolution    OK  1080x1920 vs 期望 1080x1920
   校验 fps           OK  30.000 vs 期望 30.000
-已归位 → /Users/apple/CreatorStudio/out/6ae20a3cb2886cd834c8b67b/r1/6ae20a3cb2886cd834c8b67b__r1__unknown.mp4
+已归位 → ~/CreatorStudio/out/6ae20a3cb2886cd834c8b67b/r1/6ae20a3cb2886cd834c8b67b__r1__unknown.mp4
 证据 → docs/probe/export-panel/runs/6ae20a3cb2886cd834c8b67b/r1__.json
 RC=0
 ```
@@ -227,7 +227,7 @@ RC=0
 **下一轮开跑条件**：机器空闲 ≥30s 时执行（草稿可先 surface 再开）：
 
 ```
-PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib \
+PYTHONPATH=~/CreatorStudio/runtime/lib \
 python3 integrations/mac-worker/export/jianying_export.py \
   --job-id <jobId> --revision <n> \
   --draft-path "$HOME/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6ae20a3cb2886cd834c8b67e__r1" \
@@ -281,7 +281,7 @@ python3 integrations/mac-worker/export/jianying_export.py \
 - 命令（直连驱动，等价于 worker 的 `jianying:export`）：
   `jianying_export.py --job-id direct17 --revision 2 --platform 抖音 --draft-path …/studio_6ae13f0f791bd5bc23ed991a__r2 --wait-idle 0 --return-pid <Chrome pid>`
 - 结果：`产物 27.10 MB`，`1080x1920 @ 30fps h264 + aac`，`30.833s`，6 项校验全 OK。
-- 归位：`/Users/apple/CreatorStudio/out/direct17/r2/direct17__r2__抖音.mp4`（28,418,773 B，md5 `71d5abe966a97d983629ecb90f43d09d`）。
+- 归位：`~/CreatorStudio/out/direct17/r2/direct17__r2__抖音.mp4`（28,418,773 B，md5 `71d5abe966a97d983629ecb90f43d09d`）。
 - 日志片段：`鼠标点击导出 1975,1322` → `已点导出，前台交还 pid=1313（ok）` → `产物: ~/Movies/studio_6ae13f0f791bd5bc23ed991a__r2.mp4`。
 - 由此确认：**编码阶段不需要前台**。点击后驱动器只做 `poll_outputs(~/Movies)` + `ffprobe` 校验 + 归档。
 
@@ -309,7 +309,7 @@ python3 integrations/mac-worker/export/jianying_export.py \
 | 可验证 scene patch | 完成 | 补丁落新 revision、可连续叠加、底稿仍可审计；[scene-patch-accumulate.json](evidence/scene-patch-accumulate.json)、[scene-patch-ui.png](evidence/scene-patch-ui.png) |
 | 剪映工程 + 独立导出任务 | 完成 | 导出与渲染拆成两条 job，认领只排任务不驱动面板，`claimPath`/`allowGui` 互斥；[claim-export-branches](evidence/claim-export-branches) |
 | 认领成片入库 | 完成 | 实机 job `6ae2a8298f01834bace113fc`：`claimPath` 指向 1080×1920/30fps/6.0s 的 mp4，job `succeeded`、`claimed=true`，落 `library/端到端验收-一体化宣发工作台__6ae237a7/2026-10/…__douyin__r1.mp4`（188 KB）并写进 `library/index.jsonl`；素材指纹不符时 job `6ae2a8228f01834bace113b3` 失败，`reasonCode=draft_media_changed`（`认领失败 rc=12：草稿素材换了：media 1b0c4d60a2f4 != deadbeef0000`） |
-| 发布契约（离线） | 完成 | `publish_sau` 载荷→命令行、四类拒绝、状态判读（`submitted_unverified` / `submission_unknown` / `PublishError`）全部有测试：`tools/check_publish.py` 16/16，worker 测试 81 项；见 [publish-contract.md](publish-contract.md)；`--cookie yefen` 实测无头预检通过；`tools/check_publish_lane.py` 用**故意缺字段**的 `publish_sau` 探针跑通四条队列路径（`--all`，各 2.8 s 全 PASS）：`claim` 被 `publish` 泳道领取、`job.claimed` 带作业号、在载荷校验处失败（`publish payload has no accountRef`）、不查 cookie 不上传；`cancelled-run` 与 `stale-revision` 在领取阶段被取消，`job.cancelled` 带作业号且写明 `run cancelled` / `revision 1 superseded by 2`，worker 从未收到这条活；`lease-expired` 造一条租约过期的 running 作业和一条 `submitting` 提交，回收器把作业判 `lease expired`、提交落回 `submission_unknown`（不再无声卡在进行中）、run 保持 `succeeded`不加任务；`readback-retry` 造一条回执不明的记录，调 `POST publications/:id/readback-job` 排出一条 `publish_readback`（payload 绑 `attemptId`）、记录翻成 `reconciling`，再点一次与无链接两种都被拒——回读入口不再靠手点验证，每次 `--all` 都验一遍 |
+| 发布契约（离线） | 完成 | `publish_sau` 载荷→命令行、四类拒绝、状态判读（`submitted_unverified` / `submission_unknown` / `PublishError`）全部有测试：`tools/check_publish.py` 16/16，worker 测试 81 项；见 [publish-contract.md](publish-contract.md)；`--cookie yefen` 实测无头预检通过；`tools/check_publish_lane.py` 的 `--all` 五条探针在 Docker 单机栈上 **5/5 PASS**（`--apply`，探针自注册临时 worker 领取，证据 `docs/platform/evidence/publish-lane/probe-20261104-065154.json`）：`claim` 从 `publish` 泳道领到、`leaseOwner` 是探针 worker、`job.claimed` 带作业号、作业进 `running`、没有 `job.cancelled` 也没有上传动作；`cancelled-run` 与 `stale-revision` 在领取阶段被服务端取消，`job.cancelled` 带作业号且写明 `run cancelled` / `revision 1 superseded by 2`，worker 从未收到这条活；`lease-expired` 造一条租约过期的 running 作业和一条 `submitting` 提交，回收器把作业判 `lease expired`、提交落回 `submission_unknown`（不再无声卡在进行中）、run 保持 `succeeded` 不加任务；`readback-retry` 造一条回执不明的记录，调 `POST publications/:id/readback-job` 排出一条 `publish_readback`（payload 绑 `attemptId`）、记录翻成 `reconciling`，再点一次与无链接两种都被拒。**未覆盖**：`publish_sau` 载荷校验失败（`publish payload has no accountRef`）属于 worker 泳道行为，要真 worker 在线才验得到——这一条不在本轮结论里 |
 | 认领 → 发布台账 | 完成 | 认领过的 run 登记发布，`content.assetKey` 指向入库那一份而非产物目录临时路径；同载荷重复登记 `deduped:true`。attempt `6ae2ab4666b2fe676bafe43a` |
 | 发布状态机 | 完成 | 越级转移 400；`planned→submitting→submission_unknown→not_submitted` 真机走通；重复回写不加证据（attempt `6ae2ab4666b2fe676bafe43a`） |
 | 链接回读收尾 | 完成 | 无头渲染回读作品链接，只给 `published` / `not_found` / `unknown` 三档；`published` 才带作品 ID 回写台账，`unknown` 不动（离线 30/30、单测 94 条；真机 `yefen` 读到 4 条作品，真实作品 `7602658672556153993` → `published`，不存在的 ID → `unknown` 未写库；worker 作业 `publish_readback` 与后端 `POST production/worker/publications/:id/readback` 打通，后端只收 `published`（带 ID）/`not_submitted`，越级 12853）；界面入口 `POST publications/:id/readback-job` 已通（作业被 `publish` 泳道领取、21s 跑完，`unknown` 时记录退回 `submission_unknown` 并记 `readback_no_conclusion`，run 不动；重复点击、非 `submission_unknown`、无链接三类都拒；界面真机点过：`回执不明` 行有「回读链接」，点一下提示「已排队回读，稍后回来看结论」、该行转「核对中」，作业 21s 后跑完、无结论退回 `提交结果不明`） |
@@ -408,3 +408,35 @@ curl -s -X POST :8080/api/production/mcp -d '{"method":"tools/call","params":{"n
 - 单测 14 条（`tests/test_draft_guard.py`）+ 21 条（`tests/test_plain_guard.py`）覆盖
   存/还原/过期/残缺/救不回来/dry-run/跳过规则与「只在状态变化时记流水账」；
 - 不变量：快照失败只告警、过期快照不自动还原、还原前先备份密文、绝不伪造明文主文件。
+
+## 13. 纯 Docker 栈上的三条实测（2026-11-04）
+
+前面几节的证据都来自装了 mac worker 的机器。这一轮把「只跑 `docker compose`、没有常驻
+worker」的验收路径补齐，避免 Docker 单机版看起来可用、实际队列没人派/没人领。
+
+- **发布泳道探针自带 worker**：Docker 栈上 `productionWorker` 是空的，作业只会停在 `queued`，
+  以前会被误读成「后端不派活」。探针现在自己 `POST production/workers/register` 注册一条
+  临时 worker（能力 `publish_sau` + `publish_readback`），再 `POST production/worker/claim`
+  领取，跑完连 worker 一起删。`--all --apply` 五条 **5/5 PASS**，证据
+  [publish-lane/probe-20261104-065154.json](./evidence/publish-lane/probe-20261104-065154.json)：
+  `claim`（租约归探针 worker、`job.claimed` 带作业号、进 `running`、无取消无上传）、
+  `cancelled-run`、`stale-revision`、`lease-expired`、`readback-retry`。
+  **未覆盖**：`publish_sau` 载荷校验失败（`publish payload has no accountRef`）是 worker 泳道
+  行为，要真 worker 在线；本轮不声称验过。
+- **对象存储三条读回路径**：新增 `make s3-check`（`deploy/check_s3_roundtrip.py`，纯标准库
+  SigV4）。传一个探针对象后按应用实际用法读回三条：S3 直连 `:9000`（后端写）、
+  nginx `/oss/<key>`（服务端读，靠桶策略匿名 GET）、`http://localhost:9000/<bucket>/<key>`
+  （后端 `publicEndpoint` 签发的 presigned URL，客户端读）。三条都 `200` 且内容一致，跑完删除。
+  注意 `/oss/` 这条不能带签名：nginx 会把 Host 换成 upstream 名，任何按对外 Host 算的签名都会
+  `SignatureDoesNotMatch`——presigned URL 是给 `:9000` 用的，不是给 `/oss/` 用的。
+- **`schematic_preview.py --style paper`**：`deploy/specs/envoy_intro.json` 无截图渲染
+  rc=0，35.1 s，6 个场景，成片 21 MB（竖屏、纯 SVG 背景版）。只证明这条代码路径可跑，
+  没有真截图时的版式效果仍需人看。
+
+## 14. 还没验证的（本轮新增遗留）
+
+- 应用层 S3 上传本身：这一版 `aitoearn-server`/`aitoearn-ai` 里没有暴露上传接口调用
+  `AwsS3Service`，所以只验了「按同样的 SigV4 语义能写能读」，没验「某个 HTTP 接口点一下会
+  往桶里放东西」。
+- 强制全量重建：`deploy/build_images.sh` 新加了 `STUDIO_BUILD_NO_CACHE=1`（清 builder 缓存），
+  加了之后没再跑一次完整镜像构建。

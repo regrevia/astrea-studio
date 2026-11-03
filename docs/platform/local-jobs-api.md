@@ -74,7 +74,7 @@ curl -s 'http://127.0.0.1:8899/guard?limit=20' | python3 -m json.tool | head -40
 curl -s -X POST http://127.0.0.1:8899/jobs -H 'Content-Type: application/json' -d '{
   "kind": "paper",
   "payload": {
-    "specPath": "/abs/path/deploy/specs/envoy_real.json",
+    "specPath": "/abs/path/deploy/specs/envoy_paper.json",
     "shots": ["sketch:link", "/abs/q_how_i.png#470#contain#340", "sketch:timeline"],
     "caps": ["", "", ""],
     "style": "paper",

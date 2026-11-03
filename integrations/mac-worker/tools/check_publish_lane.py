@@ -31,21 +31,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
-import shutil
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
-MONGO_URI = (
-    "mongodb://aitoearn:flClCq2wU6tzDpILsV1VdyE0kHOb@127.0.0.1:27017/aitoearn?authSource=admin"
-)
-MONGO_CONTAINER = "creatorstudio-mongodb-1"
 WORKER_ID = "6ad9ee47437a9be7260961a6"  # mac-1
-USER_ID = "6ad9e38c8d350ba17d570e2b"
+# 必须等于 /tmp/auto_token.txt 里签发的用户 id：run / attempt / job 的 userId 是
+# 归属过滤条件。用别的 id 造数据，接口只会回「Publication attempt not found」，
+# 队列里的作业也永远领不到（claim 按 token 用户的 userId 过滤）。
+USER_ID = "6ae99eae89951ef393625e28"
 PROJECT_ID = "6ae237a72a5e71e140145c45"  # 端到端验收项目
 WAIT_SECONDS = 60
 API = "http://127.0.0.1:8080/api"
@@ -55,90 +56,229 @@ CASES = ("claim", "cancelled-run", "stale-revision", "lease-expired", "readback-
 LEASE_WAIT_SECONDS = 150  # 回收器每分钟扫一次
 
 
-def _mongosh_cmd(js: str) -> list[str]:
-    """本机有 mongosh 就用本机，没有就借容器里的（这台机器上是后者）。"""
-    local = shutil.which("mongosh")
-    if local:
-        return [local, MONGO_URI, "--quiet", "--eval", js]
-    return ["docker", "exec", MONGO_CONTAINER, "mongosh", MONGO_URI, "--quiet", "--eval", js]
+CONTAINER = "creatorstudio-aitoearn-server-1"
+STUDIO_HOME = Path(os.environ.get("STUDIO_HOME", str(Path.home() / "CreatorStudio")))
+SERVER_CFG = STUDIO_HOME / "config" / "aitoearn-server.yaml"
+
+# 这台机器上没有 mongosh（也不该为了一个门禁再装一套 shell），改成开一次
+# node + mongodb 驱动（后台镜像里本来就有），用 JSON 传操作、JSON 回结果。
+# 好处是查询条件、投影、排序都是结构化数据，不会像拼 JS 字符串那样被引号咬。
+NODE_MONGO = r"""
+import { MongoClient, ObjectId } from 'mongodb';
+const raw = await new Promise((resolve) => {
+  let buf = '';
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data', (chunk) => { buf += chunk; });
+  process.stdin.on('end', () => resolve(buf || '{}'));
+});
+const req = JSON.parse(raw);
+// 递归还原 Python 侧发来的 ObjectId / Date，别的原样传。
+const revive = (value) => {
+  if (Array.isArray(value)) return value.map(revive);
+  if (value && typeof value === 'object') {
+    if (typeof value.$oid === 'string') return new ObjectId(value.$oid);
+    if (typeof value.$date === 'string') return new Date(value.$date);
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = revive(v);
+    return out;
+  }
+  return value;
+};
+const op = req.op || {};
+const coll = () => client.db(req.dbName).collection(op.collection);
+const client = new MongoClient(req.uri);
+let result;
+try {
+  await client.connect();
+  const c = coll();
+  switch (op.action) {
+    case 'insertOne':
+      result = { insertedId: String((await c.insertOne(revive(op.doc))).insertedId) };
+      break;
+    case 'findOne': {
+      const opts = {};
+      if (op.projection) opts.projection = op.projection;
+      if (op.sort) opts.sort = op.sort;
+      result = await c.findOne(revive(op.filter || {}), opts);
+      break;
+    }
+    case 'find': {
+      let cursor = c.find(revive(op.filter || {}), op.projection ? { projection: op.projection } : {});
+      if (op.sort) cursor = cursor.sort(op.sort);
+      if (op.limit) cursor = cursor.limit(op.limit);
+      result = await cursor.toArray();
+      break;
+    }
+    case 'countDocuments':
+      result = await c.countDocuments(revive(op.filter || {}));
+      break;
+    case 'updateOne':
+      result = await c.updateOne(revive(op.filter || {}), revive(op.update || {}));
+      break;
+    case 'updateMany':
+      result = await c.updateMany(revive(op.filter || {}), revive(op.update || {}));
+      break;
+    case 'deleteOne':
+      result = await c.deleteOne(revive(op.filter || {}));
+      break;
+    case 'deleteMany':
+      result = await c.deleteMany(revive(op.filter || {}));
+      break;
+    default:
+      throw new Error(`unsupported action ${op.action}`);
+  }
+  process.stdout.write(JSON.stringify({ ok: true, result }));
+} catch (err) {
+  process.stdout.write(JSON.stringify({ ok: false, error: String((err && err.message) || err) }));
+  process.exitCode = 1;
+} finally {
+  await client.close();
+}
+"""
 
 
-def mongo(js: str) -> str:
+def _mongo_target() -> tuple[str, str]:
+    """连接串直接取渲染后的后台配置：容器内主机名是 mongodb，只有它有驱动。"""
+    if not SERVER_CFG.exists():
+        raise SystemExit(f"缺少 {SERVER_CFG}，先跑 `make config`")
+    text = SERVER_CFG.read_text()
+    match = re.search(r'^"mongodb":\s*$.*?^\s+"uri":\s*"([^"]+)"', text, re.S | re.M)
+    if not match:
+        raise SystemExit(f"{SERVER_CFG} 里找不到 mongodb.uri")
+    uri = match.group(1)
+    db_match = re.search(r'^"mongodb":\s*$.*?^\s+"dbName":\s*"([^"]+)"', text, re.S | re.M)
+    return uri, (db_match.group(1) if db_match else "aitoearn")
+
+
+def _oid(hex_id: str) -> dict:
+    return {"$oid": hex_id}
+
+
+def _now(offset_seconds: float = 0) -> dict:
+    stamp = datetime.now(timezone.utc) + timedelta(seconds=offset_seconds)
+    return {"$date": stamp.isoformat()}
+
+
+def mongo_op(action: str, collection: str, **kwargs) -> Any:
+    """在后台容器里执行一条结构化 Mongo 操作（不走 shell，参数不会被转义咬）。"""
+    uri, db_name = _mongo_target()
+    payload = json.dumps(
+        {"uri": uri, "dbName": db_name, "op": {"action": action, "collection": collection, **kwargs}},
+        ensure_ascii=False,
+    )
     proc = subprocess.run(
-        _mongosh_cmd(js),
+        [
+            "docker", "exec", "-i", "-w", "/app", CONTAINER,
+            "node", "--input-type=module", "-e", NODE_MONGO,
+        ],
+        input=payload,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=120,
         check=False,
     )
     if proc.returncode != 0:
-        raise SystemExit(f"mongosh failed: {proc.stderr.strip()[:300]}")
-    return (proc.stdout or "").strip()
+        raise SystemExit(f"mongo {action} 失败: {(proc.stderr or proc.stdout).strip()[:300]}")
+    line = (proc.stdout or "").strip().splitlines()[-1] if proc.stdout.strip() else "{}"
+    data = json.loads(line or "{}")
+    if not data.get("ok"):
+        raise SystemExit(f"mongo {action} 失败: {data.get('error')}")
+    return data.get("result")
+
+
+# 空库（新装环境）里没有任何 succeeded 的 run，探针不能就此罢工：自己造一个已交付
+# 的 run 当靶子，收尾时连它一起删掉。这样这条泳道在干净机器上也能跑通。
+_SEEDED_RUNS: list[str] = []
 
 
 def pick_succeeded_run() -> str:
-    raw = mongo(
-        "const r=db.productionRun.find({status:'succeeded'}).sort({updatedAt:-1}).limit(1).toArray()[0];"
-        "print(r?String(r._id):'')"
+    doc = mongo_op(
+        "findOne", "productionRun",
+        filter={"status": "succeeded"},
+        sort={"updatedAt": -1},
+        projection={"_id": 1},
     )
-    run_id = raw.splitlines()[-1].strip() if raw else ""
+    run_id = str((doc or {}).get("_id") or "")
     if not run_id:
-        raise SystemExit("没有 succeeded 的 run，先跑一版再验领取")
+        run_id = create_run("succeeded", 1)
+        _SEEDED_RUNS.append(run_id)
+        print(f"库里没有 succeeded 的 run，造一个当靶子：{run_id}", file=sys.stderr)
     return run_id
 
 
 def create_run(status: str, revision: int) -> str:
-    js = (
-        "const now=new Date();"
-        f"const r=db.productionRun.insertOne({{userId:'{USER_ID}',projectId:ObjectId('{PROJECT_ID}'),"
-        f"revision:{revision},status:'{status}',currentStage:'done',title:'probe',"
-        "createdAt:now,updatedAt:now});"
-        "print(String(r.insertedId))"
-    )
-    return mongo(js).splitlines()[-1].strip()
+    doc = {
+        "userId": USER_ID,
+        "projectId": PROJECT_ID,
+        "revision": revision,
+        "status": status,
+        "currentStage": "done",
+        "title": "probe",
+        "createdAt": _now(),
+        "updatedAt": _now(),
+    }
+    return mongo_op("insertOne", "productionRun", doc=doc)["insertedId"]
 
 
 def insert_probe(run_id: str, revision: int = 1) -> str:
-    js = (
-        "const now=new Date();"
-        f"const r=db.productionJob.insertOne({{runId:ObjectId('{run_id}'),revision:{revision},attempt:1,"
-        "lane:'publish',kind:'publish_sau',status:'queued',stage:'queued',payload:{},"
-        f"userId:'{USER_ID}',workerId:null,leaseVersion:0,maxAttempts:1,"
-        "createdAt:now,updatedAt:now});"
-        "print(String(r.insertedId))"
-    )
-    return mongo(js).splitlines()[-1].strip()
+    doc = {
+        "runId": run_id,
+        "revision": revision,
+        "attempt": 1,
+        "lane": "publish",
+        "kind": "publish_sau",
+        "status": "queued",
+        "stage": "queued",
+        "payload": {},
+        "userId": USER_ID,
+        "workerId": None,
+        "leaseVersion": 0,
+        "maxAttempts": 1,
+        "createdAt": _now(),
+        "updatedAt": _now(),
+    }
+    return mongo_op("insertOne", "productionJob", doc=doc)["insertedId"]
+
+
+def _attempt_doc(run_id: str, *, status: str, url: str, post_id: str, tag: str) -> dict:
+    return {
+        "userId": USER_ID,
+        "runId": run_id,
+        "projectId": PROJECT_ID,
+        "platform": "douyin",
+        "dispatcher": "sau",
+        "accountRef": "yefen",
+        "accountName": "yefen",
+        "revision": 1,
+        "idempotencyKey": f"{tag}-{int(time.time() * 1000)}",
+        "plannedAt": _now(),
+        "status": status,
+        "content": {},
+        "remotePostId": post_id,
+        "remoteUrl": url,
+        "evidence": [],
+        "lastError": "",
+        "createdAt": _now(),
+        "updatedAt": _now(),
+    }
 
 
 def create_attempt(run_id: str) -> str:
     """造一条提交中途的记录：worker 已经点了发布、还没回写结论。"""
-    js = (
-        "const now=new Date();"
-        f"const r=db.publicationAttempt.insertOne({{userId:'{USER_ID}',runId:'{run_id}',"
-        f"projectId:'{PROJECT_ID}',platform:'douyin',dispatcher:'sau',accountRef:'yefen',"
-        "accountName:'yefen',revision:1,idempotencyKey:'round27-lease-probe-'+Date.now(),"
-        "plannedAt:now,status:'submitting',content:{},remotePostId:'',remoteUrl:'',"
-        "evidence:[],lastError:'',createdAt:now,updatedAt:now});"
-        "print(String(r.insertedId))"
+    doc = _attempt_doc(
+        run_id, status="submitting", url="", post_id="", tag="round27-lease-probe"
     )
-    return mongo(js).splitlines()[-1].strip()
+    return mongo_op("insertOne", "publicationAttempt", doc=doc)["insertedId"]
 
 
 def create_readback_attempt(run_id: str, url: str = "https://www.douyin.com/video/7000000000000000001") -> str:
     """造一条「回执不明」的记录：它已经有链接（或故意没有），但没人替它核对过。"""
     post_id = "7000000000000000001" if url else ""
-    js = (
-        "const now=new Date();"
-        f"const r=db.publicationAttempt.insertOne({{userId:'{USER_ID}',runId:'{run_id}',"
-        f"projectId:'{PROJECT_ID}',platform:'douyin',dispatcher:'sau',accountRef:'yefen',"
-        "accountName:'yefen',revision:1,idempotencyKey:'round31-readback-probe-'+Date.now(),"
-        "plannedAt:now,status:'submission_unknown',content:{},"
-        f"remotePostId:'{post_id}',"
-        f"remoteUrl:'{url}',"
-        "evidence:[],lastError:'',createdAt:now,updatedAt:now});"
-        "print(String(r.insertedId))"
+    doc = _attempt_doc(
+        run_id, status="submission_unknown", url=url, post_id=post_id,
+        tag="round31-readback-probe",
     )
-    return mongo(js).splitlines()[-1].strip()
+    return mongo_op("insertOne", "publicationAttempt", doc=doc)["insertedId"]
 
 
 def _rejected(status: int, body: dict) -> bool:
@@ -148,10 +288,14 @@ def _rejected(status: int, body: dict) -> bool:
 
 def api_post(path: str) -> tuple[int, dict]:
     """调本机后台；4xx 也返回状态码，好让探针断言「第二次点会被拒」。"""
+    return api_post_json(path, {})
+
+
+def api_post_json(path: str, body: dict) -> tuple[int, dict]:
     token = TOKEN_FILE.read_text().strip()
     req = urllib.request.Request(
         f"{API}/{path}",
-        data=b"{}",
+        data=json.dumps(body).encode(),
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         method="POST",
     )
@@ -165,86 +309,170 @@ def api_post(path: str) -> tuple[int, dict]:
             return exc.code, {}
 
 
+_PROBE_WORKER_ID = ""
+
+
+def api_post_worker(path: str, body: dict, worker_token: str) -> tuple[int, dict]:
+    """带 worker token 调领取接口：路由只在 worker 身份下存在。"""
+    req = urllib.request.Request(
+        f"{API}/{path}",
+        data=json.dumps(body).encode(),
+        headers={"x-worker-token": worker_token, "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 —— 本机后台
+            return resp.status, json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        try:
+            return exc.code, json.loads(exc.read().decode())
+        except json.JSONDecodeError:
+            return exc.code, {}
+
+
+def ensure_probe_worker() -> tuple[str, str]:
+    """注册一条临时 worker（能力覆盖 publish 泳道的两种活），用来验证领取契约。
+
+    真机验收时 mac worker 就在跑；但 Docker 单机验收里没有常驻 worker，
+    队列会被误判成「不领活」。这里自己扮演 worker：领到的是同一条队列、
+    同一套租约和取消规则，验的是服务端契约，不是探针的假动作。
+    """
+    global _PROBE_WORKER_ID
+    code, body = api_post_json(
+        "production/workers/register",
+        {"name": "publish-lane-probe", "capabilities": ["publish_sau", "publish_readback"], "version": "probe"},
+    )
+    data = body.get("data") or {}
+    worker_id, token = str(data.get("workerId") or ""), str(data.get("token") or "")
+    assert code == 200 and worker_id and token, f"注册探针 worker 失败: {code} {body}"
+    _PROBE_WORKER_ID = worker_id
+    return worker_id, token
+
+
+def claim_once(worker_token: str) -> dict:
+    """按 publish 泳道领一条活；没有可领的活返回空。"""
+    code, body = api_post_worker("production/worker/claim", {"lane": "publish"}, worker_token)
+    assert code == 200, f"领取失败: {code} {body}"
+    return (body.get("data") or {}).get("job") or {}
+
+
 def insert_expired_job(run_id: str, attempt_id: str) -> str:
     """running 作业 + 已经过期的租约：等价于 worker 被 kill -9 之后再没人续约。"""
-    js = (
-        "const now=new Date();const old=new Date(now.getTime()-5*60*1000);"
-        f"const r=db.productionJob.insertOne({{runId:ObjectId('{run_id}'),revision:1,attempt:1,"
-        "lane:'publish',kind:'publish_sau',status:'running',stage:'submitting',"
-        f"payload:{{attemptId:'{attempt_id}'}},userId:'{USER_ID}',"
-        f"workerId:'{WORKER_ID}',leaseOwner:'{WORKER_ID}',leaseVersion:1,maxAttempts:1,"
-        "startedAt:old,heartbeatAt:old,leaseExpiresAt:old,createdAt:old,updatedAt:old});"
-        "print(String(r.insertedId))"
-    )
-    return mongo(js).splitlines()[-1].strip()
+    old = _now(-5 * 60)
+    doc = {
+        "runId": run_id,
+        "revision": 1,
+        "attempt": 1,
+        "lane": "publish",
+        "kind": "publish_sau",
+        "status": "running",
+        "stage": "submitting",
+        "payload": {"attemptId": attempt_id},
+        "userId": USER_ID,
+        "workerId": WORKER_ID,
+        "leaseOwner": WORKER_ID,
+        "leaseVersion": 1,
+        "maxAttempts": 1,
+        "startedAt": old,
+        "heartbeatAt": old,
+        "leaseExpiresAt": old,
+        "createdAt": old,
+        "updatedAt": old,
+    }
+    return mongo_op("insertOne", "productionJob", doc=doc)["insertedId"]
 
 
 def read_attempt(attempt_id: str) -> dict:
-    js = (
-        f"const a=db.publicationAttempt.findOne({{_id:ObjectId('{attempt_id}')}},"
-        "{status:1,evidence:1,lastError:1});"
-        "print(JSON.stringify(a&&{status:a.status,evidence:a.evidence,lastError:a.lastError}))"
+    doc = mongo_op(
+        "findOne", "publicationAttempt",
+        filter={"_id": _oid(attempt_id)},
+        projection={"status": 1, "evidence": 1, "lastError": 1},
     )
-    raw = mongo(js)
-    return json.loads(raw.splitlines()[-1] or "null") or {}
+    doc = doc or {}
+    return {
+        "status": doc.get("status"),
+        "evidence": doc.get("evidence") or [],
+        "lastError": doc.get("lastError") or "",
+    }
+
+
+def set_job_status(job_id: str, status: str) -> None:
+    mongo_op(
+        "updateOne", "productionJob",
+        filter={"_id": _oid(job_id)},
+        update={"$set": {"status": status}},
+    )
 
 
 def read_run_status(run_id: str) -> str:
-    raw = mongo(
-        f"const r=db.productionRun.findOne({{_id:ObjectId('{run_id}')}},{{status:1}});"
-        "print(r?r.status:'')"
+    doc = mongo_op(
+        "findOne", "productionRun",
+        filter={"_id": _oid(run_id)},
+        projection={"status": 1},
     )
-    return raw.splitlines()[-1].strip() if raw else ""
+    return str((doc or {}).get("status") or "")
 
 
 def count_pending_jobs(run_id: str, exclude_job_id: str) -> int:
-    raw = mongo(
-        f"print(db.productionJob.countDocuments({{runId:ObjectId('{run_id}'),"
-        f"status:{{$in:['queued','running']}},_id:{{$ne:ObjectId('{exclude_job_id}')}}}}))"
+    return int(
+        mongo_op(
+            "countDocuments", "productionJob",
+            filter={
+                "runId": _oid(run_id),
+                "status": {"$in": ["queued", "running"]},
+                "_id": {"$ne": _oid(exclude_job_id)},
+            },
+        )
+        or 0
     )
-    return int(raw.splitlines()[-1].strip() or 0)
 
 
 def read_state(job_id: str) -> dict:
-    js = (
-        f"const j=db.productionJob.findOne({{_id:ObjectId('{job_id}')}},"
-        "{status:1,message:1,lastError:1,leaseOwner:1,kind:1,payload:1});"
-        f"const ev=db.productionEvent.find({{jobId:'{job_id}'}},"
-        "{kind:1,message:1,jobId:1}).toArray();"
-        "print(JSON.stringify({job:j&&{status:j.status,message:j.message,lastError:j.lastError,"
-        "leaseOwner:j.leaseOwner,kind:j.kind,payload:j.payload},"
-        "events:ev.map(e=>({kind:e.kind,message:e.message,"
-        "jobId:e.jobId&&String(e.jobId)}))}))"
+    job = mongo_op(
+        "findOne", "productionJob",
+        filter={"_id": _oid(job_id)},
+        projection={"status": 1, "message": 1, "lastError": 1, "leaseOwner": 1, "kind": 1, "payload": 1},
     )
-    raw = mongo(js)
-    line = raw.splitlines()[-1] if raw else "{}"
-    return json.loads(line or "{}")
+    events = mongo_op(
+        "find", "productionEvent",
+        filter={"jobId": job_id},
+        projection={"kind": 1, "message": 1, "jobId": 1},
+    ) or []
+    if job:
+        job = {k: job.get(k) for k in ("status", "message", "lastError", "leaseOwner", "kind", "payload")}
+    return {
+        "job": job,
+        "events": [
+            {"kind": e.get("kind"), "message": e.get("message"), "jobId": str(e.get("jobId") or "")}
+            for e in events
+        ],
+    }
 
 
 def cleanup(job_id: str, run_ids: list[str], attempt_ids: tuple[str, ...] = ()) -> None:
-    js = (
-        f"db.productionEvent.deleteMany({{jobId:'{job_id}'}});"
-        f"db.productionJob.deleteOne({{_id:ObjectId('{job_id}')}});"
-    )
+    # 排队入口被拒时根本没有作业号：收尾要能跳过它，否则探针自己报错盖住真结论。
+    if job_id:
+        mongo_op("deleteMany", "productionEvent", filter={"jobId": job_id})
+        mongo_op("deleteOne", "productionJob", filter={"_id": _oid(job_id)})
     for attempt_id in attempt_ids:
-        js += f"db.publicationAttempt.deleteOne({{_id:ObjectId('{attempt_id}')}});"
+        mongo_op("deleteOne", "publicationAttempt", filter={"_id": _oid(attempt_id)})
     for run_id in run_ids:
-        js += (
-            f"db.productionEvent.deleteMany({{runId:'{run_id}'}});"
-            f"db.productionRun.deleteOne({{_id:ObjectId('{run_id}')}});"
-        )
-    mongo(js + "print('cleaned')")
+        mongo_op("deleteMany", "productionEvent", filter={"runId": run_id})
+        mongo_op("deleteOne", "productionRun", filter={"_id": _oid(run_id)})
+    if _PROBE_WORKER_ID:
+        mongo_op("deleteOne", "productionWorker", filter={"_id": _oid(_PROBE_WORKER_ID)})
 
 
 def plan(case: str) -> dict:
     if case == "claim":
         return {
             "case": case,
-            "run": f"{pick_succeeded_run()}（已交付）",
+            "run": "临时造一条已交付的 run（跑完即删）",
             "expect": [
-                "被 publish 泳道领走（job.claimed 带作业号）",
-                "失败原因是载荷校验（publish payload has no …），两秒内结束",
-                "不查 cookie、不上传、没有 job.cancelled",
+                "临时 worker 从 publish 泳道领走：leaseOwner 是它，事件是 job.claimed 且带作业号",
+                "作业进入 running，租约落在 future",
+                "没有 job.cancelled、没有上传动作",
+                "载荷校验属于 worker 泳道，需真 worker 在线才验得到，这一条不算通过",
             ],
         }
     if case == "readback-retry":
@@ -287,7 +515,7 @@ def plan(case: str) -> dict:
 
 def run_case(case: str, wait_seconds: float) -> dict:
     started = time.time()
-    created_runs: list[str] = []
+    created_runs: list[str] = list(_SEEDED_RUNS)
     attempt_id = ""
     api_checks: dict[str, bool] = {}
     extra_attempts: list[str] = []
@@ -302,10 +530,7 @@ def run_case(case: str, wait_seconds: float) -> dict:
         # 不把真回读跑起来（那会去开浏览器读一条不存在的链接）。
         job = (read_state(job_id).get("job") or {}) if job_id else {}
         if job_id:
-            mongo(
-                f"db.productionJob.updateOne({{_id:ObjectId('{job_id}')}},"
-                "{$set:{status:'cancelled'}});print('cancelled')"
-            )
+            set_job_status(job_id, "cancelled")
         second_code, second_body = api_post(f"production/publications/{attempt_id}/readback-job")
         # 没有链接的记录不该被排回读：读不到东西的作业只会白跑一趟。
         bare_id = create_readback_attempt(run_id, url="")
@@ -319,7 +544,8 @@ def run_case(case: str, wait_seconds: float) -> dict:
             "readback_job_queued": queued,
             "job_payload_bound": (job.get("payload") or {}).get("attemptId") == attempt_id,
             "second_click_rejected": _rejected(second_code, second_body),
-            "no_duplicate_readback": count_pending_jobs(run_id, job_id) == 0,
+            "job_created": bool(job_id),
+            "no_duplicate_readback": (not job_id) or count_pending_jobs(run_id, job_id) == 0,
             "no_url_rejected": _rejected(bare_code, bare_body),
         }
         ok = all(api_checks.values())
@@ -336,7 +562,8 @@ def run_case(case: str, wait_seconds: float) -> dict:
             "verdict": "PASS" if ok else "FAIL",
         }
     if case == "claim":
-        run_id = pick_succeeded_run()
+        run_id = create_run("succeeded", 1)
+        created_runs.append(run_id)
         job_revision = 1
     elif case == "lease-expired":
         run_id = pick_succeeded_run()
@@ -355,7 +582,18 @@ def run_case(case: str, wait_seconds: float) -> dict:
     if case != "lease-expired":
         job_id = insert_probe(run_id, job_revision)
     try:
-        wait_for = LEASE_WAIT_SECONDS if case == "lease-expired" else wait_seconds
+        if case in ("claim", "cancelled-run", "stale-revision"):
+            # 领取即开工：revision 不符 / run 已取消都会在这一步被服务端取消，
+            # 领到的那条会带 leaseOwner 和 job.claimed 事件。
+            _, worker_token = ensure_probe_worker()
+            claim_once(worker_token)
+        # claim 只验领取契约：作业会停在 running（没有常驻 worker 去收尾），不用等终态。
+        if case == "lease-expired":
+            wait_for = LEASE_WAIT_SECONDS
+        elif case == "claim":
+            wait_for = 1
+        else:
+            wait_for = wait_seconds
         while time.time() - started < wait_for:
             state = read_state(job_id)
             if (state.get("job") or {}).get("status") in ("succeeded", "failed", "cancelled"):
@@ -390,13 +628,16 @@ def run_case(case: str, wait_seconds: float) -> dict:
                 "no_requeue": count_pending_jobs(run_id, job_id) == 0,
             }
         elif case == "claim":
+            # 服务端领取契约：租约、所有权、事件都写回同一条作业。
+            # 「载荷不合格就失败」是 worker 侧泳道的逻辑，要真 worker 在线才验得到，
+            # 不在这一条里假装验过。
             checks = {
                 "claimed": bool(job.get("leaseOwner")) and "job.claimed" in kinds,
                 "claimed_event_has_job_id": any(
                     e.get("kind") == "job.claimed" and e.get("jobId") == job_id for e in events
                 ),
-                "finished": status in ("succeeded", "failed"),
-                "failed_on_payload": bool(re.search(r"publish payload has no \w+", text)),
+                "lease_owner_is_worker": job.get("leaseOwner") == _PROBE_WORKER_ID,
+                "running": status == "running",
                 "not_cancelled": "job.cancelled" not in kinds,
                 "no_upload": "publish:submitting" not in text
                 and "publication.submitted" not in kinds,
@@ -460,7 +701,16 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps([plan(c) for c in cases], ensure_ascii=False, indent=2))
         return 0
 
-    results = [run_case(c, args.wait) for c in cases]
+    results = []
+    for case in cases:
+        try:
+            results.append(run_case(case, args.wait))
+        except Exception as exc:  # noqa: BLE001 - 单条探针的失败要留在台账里，不能吞整轮
+            results.append({
+                "case": case,
+                "verdict": "FAIL",
+                "error": f"{type(exc).__name__}: {str(exc)[:300]}",
+            })
     print(json.dumps(results, ensure_ascii=False, indent=2))
     return 0 if all(r["verdict"] == "PASS" for r in results) else 1
 

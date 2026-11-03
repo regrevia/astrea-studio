@@ -90,6 +90,17 @@ cd integrations/mac-worker && <venv-python> tools/check_publish_lane.py --apply 
 子进程之前就会抛 `publish payload has no accountRef`，因此不会碰抖音、不会起浏览器。
 `--case` 三条，`--all` 一次跑完（每条都两秒上下）：`claim` / `cancelled-run` / `stale-revision`。
 
+探针自己注册一条临时 worker（`POST production/workers/register`，能力 `publish_sau` +
+`publish_readback`）再调 `production/worker/claim`，跑完连 worker 一起删。验收栈上通常没有常驻
+worker（mac worker 不在 Docker 里），不自领的话作业只会停在 `queued`，看上去像「后端不派活」。
+这样验的是服务端契约：租约归谁、`job.claimed` 带不带作业号、旧稿/已取消的 run 会不会在领取阶段
+被取消。**载荷校验失败是 worker 侧泳道的逻辑**，要真 worker 在线才变成 `failed` + `publish payload
+has no accountRef`；没有真 worker 时这条不冒充验过。
+
+坑：探针造的 run / attempt / job 的 `userId` 必须等于 `/tmp/auto_token.txt` 里 JWT 的 `id`
+（当前库里的 `Admin` 用户）。表里这几个字段声明成 `string`，写入也用字符串；插 `ObjectId`
+或者用别的用户 id，接口只会回 `Publication attempt not found`，队列按 `userId` 过滤后也领不到。
+
 - `claim`：作业被 `publish` 泳道领走（`leaseOwner` 是 worker、`job.claimed` 的 `jobId` 就是这条
   作业）；失败原因是载荷校验（`publish payload has no …`）；没有 `job.cancelled`、没有
   `publish:submitting`。

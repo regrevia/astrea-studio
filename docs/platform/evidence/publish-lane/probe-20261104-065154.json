@@ -1,0 +1,146 @@
+{
+  "kind": "publish-lane-probe",
+  "at": "2026-11-04T06:51:54+08:00",
+  "command": "python3 tools/check_publish_lane.py --all --apply",
+  "environment": "docker compose 单机栈（http://127.0.0.1:8080/api），探针自行注册临时 worker 领取",
+  "verdict": "PASS",
+  "cases": [
+    {
+      "case": "claim",
+      "jobId": "6aea63b23fdae9646342f469",
+      "runId": "6aea63b21b81aa70d7dd4ad1",
+      "elapsedSeconds": 2.9,
+      "status": "running",
+      "leaseOwner": "6aea63b21d1fe479e0459fcc",
+      "message": "",
+      "attemptStatus": "",
+      "events": [
+        "job.claimed"
+      ],
+      "eventDetails": [
+        {
+          "kind": "job.claimed",
+          "message": "claimed by 6aea63b21d1fe479e0459fcc (attempt 1)",
+          "jobId": "6aea63b23fdae9646342f469"
+        }
+      ],
+      "checks": {
+        "claimed": true,
+        "claimed_event_has_job_id": true,
+        "lease_owner_is_worker": true,
+        "running": true,
+        "not_cancelled": true,
+        "no_upload": true
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": "cancelled-run",
+      "jobId": "6aea63b63d09aaed317e0792",
+      "runId": "6aea63b698c8490b72140147",
+      "elapsedSeconds": 1.0,
+      "status": "cancelled",
+      "leaseOwner": "6aea63b61d1fe479e0459fd8",
+      "message": "run cancelled",
+      "attemptStatus": "",
+      "events": [
+        "job.cancelled"
+      ],
+      "eventDetails": [
+        {
+          "kind": "job.cancelled",
+          "message": "dropped: run cancelled",
+          "jobId": "6aea63b63d09aaed317e0792"
+        }
+      ],
+      "checks": {
+        "picked_up": true,
+        "cancelled": true,
+        "cancelled_event_has_job_id": true,
+        "reason_run_cancelled": true,
+        "worker_never_ran_it": true
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": "stale-revision",
+      "jobId": "6aea63b87bfd9d687f864d14",
+      "runId": "6aea63b82ec0bd756bc6c119",
+      "elapsedSeconds": 0.9,
+      "status": "cancelled",
+      "leaseOwner": "6aea63b81d1fe479e0459fe5",
+      "message": "superseded by revision 2",
+      "attemptStatus": "",
+      "events": [
+        "job.cancelled"
+      ],
+      "eventDetails": [
+        {
+          "kind": "job.cancelled",
+          "message": "dropped: revision 1 superseded by 2",
+          "jobId": "6aea63b87bfd9d687f864d14"
+        }
+      ],
+      "checks": {
+        "picked_up": true,
+        "cancelled": true,
+        "cancelled_event_has_job_id": true,
+        "reason_superseded": true,
+        "worker_never_ran_it": true
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": "lease-expired",
+      "jobId": "6aea63ba1f4045de9ac5c5f0",
+      "runId": "6aea5bf682dfacaaa4b315a0",
+      "elapsedSeconds": 52.4,
+      "status": "failed",
+      "leaseOwner": "6ad9ee47437a9be7260961a6",
+      "message": "lease expired",
+      "attemptStatus": "submission_unknown",
+      "events": [
+        "job.failed"
+      ],
+      "eventDetails": [
+        {
+          "kind": "job.failed",
+          "message": "lease expired",
+          "jobId": "6aea63ba1f4045de9ac5c5f0"
+        }
+      ],
+      "checks": {
+        "expired_failed": true,
+        "failed_event_has_job_id": true,
+        "attempt_not_stuck_submitting": true,
+        "attempt_marked": true,
+        "run_still_succeeded": true,
+        "no_requeue": true
+      },
+      "verdict": "PASS"
+    },
+    {
+      "case": "readback-retry",
+      "jobId": "6aea63ef1d1fe479e045a017",
+      "runId": "6aea63ee9fec7a5ef99c7f9d",
+      "elapsedSeconds": 2.2,
+      "status": "queued",
+      "leaseOwner": "",
+      "message": "这条提交正在回读，等结论回来",
+      "attemptStatus": "reconciling",
+      "events": [],
+      "eventDetails": [],
+      "checks": {
+        "enqueue_accepted": true,
+        "attempt_reconciling": true,
+        "readback_job_queued": true,
+        "job_payload_bound": true,
+        "second_click_rejected": true,
+        "job_created": true,
+        "no_duplicate_readback": true,
+        "no_url_rejected": true
+      },
+      "verdict": "PASS"
+    }
+  ]
+}

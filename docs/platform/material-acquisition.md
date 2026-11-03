@@ -48,7 +48,7 @@ curl -s http://127.0.0.1:8899/jobs/<id>   # result.items[*] = {path,md5,license,
   ——「第几条进第几屏」的规则不变，`isMaterialRef()` 本来就认绝对路径。
 - 真机实证（round 45）：`curl POST /jobs {"kind":"materials","payload":{"query":"cat slow motion","n":1,"maxMb":25}}`
   → `succeeded`，落到
-  `/Users/apple/CreatorStudio/library/_assets/wikimedia/2026-10/cat-lapping-water-off-ground-in__wikimedia__54669255.webm`
+  `~/CreatorStudio/library/_assets/wikimedia/2026-10/cat-lapping-water-off-ground-in__wikimedia__54669255.webm`
   （10.3MB，`CC BY-SA 4.0`，md5 `42ca72062f631a3d0fc54884dc6d94e3`），`.json` sidecar 同步落盘。
 - 测试：`tests/test_jobs_materials.py`（搜空/坏 kind/条数钳制/下载落盘/sidecar/去重/dry-run）、
   `tests/test_materials.py::SearchOversampleTest`（4K 原片占头部不空、`.ogv` 占头部会退到 `filemime:video/webm`）
