@@ -1,4 +1,4 @@
-.PHONY: help bootstrap config build build-web up down restart ps logs health acceptance shell clean worker-install worker-uninstall worker-status worker-logs
+.PHONY: help bootstrap config build build-web up down restart ps logs health s3-bucket s3-check acceptance shell clean worker-install worker-uninstall worker-status worker-logs
 
 SHELL := /bin/bash
 REPO := $(shell cd "$(dir $(lastword $(MAKEFILE_LIST)))" && pwd)
@@ -17,7 +17,9 @@ help:
 	@echo "  make down        stop everything (keeps data)"
 	@echo "  make ps          container status"
 	@echo "  make logs        tail logs (S=service to narrow)"
-	@echo "  make health      probe :8080 + :9001"
+	@echo "  make health      probe web, api and the S3 gateway"
+	@echo "  make s3-bucket   ensure the object-storage bucket exists and is publicly readable"
+	@echo "  make s3-check    upload a probe object and read it back three ways (direct / /oss/ / presigned)"
 	@echo "  make acceptance  full acceptance run (needs worker token for render)"
 	@echo "  make worker-install  install the worker as a LaunchAgent (run in Terminal)"
 	@echo "  make worker-status   is the LaunchAgent loaded, and its pid"
@@ -44,8 +46,10 @@ up:
 	  [ -z "$$bad" ] && break; sleep 3; \
 	done
 	@$(COMPOSE) ps --format 'table {{.Service}}\t{{.Status}}'
+	@$(MAKE) --no-print-directory s3-bucket
 	@echo
-	@echo "workbench: http://127.0.0.1:8080"
+	@echo "workbench: http://127.0.0.1:8080  (en / zh-CN)"
+	@echo "s3:        http://127.0.0.1:9000  (via nginx)"
 
 down:
 	@$(COMPOSE) down
@@ -60,9 +64,19 @@ logs:
 	@$(COMPOSE) logs -f --tail 100 $(S)
 
 health:
-	@printf "web   "; curl -s -o /dev/null -w "%{http_code}\n" --max-time 10 http://127.0.0.1:8080/
-	@printf "api   "; curl -s -o /dev/null -w "%{http_code}\n" --max-time 10 http://127.0.0.1:8080/api/
-	@printf "s3    "; curl -s -o /dev/null -w "%{http_code}\n" --max-time 10 http://127.0.0.1:9001/
+	@printf "web     "; curl -sL -o /dev/null -w "%{http_code}\n" --max-time 10 http://127.0.0.1:8080/
+	@printf "api     "; curl -s -o /dev/null -w "%{http_code}\n" --max-time 10 http://127.0.0.1:8080/api/health
+	# 网关根路径匿名访问一律 403（没有匿名 list 权限），403 就说明 S3 栈活着。
+	@printf "s3      "; curl -s -o /dev/null -w "%{http_code}\n" --max-time 10 http://127.0.0.1:9000/
+
+s3-bucket:
+	# 上游用 mc 做这件事；这里用纯标准库 SigV4，幂等，缺 bucket 会建、缺匿名读策略会补。
+	@$(PY) deploy/ensure_bucket.py --endpoint http://127.0.0.1:9000
+
+s3-check:
+	# 三条读回路径都要通：S3 直连、nginx /oss/<key>（服务端读）、presigned URL（客户端读）。
+	# 探针对象用完即删，不在桶里留垃圾。
+	@$(PY) deploy/check_s3_roundtrip.py
 
 acceptance:
 	@$(PY) deploy/acceptance.py

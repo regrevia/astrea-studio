@@ -83,13 +83,16 @@ PORTS = {
     "nginx": ["127.0.0.1:8080:80", "127.0.0.1:9000:9000"],
     "mongodb": ["127.0.0.1:27017:27017"],
     "redis": ["127.0.0.1:6379:6379"],
-    "rustfs": ["127.0.0.1:9001:9001"],
+    # S3 只经 nginx 的 :9000 暴露；网关自带的 WebUI（容器内 :9001）不发布到宿主。
+    "rustfs": [],
 }
 
 # Images are pinned locally; nothing is pulled during a normal `make up`.
 IMAGES = {
     "mongodb": "${STUDIO_IMAGE_MONGO}",
-    "mongodb-rs-init": "${STUDIO_IMAGE_MONGO}",
+    # 副本集初始化用 server 镜像跑（里面有 mongodb 驱动）。mongo 镜像里的 mongosh
+    # 在这台机器的 Docker VM 里一启动就 SIGTRAP，见 deploy/mongo_rs_init.mjs。
+    "mongodb-rs-init": "${STUDIO_IMAGE_SERVER}",
     "redis": "${STUDIO_IMAGE_REDIS}",
     "rustfs": "${STUDIO_IMAGE_RUSTFS}",
     "rustfs-init": "${STUDIO_IMAGE_MC}",
@@ -104,10 +107,12 @@ IMAGES = {
 DEFAULT_IMAGES = {
     "STUDIO_IMAGE_MONGO": "creator-studio/mongo:7.0",
     "STUDIO_IMAGE_REDIS": "creator-studio/redis:7-alpine",
-    "STUDIO_IMAGE_RUSTFS": "creator-studio/rustfs:latest",
+    # rustfs 官方二进制在这台 Docker VM 上一跑就 SIGSEGV，换成 S3 兼容的 versitygw。
+    # 变量名沿用 STUDIO_IMAGE_RUSTFS，服务名/别名不变，避免动后端配置和 nginx。
+    "STUDIO_IMAGE_RUSTFS": "creator-studio/s3:local",
     "STUDIO_IMAGE_MC": "creator-studio/mc:latest",
     "STUDIO_IMAGE_NODE": "creator-studio/node:22-alpine",
-    "STUDIO_IMAGE_AI": "aitoearn/aitoearn-ai:local",
+    "STUDIO_IMAGE_AI": "creator-studio/aitoearn-ai:${STUDIO_BUILD_TAG}",
     "STUDIO_IMAGE_SERVER": "creator-studio/aitoearn-server:${STUDIO_BUILD_TAG}",
     "STUDIO_IMAGE_WEB": "creator-studio/aitoearn-web:${STUDIO_BUILD_TAG}",
     "STUDIO_IMAGE_NGINX": "creator-studio/nginx:alpine",
@@ -227,21 +232,21 @@ def render_compose(creds: dict[str, str]) -> dict:
         "MONGO_INITDB_ROOT_USERNAME": creds_env["MONGO_ROOT_USER"],
         "MONGO_INITDB_ROOT_PASSWORD": creds_env["MONGO_ROOT_PASSWORD"],
     }
-    mongo["healthcheck"]["test"] = [
-        "CMD-SHELL",
-        'mongosh "%s" --quiet --eval "try { quit(rs.status().ok === 1 ? 0 : 1) } catch(e) { quit(1) }"'
-        % mongo_uri_str,
-    ]
-    services["mongodb-rs-init"]["entrypoint"] = [
-        "/bin/sh",
-        "-c",
-        (
-            'until mongosh "%s" --quiet --eval "db.adminCommand(\'ping\').ok" >/dev/null 2>&1; do sleep 2; done; '
-            'mongosh "%s" --eval "try { rs.initiate({_id:\'rs0\', members:[{_id:0, host:\'mongodb:27017\'}]}) } '
-            'catch(e) { if (e.codeName!==\'AlreadyInitialized\') throw e }"'
-        )
-        % (mongo_uri_str, mongo_uri_str),
-    ]
+    # 健康探针只用 mongod 自己的 TCP 端口。
+    # 不用 mongosh 的原因：它在这台机器的 Docker VM 里启动即 SIGTRAP
+    # （V8 内嵌快照 checksum 校验失败，退出码 133），而同一个容器里的 mongod 完全正常。
+    # 副本集「是否真的建好并升主」不在探针里判断，而由 mongodb-rs-init 一次性完成，
+    # 应用层用 service_completed_successfully 门控它 —— 语义一样，且不依赖那个坏二进制。
+    mongo["healthcheck"]["test"] = ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/27017'"]
+
+    # 副本集初始化：用 server 镜像里的 mongodb 驱动跑 deploy/mongo_rs_init.mjs（幂等）。
+    rs_init = services["mongodb-rs-init"]
+    # 脚本必须落在 /app 下：镜像是 ESM，裸导入 `mongodb` 时只按脚本所在目录逐级
+    # 找 node_modules（NODE_PATH 对 ESM 无效），挂到 /opt/studio 会 ERR_MODULE_NOT_FOUND。
+    rs_init["entrypoint"] = ["node", "/app/studio_mongo_rs_init.mjs"]
+    rs_init["command"] = []
+    rs_init["environment"] = {"MONGO_URI": mongo_uri_str, "MONGO_RS": "rs0"}
+    rs_init["volumes"] = [f"{cfg_dir}/mongo_rs_init.mjs:/app/studio_mongo_rs_init.mjs:ro"]
 
     # --- redis: authenticated, PONG-checked healthcheck ---
     redis = services["redis"]
@@ -255,11 +260,14 @@ def render_compose(creds: dict[str, str]) -> dict:
         "start_period": "30s",
     }
 
-    # --- rustfs object store ---
+    # --- rustfs object store（实现已是 versitygw，见 docker-compose.yml 里的说明）---
     rustfs = services["rustfs"]
     rustfs["environment"] = {
-        "RUSTFS_ACCESS_KEY": creds["STUDIO_S3_ACCESS_KEY"],
-        "RUSTFS_SECRET_KEY": creds["STUDIO_S3_SECRET_KEY"],
+        # versitygw 读 ROOT_ACCESS_KEY / ROOT_SECRET_KEY（也认 *_ACCESS_KEY_ID 那一套）。
+        "ROOT_ACCESS_KEY": creds["STUDIO_S3_ACCESS_KEY"],
+        "ROOT_SECRET_KEY": creds["STUDIO_S3_SECRET_KEY"],
+        "VGW_PORT": ":9000",
+        "VGW_WEBUI_PORT": ":9001",
     }
     # Upstream bootstraps the bucket with the `minio/mc` image. We do it from the
     # host instead (deploy/ensure_bucket.py, pure stdlib SigV4) so no extra image
@@ -283,6 +291,13 @@ def render_compose(creds: dict[str, str]) -> dict:
     # --- ai / server: mount private configs ---
     services["aitoearn-ai"]["volumes"] = [f"{cfg_dir}/aitoearn-ai.yaml:/app/config.yaml:rw"]
     services["aitoearn-server"]["volumes"] = [f"{cfg_dir}/aitoearn-server.yaml:/app/config.yaml:rw"]
+
+    # 应用层要等副本集真正初始化完再起：mongodb 的健康检查只探 TCP 端口，
+    # 端口通不代表 rs.initiate 已经跑过，应用这时连库会一直报 NotYetInitialized。
+    # mongodb-rs-init 自己轮询端口、完成 rs.initiate 后退出 0，用它当完成信号。
+    for name in ("aitoearn-init", "aitoearn-ai", "aitoearn-server"):
+        deps = services[name].setdefault("depends_on", {})
+        deps["mongodb-rs-init"] = {"condition": "service_completed_successfully"}
 
     # --- nginx config ---
     # Upstream nginx.conf addresses services by their container_name
@@ -348,6 +363,11 @@ def render_server_config(creds: dict[str, str]) -> dict:
     assets["forcePathStyle"] = True
     assets["provider"] = "s3"
     cfg["aiClient"]["token"] = creds["STUDIO_INTERNAL_TOKEN"]
+    # upstream config.yaml 把 studioAssistant 写成 ${VAR:-default} 字面量，但加载链路
+    # 从不展开 ${...}：这串文本会原样交给 zod 的 httpUrlSchema 校验，启动期直接
+    # "无效URL → studioAssistant.inventoryUrl"。这块配置本身在 schema 里读取
+    # process.env 并有默认值，所以整块删掉即可，环境变量仍然生效。
+    cfg.pop("studioAssistant", None)
     return cfg
 
 
@@ -480,6 +500,10 @@ def main() -> int:
     write_private(cfg_dir / "aitoearn-server.yaml", dump_yaml(render_server_config(creds)))
     write_private(cfg_dir / "aitoearn-ai.yaml", dump_yaml(render_ai_config(creds)))
     write_private(cfg_dir / "nginx.conf", render_nginx_config(render_compose(creds)))
+    # 副本集初始化脚本随配置一起落到 cfg_dir，compose 里只读挂进 rs-init 容器。
+    # 它自己轮询 mongodb 端口再 rs.initiate，不依赖 mongosh（本机 Docker VM 上
+    # mongosh 一启动就 SIGTRAP，所以这条链路全程不用 mongosh）。
+    write_private(cfg_dir / "mongo_rs_init.mjs", (REPO / "deploy" / "mongo_rs_init.mjs").read_text())
 
     volume = Path(os.environ.get("STUDIO_STORAGE_VOLUME", "/Volumes/US202")).expanduser()
     storage_root = Path(os.environ.get("STUDIO_STORAGE_ROOT") or volume / "CreatorStudio")

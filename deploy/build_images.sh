@@ -61,6 +61,27 @@ else
   echo "=== no build proxy listening on 127.0.0.1:$PROXY_PORT; building direct"
 fi
 export DOCKER_BUILDKIT=1
+# 强制全量重建：helper（project/aitoearn-backend/scripts/build-docker.mjs）写死了
+# buildx 命令行，没有透传 --no-cache 的入口；等价做法是在构建前清掉 builder 缓存。
+if [ "${STUDIO_BUILD_NO_CACHE:-0}" = "1" ]; then
+  echo "=== STUDIO_BUILD_NO_CACHE=1: pruning builder cache before build"
+  docker builder prune -af >/dev/null
+fi
+
+NODE_BASE="${STUDIO_NODE_BASE:-node:22-alpine}"
+# 这条机器上 node:24-alpine 的任何调用都 SIGSEGV（rc=139，连 `node --version`
+# 都跑不出来），而缺基础镜像又是 docker.io 超时。两种都在这里一行暴露：先确认
+# 镜像在本地，再真跑一次 node，别等到 nx 构建 40 分钟才炸。
+if ! docker image inspect "$NODE_BASE" >/dev/null 2>&1; then
+  echo "!! base image '$NODE_BASE' is not present locally" >&2
+  echo "   pull through the mirror: docker pull docker.1ms.run/library/${NODE_BASE} && docker tag docker.1ms.run/library/${NODE_BASE} ${NODE_BASE}" >&2
+  exit 1
+fi
+if ! docker run --rm --entrypoint node "$NODE_BASE" --version >/dev/null 2>&1; then
+  echo "!! base image '$NODE_BASE' cannot run node (SIGSEGV / broken layer store)" >&2
+  echo "   use node:22-alpine; node:24-alpine is known-bad in this Docker VM" >&2
+  exit 1
+fi
 
 latest_tag() {  # newest non-:local tag for one app
   docker images --format '{{.Repository}}:{{.Tag}} {{.CreatedAt}}' \
@@ -84,6 +105,24 @@ for app in "${APPS[@]}"; do
   target="creator-studio/${app}:${TAG}"
   echo "=== tagging $produced -> $target"
   docker tag "$produced" "$target"
+
+  # compose runs the stack with platform linux/arm64; an amd64 image would build
+  # fine and then fail at `up` with "exec format error".
+  arch="$(docker image inspect -f '{{.Architecture}}' "$target")"
+  if [ "$arch" != "arm64" ]; then
+    echo "!! $target is $arch, expected arm64" >&2
+    exit 1
+  fi
+  echo "=== $target  $(docker image inspect -f '{{.Id}}' "$target" | cut -c1-19)  $arch"
+
+  # 构建成功不等于镜像可用：本机 Docker VM 出现过「构建 rc=0、产出镜像里某个
+  # 依赖包的一行被替换成 4 字节残片、运行期才报 SyntaxError」的损坏。所以每个镜像
+  # 产出后立刻跑一次产物完整性检查（node --check + 逐文件 size 比对），坏的不要
+  # 标成 :local 拿去 up。急着跳过时 STUDIO_SKIP_VERIFY=1，完整扫描用
+  # STUDIO_VERIFY_MODE=full。
+  if [ "${STUDIO_SKIP_VERIFY:-0}" != "1" ]; then
+    bash "$REPO/deploy/verify_image.sh" "$target" "${STUDIO_VERIFY_MODE:-fast}" || exit 1
+  fi
 done
 
 echo

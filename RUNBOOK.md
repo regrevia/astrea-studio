@@ -34,6 +34,7 @@ make up
 ```bash
 make ps          # status
 make health      # web / api / s3 probe
+make s3-check    # 上传探针对象并三条路径读回（直连 / nginx /oss/ / presigned），用完即删
 make logs S=aitoearn-server
 make down        # stop, keep data
 make up          # start again
@@ -41,6 +42,11 @@ make up          # start again
 
 `make health` 里 `web 307` 和 `s3 403` 都是正常的：307 是 i18n 把 `/`
 重定向到语言前缀，403 是对象存储拒绝匿名列举。只有 `api` 必须是 200。
+
+`make s3-check` 是比状态码更硬的一条：它真传一个对象、再按应用实际使用的三条路径读回来——
+S3 直连（后端写）、`/oss/<key>`（服务端读，走 nginx 重写，靠桶策略匿名 GET）、
+`http://localhost:9000/<bucket>/<key>`（后端签发的 presigned URL，客户端读）。三条都要
+`200` 且内容一致，跑完删掉探针对象。改了对象存储或 nginx 之后跑它，别只看 `s3 403`。
 
 ## Where things live
 
@@ -74,11 +80,19 @@ everything — which also invalidates the local login, so don't do it casually.
 child processes. Always export `NX_DAEMON=false` first. `deploy/build_images.sh`
 does this; if you build by hand, remember it.
 
-**Docker Hub is flaky here.** Base images (`node:24-alpine`, `node:lts-alpine`)
-frequently fail with `Head "https://registry-1.docker.io/...": EOF`. The images
-are already in the local cache under `creator-studio/*`; the build scripts retag
-them so builds never reach the network. If a base image is genuinely missing, pull
-through the proxy on `127.0.0.1:7897`.
+**Docker Hub is flaky here.** Base images frequently fail with
+`Head "https://registry-1.docker.io/...": EOF`. The images are already in the local
+cache under `creator-studio/*`; the build scripts retag them so builds never reach
+the network. If a base image is genuinely missing, pull through the proxy on
+`127.0.0.1:7897`, e.g.
+`docker pull docker.1ms.run/library/node:22-alpine && docker tag docker.1ms.run/library/node:22-alpine node:22-alpine`.
+
+**`node:24-alpine` is unusable in this Docker VM.** Any invocation exits `139`
+(SIGSEGV) — `docker run --rm node:24-alpine node -e 1` dies before printing
+anything, `node --version` included, so it is not a build-time-only problem.
+`node:22-alpine` (`v22.23.4`) is fine. Every Dockerfile here therefore pins 22, and
+`deploy/build_images.sh` smoke-runs the base image before building so a bad base
+fails in one line instead of 40 minutes into an `nx` build.
 
 **`aitoearn-web` is not an nx project.** It is a separate Next.js repo with its own
 Dockerfile. `deploy/build_images.sh aitoearn-web` fails; use
@@ -305,7 +319,7 @@ should be rotated, not restored.
 | build hangs at 0% CPU | nx daemon | `export NX_DAEMON=false` |
 | `failed to resolve source metadata ... EOF` | Docker Hub unreachable | retag from local cache, or pull via `:7897` |
 | app container `Restarting (139)`, empty log; `--entrypoint node -v` works but `pm2 --version` segfaults | image payload was written while the image store was rotten — re-importing the rootfs does not heal it | rebuild: `NX_DAEMON=false bash deploy/build_images.sh aitoearn-ai aitoearn-server`, then `bash deploy/build_web.sh` |
-| rebuild dies at `failed to fetch oauth token ... lookup host.docker.internal: no such host` | buildx cannot resolve the host alias after the store switch | give it the gateway IP, which needs no DNS: `STUDIO_BUILD_PROXY=http://172.29.0.1:7897` (`docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}'`) |
+| rebuild dies at `failed to fetch oauth token ... lookup host.docker.internal: no such host` | buildx cannot resolve the host alias after the store switch | give it the gateway IP, which needs no DNS: `STUDIO_BUILD_PROXY="http://$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}'):7897"` |
 | rebuild ends with `DeadlineExceeded: context deadline exceeded` | the upstream helper caps a single build at a few minutes; a cold `pnpm install` through the proxy exceeds it | re-run once (cached layers get it under the cap) or raise the cap in `project/aitoearn-backend/scripts/build-docker.mjs` |
 | job result says `storage.fallbackReason` / `GET /healthz` storage root is `~/CreatorStudio` | the external volume is not mounted or not writable | plug in the SSD and remount `/Volumes/US202`; new jobs route there by themselves, nothing to restart |
 | everything 502 | backend still booting | `make logs S=aitoearn-server`, wait for `app started at port` |

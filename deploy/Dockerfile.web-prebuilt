@@ -1,0 +1,30 @@
+# Web 镜像：只打包已经构建好的 Next.js 产物，不在镜像里跑 `next build`。
+#
+# 为什么不在容器里构建：这台 Docker VM 上 `next build` 会稳定卡死在
+# "Collecting page data ..."（父进程和 8 个 jest-worker 子进程全部 0 CPU，
+# 40 分钟零进展，最后被外层 timeout 杀掉）。同样的源码在宿主上 `next build`
+# 50 秒就过，所以问题在容器/虚拟机的 worker 调度，不在代码。
+# deploy/build_web.sh 因此改成「宿主上 next build → 把产物送进这个镜像」。
+#
+# 上下文是 build_web.sh 现搭的临时目录：app/ 下直接是 standalone 的根
+# （server.js、node_modules、.next/server/...），并且已补上 .next/static 和 public。
+ARG WEB_BASE_IMAGE=creator-studio/node:22-alpine
+FROM ${WEB_BASE_IMAGE}
+
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
+
+RUN addgroup --system --gid 1001 nodejs \
+ && adduser --system --uid 1001 nextjs
+
+WORKDIR /app
+
+COPY --chown=nextjs:nodejs app ./
+
+USER nextjs
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]

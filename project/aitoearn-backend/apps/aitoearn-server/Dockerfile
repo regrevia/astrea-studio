@@ -1,4 +1,6 @@
-FROM node:24-alpine AS deps
+# node 24 is not usable in this Docker VM: every invocation exits 139 (SIGSEGV),
+# `node --version` included. Pin 22 — see RUNBOOK "Known constraints".
+FROM node:22-alpine AS deps
 
 RUN npm install -g pnpm
 
@@ -6,9 +8,9 @@ WORKDIR /app
 
 COPY deps/ ./
 
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --prod
+RUN pnpm install --prod
 
-FROM node:24-alpine AS production
+FROM node:22-alpine AS production
 
 ARG APP_NAME
 

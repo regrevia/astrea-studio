@@ -30,7 +30,9 @@ services:
     networks:
       - aitoearn-network
     healthcheck:
-      test: ["CMD-SHELL", "mongosh \"mongodb://$$MONGO_INITDB_ROOT_USERNAME:$$MONGO_INITDB_ROOT_PASSWORD@localhost:27017/?authSource=admin\" --quiet --eval \"try { quit(rs.status().ok === 1 ? 0 : 1) } catch(e) { quit(1) }\""]
+      # mongosh 在这台机器上跑不起来（node 二进制问题），健康检查只用 TCP 探活：
+      # 副本集是否已成为 primary 由 mongodb-rs-init 负责，不挂在健康检查上。
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/27017'"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -72,14 +74,25 @@ services:
       start_period: 30s
 
   rustfs:
-    image: ${STUDIO_IMAGE_RUSTFS:-creator-studio/rustfs:latest}
+    # 服务名 / 容器名 / rustfs.local 别名保持不变（后端配置与 nginx 都按这些名字写死）。
+    # 实现换成 S3 兼容的 versitygw：rustfs 官方镜像里的二进制在这台 Docker VM 上
+    # 任何调用都 SIGSEGV（`rustfs --version` 也是 rc=139，跟 node:24 同类问题），
+    # 官方镜像与本地镜像的二进制 sha256 完全一致，所以不是打包问题。
+    # versitygw 的 posix 后端依赖 extended attributes：数据卷只能用 named volume，
+    # 绑定宿主机目录会因为 xattr 不支持直接起不来。
+    image: ${STUDIO_IMAGE_RUSTFS:-creator-studio/s3:local}
     pull_policy: missing
     container_name: aitoearn-rustfs
     hostname: rustfs.local
     restart: unless-stopped
+    # 先确保 bucket 目录存在（posix 后端把 bucket 映射成一级目录），再起网关。
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /data/aitoearn && exec /usr/local/bin/versitygw posix /data"]
     environment:
-      RUSTFS_ACCESS_KEY: rustfsadmin
-      RUSTFS_SECRET_KEY: rustfsadmin
+      VGW_PORT: ":9000"
+      # 9001 给 WebUI，端口映射沿用原来的 9001。
+      VGW_WEBUI_PORT: ":9001"
+      ROOT_ACCESS_KEY: rustfsadmin
+      ROOT_SECRET_KEY: rustfsadmin
     ports:
       - "9001:9001"
     volumes:
@@ -88,8 +101,13 @@ services:
       aitoearn-network:
         aliases:
           - rustfs.local
+          # render 后的 compose 会去掉 container_name，而 nginx 的 /oss 反代写的是
+          # 容器名 aitoearn-rustfs，所以这里补上同样的网络别名。
+          - aitoearn-rustfs
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      # 匿名 GET / 一律 403（wget 退出码 1，不是 8），/health 是 404，只有 WebUI
+      # 的 9001 有一个稳定的 200。健康检查打 WebUI：网关进程活着且 HTTP 栈可用。
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9001/"]
       interval: 10s
       timeout: 5s
       retries: 5
