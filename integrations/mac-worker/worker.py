@@ -437,6 +437,16 @@ class Worker:
                             fh.write(f"DRAFT_PATH={draft_path}\n")
                     except OSError as exc:
                         log.warning("job %s could not record draft path: %s", job_id, exc)
+                    # 生成即快照：草稿刚写完就留一份明文底本，之后剪映怎么改写都能还原。
+                    # 失败只记日志——不能让一次快照把已经成功的渲染判成失败。
+                    try:
+                        from export import plain_guard as PG
+                        detail = PG.snapshot(Path(draft_path))
+                        log.info("job %s 草稿已存明文快照：%s 个文件 -> %s",
+                                 job_id, len(detail.get("files") or []),
+                                 PG.store_dir(Path(draft_path)))
+                    except Exception as exc:  # noqa: BLE001 —— 尽力而为
+                        log.warning("job %s 草稿快照失败：%s", job_id, exc)
             elif kind == JOB_JIANYING_OPEN:
                 result = self.do_jianying_open(job_id, payload, progress)
                 self.client.complete(job_id, lease, result)
@@ -678,10 +688,14 @@ class Worker:
         # 打开前先过明文守卫：剪映保存会把 draft_info.json 换成密文，先存一份明文快照，
         # 下次引擎读草稿/还原才有底本。守卫失败只写日志，绝不拦这次打开。
         try:
-            from export import plain_guard as PG
-            guard = PG.ensure_plain(draft)
+            from export import draft_guard as DJ
+            # 和常驻守护同一套判断：能还原就还原，救不回来就据实记下（不挡打开）
+            guard = DJ.inspect(draft, settle=0)
             base["plainGuard"] = guard.get("action")
-            print("明文守卫：%s" % guard.get("action"), file=sys.stderr)
+            if guard.get("hint"):
+                base["plainGuardHint"] = guard["hint"]
+            print("明文守卫：%s %s" % (guard.get("action"), guard.get("hint") or ""),
+                  file=sys.stderr)
         except Exception as exc:  # noqa: BLE001 —— 尽力而为，不能挡打开
             print("明文守卫跳过：%s" % exc, file=sys.stderr)
         progress(20, "jianying:open_draft")

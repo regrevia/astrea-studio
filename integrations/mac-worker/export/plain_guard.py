@@ -79,13 +79,18 @@ def store_dir(target: Path, store: Path | None = None) -> Path:
     return Path(store).expanduser() if store else target.parent / STORE_DIRNAME / target.name
 
 
-def snapshot(target: Path, store: Path | None = None) -> dict:
-    """把明文草稿复制到剪映目录之外，返回清单（含 sha256，便于发现改动）。"""
+def snapshot(target: Path, store: Path | None = None, partial: bool = False) -> dict:
+    """把明文草稿复制到剪映目录之外，返回清单（含 sha256，便于发现改动）。
+
+    partial=True 时允许「残缺快照」：主文件已经被剪映写成密文，但草稿里可能还剩别的
+    明文（例如 draft_content.json）。这些明文救回来仍然有用（重建草稿要它），所以不报错，
+    只在清单里标 partial，状态里能看出这次快照没覆盖主文件。
+    """
     target = Path(target).expanduser()
     if not target.is_dir():
         raise FileNotFoundError(f"没有这个草稿目录：{target}")
     plain = canonical(target)
-    if not plain or "draft_info.json" not in [p.name for p in plain]:
+    if not plain or ("draft_info.json" not in [p.name for p in plain] and not partial):
         raise ValueError(
             "主文件 draft_info.json 已经是密文，没有可存的明文：%s" % target)
     out = store_dir(target, store)
@@ -108,6 +113,7 @@ def snapshot(target: Path, store: Path | None = None) -> dict:
         "files": entries,
         # 存快照时已经是密文的文件：还原时补不回来，状态里要说清楚
         "encryptedAtSnapshot": [p.name for p in encrypted(target)],
+        "partial": bool("draft_info.json" not in [e["name"] for e in entries]),
     }
     (out / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

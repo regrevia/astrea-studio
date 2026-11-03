@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.creatorstudio.draftguard</string>
+
+    <!-- 草稿常驻守护：明文就存快照、密文就还原。
+         剪映在平台看不见的时候（用户从首页打开草稿）也会把明文改写成密文，
+         只有常驻进程盯得住这条路径。 -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>__HOME__/CreatorStudio/runtime/integrations/mac-worker/.python3</string>
+        <string>-m</string>
+        <string>export.draft_guard</string>
+        <string>--interval</string>
+        <string>8</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__HOME__/CreatorStudio/runtime/integrations/mac-worker</string>
+
+    <key>StandardOutPath</key>
+    <string>__HOME__/CreatorStudio/logs/draftguard-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/CreatorStudio/logs/draftguard-stderr.log</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <!-- 守护不许停：它退出最多说明某一轮出错，下一轮还得继续盯。 -->
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+    <key>ProcessType</key>
+    <string>Utility</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>__HOME__</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>
