@@ -5,7 +5,7 @@
 渲染任务只带了标题，没带项目 id；worker 拿不到 `libraryProject` 就回退到 `studio/`，于是所有项目的成片都进同一个目录：
 
 ```
-/Users/apple/CreatorStudio/library/studio/2026-10/20261029-014833__studio__001__…__douyin__r1.mp4
+~/CreatorStudio/library/studio/2026-10/20261029-014833__studio__001__…__douyin__r1.mp4
 ```
 
 ## 改动
@@ -26,14 +26,14 @@
 
 工作区截图：两张批次卡（`批量结果 · 01:51:32`、`上一批 · 01:50:30`）与左栏任务列表同屏。
 
-![工作区](/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/library-project/e2e-workspace.png)
+![工作区](~/Desktop/work/Studio/creator-studio/docs/platform/evidence/library-project/e2e-workspace.png)
 
 ## 目录名加项目名
 
 只写 ObjectId 时 `ls` 出来是一串十六进制，认不出是哪个项目。现在目录与文件名都走 `<项目名slug>__<id8>`：
 
 ```
-/Users/apple/CreatorStudio/library/端到端验收-一体化宣发工作台__6ae235e6/2026-10/
+~/CreatorStudio/library/端到端验收-一体化宣发工作台__6ae235e6/2026-10/
   20261029-015444__端到端验收-一体化宣发工作台__6ae235e6__001__入库目录验收__douyin__r1.mp4
 ```
 

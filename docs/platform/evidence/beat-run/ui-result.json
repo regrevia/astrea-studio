@@ -4,7 +4,7 @@
   "status": "succeeded",
   "segments": 15,
   "music": {
-    "src": "/Users/apple/CreatorStudio/materials/bgm/demo-120.m4a",
+    "src": "~/CreatorStudio/materials/bgm/demo-120.m4a",
     "volume": 0.32,
     "loop": true,
     "bpm": 60.09,
@@ -24,7 +24,7 @@
       "fps": 30
     },
     "videoQa": {
-      "video": "/Users/apple/CreatorStudio/timeline/6ae2269123fdf91423383f2f/master.mp4",
+      "video": "~/CreatorStudio/timeline/6ae2269123fdf91423383f2f/master.mp4",
       "duration": 30,
       "findings": [
         {
@@ -36,13 +36,13 @@
       ],
       "ok": true
     },
-    "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261029-004514__studio__001__卡点成片验收-30-秒__douyin__r1.mp4",
+    "libraryPath": "~/CreatorStudio/library/studio/2026-10/20261029-004514__studio__001__卡点成片验收-30-秒__douyin__r1.mp4",
     "libraryAssetId": "20261029-004514__studio__001__卡点成片验收-30-秒__douyin__r1",
     "md5": "1eb47212f8b00666123e5f8b9f1771cd",
     "libraryEntries": [
       {
         "kind": "master",
-        "path": "/Users/apple/CreatorStudio/library/studio/2026-10/20261029-004514__studio__001__卡点成片验收-30-秒__douyin__r1.mp4"
+        "path": "~/CreatorStudio/library/studio/2026-10/20261029-004514__studio__001__卡点成片验收-30-秒__douyin__r1.mp4"
       }
     ]
   }

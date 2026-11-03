@@ -4,7 +4,7 @@
   "status": "succeeded",
   "segments": 15,
   "music": {
-    "src": "/Users/apple/CreatorStudio/materials/bgm/demo-120.m4a",
+    "src": "~/CreatorStudio/materials/bgm/demo-120.m4a",
     "volume": 0.32,
     "loop": true,
     "bpm": 60.09,
@@ -57,18 +57,18 @@
       "fps": 30
     },
     "videoQa": {
-      "video": "/Users/apple/CreatorStudio/timeline/6ae2295423fdf91423384a45/master.mp4",
+      "video": "~/CreatorStudio/timeline/6ae2295423fdf91423384a45/master.mp4",
       "duration": 30,
       "findings": [],
       "ok": true
     },
-    "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261029-005710__studio__001__批量出片验收-30-秒-1-3__douyin__r1.mp4",
+    "libraryPath": "~/CreatorStudio/library/studio/2026-10/20261029-005710__studio__001__批量出片验收-30-秒-1-3__douyin__r1.mp4",
     "libraryAssetId": "20261029-005710__studio__001__批量出片验收-30-秒-1-3__douyin__r1",
     "md5": "ed590190446dde00381f6ff34542759a",
     "libraryEntries": [
       {
         "kind": "master",
-        "path": "/Users/apple/CreatorStudio/library/studio/2026-10/20261029-005710__studio__001__批量出片验收-30-秒-1-3__douyin__r1.mp4"
+        "path": "~/CreatorStudio/library/studio/2026-10/20261029-005710__studio__001__批量出片验收-30-秒-1-3__douyin__r1.mp4"
       }
     ]
   }

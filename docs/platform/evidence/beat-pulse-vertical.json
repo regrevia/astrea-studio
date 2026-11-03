@@ -13,12 +13,12 @@
       "ok": true,
       "findings": []
     },
-    "video": "/Users/apple/CreatorStudio/timeline/6ae19f5f864d4f35586ce1a0/master.mp4",
+    "video": "~/CreatorStudio/timeline/6ae19f5f864d4f35586ce1a0/master.mp4",
     "bytes": 6801591,
     "md5": "f906b8515a4d74aa1b93dbe477bb929d"
   },
   "spec": {
-    "file": "/Users/apple/CreatorStudio/timeline/6ae19f5f864d4f35586ce1a0/spec.json",
+    "file": "~/CreatorStudio/timeline/6ae19f5f864d4f35586ce1a0/spec.json",
     "clips": 5,
     "pulse_clips": 5,
     "music": {
@@ -35,12 +35,12 @@
   },
   "ab": {
     "on": {
-      "file": "/Users/apple/CreatorStudio/timeline/6ae19f5f864d4f35586ce1a0/ab_pulse_on.mp4",
+      "file": "~/CreatorStudio/timeline/6ae19f5f864d4f35586ce1a0/ab_pulse_on.mp4",
       "bytes": 6801591,
       "md5": "f906b8515a4d74aa1b93dbe477bb929d"
     },
     "base": {
-      "file": "/Users/apple/CreatorStudio/timeline/6ae19f5f864d4f35586ce1a0/ab_base.mp4",
+      "file": "~/CreatorStudio/timeline/6ae19f5f864d4f35586ce1a0/ab_base.mp4",
       "bytes": 5271085,
       "md5": "07aff013c8b4eb9c79a0385e3f699597",
       "how": "spec 副本去掉 music.pulse 后重新 load_spec+render，其余完全一致"
@@ -77,8 +77,8 @@
   },
   "verdict": "master.mp4 与「拍点开」渲染逐字节相同（md5 一致），与「拍点关」不同：静卡画面运动量 2.65 倍、文件 6.80MB vs 5.27MB，运动峰值按 ~0.5s 节奏出现，说明 music.pulse 已真实作用于成片卡面",
   "how_to_reproduce": [
-    "PYTHONPATH=/Users/apple/CreatorStudio/runtime/lib /Users/apple/CreatorStudio/runtime/integrations/mac-worker/.python3 /tmp/ab_pulse.py <workdir>  # 开/关两份渲染",
-    "/Users/apple/CreatorStudio/runtime/integrations/mac-worker/.python3 /tmp/motion_profile.py  # 逐帧运动曲线"
+    "PYTHONPATH=~/CreatorStudio/runtime/lib ~/CreatorStudio/runtime/integrations/mac-worker/.python3 /tmp/ab_pulse.py <workdir>  # 开/关两份渲染",
+    "~/CreatorStudio/runtime/integrations/mac-worker/.python3 /tmp/motion_profile.py  # 逐帧运动曲线"
   ],
   "audio_mix": {
     "streams": [

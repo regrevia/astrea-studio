@@ -4,7 +4,7 @@
   "jobId": "timeline",
   "channel": "createProductionRun engine=timeline → worker render_timeline → S3 → library.land",
   "spec": "/tmp/spec30.json (30.0s, 1080x1920@30, 4 clips, keyframes, bpm 103.36 pulse 0.12)",
-  "libraryPath": "/Users/apple/CreatorStudio/library/studio/2026-10/20261028-183224__studio__001__30秒产品宣传片-关键帧卡点-入库验收__douyin__r1.mp4",
+  "libraryPath": "~/CreatorStudio/library/studio/2026-10/20261028-183224__studio__001__30秒产品宣传片-关键帧卡点-入库验收__douyin__r1.mp4",
   "libraryAssetId": "20261028-183224__studio__001__30秒产品宣传片-关键帧卡点-入库验收__douyin__r1",
   "md5": "7f250578fec55e68cce604f0cdb156ba",
   "bytes": 3892955,

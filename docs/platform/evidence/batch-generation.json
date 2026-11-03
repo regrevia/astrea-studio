@@ -19,7 +19,7 @@
       "duration_s": 17.902,
       "videoQa_ok": true,
       "videoPath": "studio/runs/6ae1a8c61719dc0c8b1d8303/r1/master.mp4",
-      "workdir": "/Users/apple/CreatorStudio/timeline/6ae1a8c61719dc0c8b1d830f",
+      "workdir": "~/CreatorStudio/timeline/6ae1a8c61719dc0c8b1d830f",
       "master_bytes": 6801591,
       "master_md5": "f906b8515a4d74aa1b93dbe477bb929d",
       "pulse_clips": 5
@@ -32,7 +32,7 @@
       "duration_s": 17.902,
       "videoQa_ok": true,
       "videoPath": "studio/runs/6ae1a8c61719dc0c8b1d830c/r1/master.mp4",
-      "workdir": "/Users/apple/CreatorStudio/timeline/6ae1a8c61719dc0c8b1d8306",
+      "workdir": "~/CreatorStudio/timeline/6ae1a8c61719dc0c8b1d8306",
       "master_bytes": 6817201,
       "master_md5": "a39701c5cdb4ccffd19f01f4b539ce02",
       "pulse_clips": 5

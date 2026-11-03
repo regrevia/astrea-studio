@@ -20,7 +20,7 @@
 
 - 按钮实际渲染出 `第 1 版 / 第 2 版 / 第 3 版`。
 - 点「第 2 版」后播放器 `<video src>` 变成第 2 条任务的成片（`/oss/studio/runs/6ae22f4ad4961ac32cc57ac4/r1/master.mp4`，HTTP 200）。
-- 截图：[workspace-versions.png](/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/workspace-preview/workspace-versions.png)。
+- 截图：[workspace-versions.png](~/Desktop/work/Studio/creator-studio/docs/platform/evidence/workspace-preview/workspace-versions.png)。
 
 ## 刷新后还在
 
@@ -37,7 +37,7 @@
 | 2 | `6ae231ce38be775d5971408d` | succeeded |
 | 3 | `6ae231ce38be775d59714096` | succeeded |
 
-截图：[versions-after-reload.png](/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/workspace-preview/versions-after-reload.png)
+截图：[versions-after-reload.png](~/Desktop/work/Studio/creator-studio/docs/platform/evidence/workspace-preview/versions-after-reload.png)
 
 ## 同屏并排比三条
 
@@ -52,7 +52,7 @@
 | 第 2 版 | `…71408d/r1/master.mp4` | — |
 | 第 3 版 | `…714096/r1/master.mp4` | 点击前是 `…714096` |
 
-截图：[batch-compare.png](/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/workspace-preview/batch-compare.png)
+截图：[batch-compare.png](~/Desktop/work/Studio/creator-studio/docs/platform/evidence/workspace-preview/batch-compare.png)
 
 ## 最近两批都留
 
@@ -64,7 +64,7 @@
 - 两卡共 6 个可播首帧，src 分别指向两批的 master；
 - 点「上一批」第 1 版后详情面板 src 切到 `…a43c62/r1/master.mp4`。
 
-截图：[two-batches.png](/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/workspace-preview/two-batches.png)
+截图：[two-batches.png](~/Desktop/work/Studio/creator-studio/docs/platform/evidence/workspace-preview/two-batches.png)
 
 ## 首帧落在钩子上
 
@@ -72,4 +72,4 @@
 
 实测两条批次的 6 个缩略图 `currentTime` 都是 `1.7`，三列能看出运镜/版式差异；批次卡标题变成 `批量结果 · 01:40:50` / `上一批 · 01:40:50`，时间到秒，同分钟连出两批也分得清（时间取自项目 `recentBatches[].at`）。
 
-截图：[hook-frame.png](/Users/apple/Desktop/work/Studio/creator-studio/docs/platform/evidence/workspace-preview/hook-frame.png)
+截图：[hook-frame.png](~/Desktop/work/Studio/creator-studio/docs/platform/evidence/workspace-preview/hook-frame.png)

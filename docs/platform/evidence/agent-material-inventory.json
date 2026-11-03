@@ -3,7 +3,7 @@
   "why": "指挥台要能自己发现素材包，spec 里才会写对 pack 引用；这条记录是能力清单把素材包暴露给模型的实测。",
   "inventoryUrl": "http://127.0.0.1:8899/inventory (容器内经 host.docker.internal:8899)",
   "materials": {
-    "root": "/Users/apple/CreatorStudio/materials/packs",
+    "root": "~/CreatorStudio/materials/packs",
     "packs": [
       {
         "slug": "envoy-demo",

@@ -1,12 +1,12 @@
 {
   "jobId": "6ae20a3cb2886cd834c8b67b",
   "revision": 1,
-  "claim": "/Users/apple/CreatorStudio/out/6ae20a3cb2886cd834c8b67b/r1/6ae20a3cb2886cd834c8b67b__r1__unknown.mp4",
+  "claim": "~/CreatorStudio/out/6ae20a3cb2886cd834c8b67b/r1/6ae20a3cb2886cd834c8b67b__r1__unknown.mp4",
   "draft": "studio_6ae20a3cb2886cd834c8b67e__r1",
-  "draftPath": "/Users/apple/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6ae20a3cb2886cd834c8b67e__r1",
+  "draftPath": "~/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6ae20a3cb2886cd834c8b67e__r1",
   "platform": "douyin",
   "probe": {
-    "path": "/Users/apple/CreatorStudio/out/6ae20a3cb2886cd834c8b67b/r1/6ae20a3cb2886cd834c8b67b__r1__unknown.mp4",
+    "path": "~/CreatorStudio/out/6ae20a3cb2886cd834c8b67b/r1/6ae20a3cb2886cd834c8b67b__r1__unknown.mp4",
     "format": "mov,mp4,m4a,3gp,3g2,mj2",
     "duration": 11.215238,
     "size": 11403320,
@@ -55,7 +55,7 @@
       "detail": "30.000 vs 期望 30.000"
     }
   },
-  "final": "/Users/apple/CreatorStudio/out/6ae20a3cb2886cd834c8b67b/r1/6ae20a3cb2886cd834c8b67b__r1__douyin.mp4",
+  "final": "~/CreatorStudio/out/6ae20a3cb2886cd834c8b67b/r1/6ae20a3cb2886cd834c8b67b__r1__douyin.mp4",
   "accepted": true,
   "failed": [],
   "at": "2026-10-31T18:40:25"

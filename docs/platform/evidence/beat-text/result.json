@@ -36,8 +36,8 @@
     "loop": true
   },
   "output": {
-    "master": "/Users/apple/CreatorStudio/timeline/6ae2286723fdf914233846ba/master.mp4",
-    "library": "/Users/apple/CreatorStudio/library/studio/2026-10/20261029-005308__studio__001__标题卡点验收-30-秒__douyin__r1.mp4",
+    "master": "~/CreatorStudio/timeline/6ae2286723fdf914233846ba/master.mp4",
+    "library": "~/CreatorStudio/library/studio/2026-10/20261029-005308__studio__001__标题卡点验收-30-秒__douyin__r1.mp4",
     "md5": "ed590190446dde00381f6ff34542759a",
     "bytes": 4248268,
     "videoQa": []

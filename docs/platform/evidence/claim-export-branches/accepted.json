@@ -3,7 +3,7 @@
   "revision": 1,
   "claim": "/private/tmp/claim-test/ok.mp4",
   "draft": "studio_6ae205b1b2886cd834c8a6fe__r1",
-  "draftPath": "/Users/apple/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6ae205b1b2886cd834c8a6fe__r1",
+  "draftPath": "~/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/studio_6ae205b1b2886cd834c8a6fe__r1",
   "platform": "",
   "probe": {
     "path": "/private/tmp/claim-test/ok.mp4",
@@ -52,7 +52,7 @@
       "detail": "30.000 vs 期望 30.000"
     }
   },
-  "final": "/Users/apple/CreatorStudio/out/probe-accept-r44/r1/probe-accept-r44__r1__unknown.mp4",
+  "final": "~/CreatorStudio/out/probe-accept-r44/r1/probe-accept-r44__r1__unknown.mp4",
   "accepted": true,
   "failed": [],
   "at": "2026-10-28T22:37:35"
