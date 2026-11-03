@@ -27,6 +27,25 @@
 `status` 取 `queued | running | succeeded | failed | cancelled`。
 不存在的 id 返回 404（`{"error":"没有这个任务：'xxx'"}`），未知引擎返回 500 且原因里带可选值。
 
+### `/guard`：草稿守护现状
+
+只读聚合：读 `~/CreatorStudio/logs/draft-guard.jsonl`，每份草稿取最后一条事件，再附最近 `limit` 条原始事件。不扫盘、不碰草稿、不触发一次新的守护检查，所以可以在面板里轮询。
+
+| 字段 | 含义 |
+| --- | --- |
+| `ok` | 日志能读就是 `true`；读不到（不存在/没权限/整份不是 JSONL）返回 `false` 并带 `reason`，不是 500 |
+| `journal` | 实际读的日志绝对路径，排查时先确认它指向对的文件 |
+| `drafts` | 每份草稿一条，字段原样来自事件：`draft` `action` `at`，以及当时的 `files` `encryptedAtSnapshot` `encrypted` `hint` 等 |
+| `events` | 最近 `limit` 条事件，时间正序（最新在尾部）；`limit` 夹在 1–200，默认 20 |
+
+`action` 取 `ok | snapshot | would_snapshot | restore | would_restore | busy | salvaged | would_salvage | partial | unrecoverable | needs_review | error`。`needs_review` 表示快照和当前草稿已经对不上，必须人工确认——守护进程只在明确安全时回填，不会为了看起来干净去覆盖用户新存的内容。带 `hint` 的行是要人看的那一句。
+
+日志不存在（守护进程没启动）时返回 `ok: false` 而不是报错：一个没起来的旁路进程不该让整块面板变红。
+
+```
+curl -s 'http://127.0.0.1:8899/guard?limit=20' | python3 -m json.tool | head -40
+```
+
 ## 六种引擎
 
 `kind` 与提交的 payload（路径都用绝对路径；`spec` 可直接给对象，提交时落盘到
