@@ -16,19 +16,21 @@ services:
     pull_policy: missing
     container_name: aitoearn-mongodb
     restart: unless-stopped
-    entrypoint: ["bash", "-c", "openssl rand -base64 756 > /data/mongodb-keyfile && chmod 400 /data/mongodb-keyfile && chown mongodb:mongodb /data/mongodb-keyfile && exec docker-entrypoint.sh mongod --replSet rs0 --keyFile /data/mongodb-keyfile"]
+    # keyfile 必须落在持久化卷里：放在 /data（rootfs）会在每次 recreate 后重新生成，
+    # 与已有 dbpath 的副本集密钥不匹配，mongod 直接启动失败。
+    entrypoint: ["/bin/sh", "-c", "if [ ! -f /data/configdb/mongodb-keyfile ]; then openssl rand -base64 756 > /data/configdb/mongodb-keyfile && chmod 400 /data/configdb/mongodb-keyfile && chown mongodb:mongodb /data/configdb/mongodb-keyfile; fi; exec docker-entrypoint.sh mongod --replSet rs0 --keyFile /data/configdb/mongodb-keyfile"]
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_ROOT_USERNAME: ${STUDIO_MONGO_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${STUDIO_MONGO_ROOT_PASSWORD:-password}
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongodb-data:/data/db
       - mongodb-config:/data/configdb
     networks:
       - aitoearn-network
     healthcheck:
-      test: ["CMD-SHELL", "mongosh mongodb://admin:password@localhost:27017/?authSource=admin --quiet --eval \"try { quit(rs.status().ok === 1 ? 0 : 1) } catch(e) { quit(1) }\""]
+      test: ["CMD-SHELL", "mongosh \"mongodb://$$MONGO_INITDB_ROOT_USERNAME:$$MONGO_INITDB_ROOT_PASSWORD@localhost:27017/?authSource=admin\" --quiet --eval \"try { quit(rs.status().ok === 1 ? 0 : 1) } catch(e) { quit(1) }\""]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -51,15 +53,19 @@ services:
     pull_policy: missing
     container_name: aitoearn-redis
     restart: unless-stopped
-    command: redis-server --requirepass password
+    # 必须 --appendonly yes：默认 RDB-only，容器被杀会丢最近写入。
+    # redis-cli 的健康检查要走 REDISCLI_AUTH，否则在 --requirepass 下永远返回 NOAUTH。
+    command: ["redis-server", "--requirepass", "${STUDIO_REDIS_PASSWORD:-password}", "--appendonly", "yes"]
+    environment:
+      REDISCLI_AUTH: ${STUDIO_REDIS_PASSWORD:-password}
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis-data:/data
     networks:
       - aitoearn-network
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      test: ["CMD-SHELL", "test \"$$(redis-cli --raw ping)\" = PONG"]
       interval: 10s
       timeout: 3s
       retries: 5

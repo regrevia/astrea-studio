@@ -81,6 +81,7 @@ MPT_HOME = Path(os.environ.get("MPT_HOME", STUDIO_HOME / "data/mpt")).expanduser
 # Loopback bindings (host:container)
 PORTS = {
     "nginx": ["127.0.0.1:8080:80", "127.0.0.1:9000:9000"],
+    "mongodb": ["127.0.0.1:27017:27017"],
     "redis": ["127.0.0.1:6379:6379"],
     "rustfs": ["127.0.0.1:9001:9001"],
 }
@@ -217,9 +218,9 @@ def render_compose(creds: dict[str, str]) -> dict:
         if name in PORTS:
             svc["ports"] = PORTS[name]
 
-    # --- mongodb: never published to the host ---
+    # --- mongodb: loopback only (27017 on 127.0.0.1) ---
     mongo = services["mongodb"]
-    mongo["ports"] = []
+    mongo["ports"] = PORTS["mongodb"]
     mongo["environment"] = {
         "MONGO_INITDB_ROOT_USERNAME": creds_env["MONGO_ROOT_USER"],
         "MONGO_INITDB_ROOT_PASSWORD": creds_env["MONGO_ROOT_PASSWORD"],

@@ -72,6 +72,61 @@ through the proxy on `127.0.0.1:7897`.
 Dockerfile. `deploy/build_images.sh aitoearn-web` fails; use
 `deploy/build_web.sh` instead.
 
+**The Docker Desktop image store can rot.** Observed 2026-11-03, after a doomed
+`MemoryMiB` bump crashed the VM. Symptoms come in three flavours:
+
+- a binary whose bytes are provably intact (`md5sum` stable across runs, ELF header
+  `177 E L F`) fails to exec: `Error relocating /usr/local/bin/node: unsupported
+  relocation type <a different number each run>`, or exit `139`;
+- layer extraction fails: `archive/tar: invalid tar header`,
+  `bash: : cannot allocate 32 bytes`, and on a fresh `docker pull` of a new tag:
+  `failed to prepare extraction snapshot ... failed to stat parent: ... snapshots/<n>/fs: no such file or directory`;
+- image metadata is gone: `docker image inspect <img> --format '{{.Os}}/{{.Architecture}}'`
+  prints `/`, so compose refuses it with `image ... was found but does not provide
+  any platform`. `DOCKER_DEFAULT_PLATFORM=linux/arm64` does not help — the daemon
+  checks the stored manifest, not the default.
+
+A clean Docker Desktop restart repairs part of it (cheap, try first: quit the app,
+`pkill -f com.docker.backend`, `open -a Docker`, poll `docker info`). If
+`docker save` also produces a truncated archive (`tar -tf` shows only `blobs/`,
+no `oci-layout`/`index.json`) or `docker load` says `unrecognized image format`,
+the containerd snapshot/content store itself is damaged and restarts will not fix it.
+
+**Switching from the containerd image store to the classic one** is the
+non-destructive repair. It is a one-key settings change, not a data wipe: volumes
+live in the same VM and stay put, images do not — they must be re-imported, so make
+a backup that is actually readable first.
+
+```sh
+# 1. back up the setting (rollback = put this file back, restart Docker)
+mkdir -p ~/CreatorStudio/config/backup
+cp "$HOME/Library/Group Containers/group.com.docker/settings-store.json" \
+   ~/CreatorStudio/config/backup/docker-settings-$(date +%Y%m%d).json
+
+# 2. back up local-only images. docker save is unreliable in a damaged store:
+#    verify every archive (docker load must name the RepoTags) before going on.
+docker save creator-studio/aitoearn-ai:local     -o /tmp/ai.tar
+docker save creator-studio/aitoearn-server:local -o /tmp/server.tar
+docker save creator-studio/aitoearn-web:local    -o /tmp/web.tar
+docker load -i /tmp/ai.tar   # must print "Loaded image: ..."
+
+# 3. flip the setting, restart Docker Desktop, wait for the daemon
+#    ("UseContainerdSnapshotter": false in settings-store.json)
+# 4. images from Docker Hub / the mirror must be re-pulled; local builds reload
+docker load -i /tmp/ai.tar && docker load -i /tmp/server.tar && docker load -i /tmp/web.tar
+
+# 5. check the stack's volumes survived before recreating anything
+docker volume ls | grep creatorstudio_
+```
+
+Rollback: restore the JSON backup, restart Docker Desktop. Nothing in
+`~/Library/Containers/com.docker.docker/Data` is deleted by this, and the
+`Docker.raw` disk image is untouched.
+
+Do **not** raise `MemoryMiB` above 4096 on this 24 GB host. The 8192 bump on
+2026-11-03 crashed the VM (the daemon then reported `MemTotal` ≈ 3.8 GiB after the
+revert) and is what started the store damage.
+
 ## Two bugs fixed in the upstream config path
 
 `deploy/render_config.py` no longer uses `yaml.safe_dump`/`safe_load` directly,
@@ -237,6 +292,9 @@ should be rotated, not restored.
 | `aitoearn-server` crash loop, `CannotDetermineTypeError` | a schema field uses an inferred union type | declare `@Prop({ type: Date })` explicitly |
 | build hangs at 0% CPU | nx daemon | `export NX_DAEMON=false` |
 | `failed to resolve source metadata ... EOF` | Docker Hub unreachable | retag from local cache, or pull via `:7897` |
+| app container `Restarting (139)`, empty log; `--entrypoint node -v` works but `pm2 --version` segfaults | image payload was written while the image store was rotten — re-importing the rootfs does not heal it | rebuild: `NX_DAEMON=false bash deploy/build_images.sh aitoearn-ai aitoearn-server`, then `bash deploy/build_web.sh` |
+| rebuild dies at `failed to fetch oauth token ... lookup host.docker.internal: no such host` | buildx cannot resolve the host alias after the store switch | give it the gateway IP, which needs no DNS: `STUDIO_BUILD_PROXY=http://172.29.0.1:7897` (`docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}'`) |
+| rebuild ends with `DeadlineExceeded: context deadline exceeded` | the upstream helper caps a single build at a few minutes; a cold `pnpm install` through the proxy exceeds it | re-run once (cached layers get it under the cap) or raise the cap in `project/aitoearn-backend/scripts/build-docker.mjs` |
 | everything 502 | backend still booting | `make logs S=aitoearn-server`, wait for `app started at port` |
 | publish fails `No module named 'conf'` | upstream ships only `conf.example.py` | `cp integrations/vendor/social-auto-upload/conf.example.py .../conf.py` (or rerun `deploy/bootstrap_sau.sh`) |
 | publish says cookie expired | no logged-in Douyin session for that account | `cd integrations/vendor/social-auto-upload && .venv/bin/python sau_cli.py douyin login --account <name>` |
