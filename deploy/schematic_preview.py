@@ -4,7 +4,7 @@
     python3 deploy/schematic_preview.py deploy/specs/envoy_intro.json \
         --shots ~/CreatorStudio/materials/shots/github-repo.png \
                 ~/CreatorStudio/materials/shots/studio-panel.png \
-        --out ~/CreatorStudio/deliver/envoy-schematic-a.mp4
+        --out /Volumes/US202/CreatorStudio/deliver/envoy-schematic-a.mp4
 
 不给 --shots 就是纯 SVG 背景版；截图按屏序贴，第 i 张配 --caps 的第 i 条角标。
 

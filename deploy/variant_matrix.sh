@@ -5,7 +5,10 @@
 # 而不是「按 f44 调好的参数」。
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-OUT=${1:-$HOME/CreatorStudio/deliver/qa/matrix}
+# 与 worker 一致：默认落外置盘，盘不在就退回内置盘
+ROOT=${STUDIO_STORAGE_ROOT:-/Volumes/US202/CreatorStudio}
+[ -d "$ROOT" ] || ROOT="$HOME/CreatorStudio"
+OUT=${1:-$ROOT/deliver/qa/matrix}
 PY=${PY:-$HOME/CreatorStudio/runtime/integrations/vendor/MoneyPrinterTurbo/.venv/bin/python}
 export PYTHONPATH=${PYTHONPATH:-$HOME/CreatorStudio/runtime/lib}
 export STUDIO_SKIP_PREFLIGHT=1

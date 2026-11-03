@@ -10,7 +10,7 @@
     studio jobs log <id> -n 60
     studio jobs wait <id>            # 轮询到终态，失败时打印 error 并退出码 1
     studio jobs cancel <id>
-    studio films                     # ~/CreatorStudio/deliver 下的成片
+    studio films                     # 成片清单（默认在外置盘 /Volumes/US202/CreatorStudio/deliver）
 
 环境变量：STUDIO_API（默认 http://127.0.0.1:8899）。
 """

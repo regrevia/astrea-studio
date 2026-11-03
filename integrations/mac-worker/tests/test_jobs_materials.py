@@ -152,12 +152,13 @@ class DeliverablesTest(unittest.TestCase):
             (root / "out" / "jobA" / "r1").mkdir(parents=True)
             (root / "deliver" / "a.mp4").write_bytes(b"x" * 16)
             (root / "out" / "jobA" / "r1" / "jobA__r1__douyin.mp4").write_bytes(b"y" * 32)
-            saved = (jobs.DELIVER_DIR, jobs.CLAIM_DIR)
-            jobs.DELIVER_DIR, jobs.CLAIM_DIR = root / "deliver", root / "out"
+            saved = (jobs.deliver_dir, jobs.claim_dir)
+            jobs.deliver_dir = lambda: root / "deliver"
+            jobs.claim_dir = lambda: root / "out"
             try:
                 rows = jobs.deliverables(10)
             finally:
-                jobs.DELIVER_DIR, jobs.CLAIM_DIR = saved
+                jobs.deliver_dir, jobs.claim_dir = saved
             self.assertEqual(sorted(r["name"] for r in rows),
                              ["a.mp4", "jobA__r1__douyin.mp4"])
             self.assertEqual({r["name"]: r["source"] for r in rows}["jobA__r1__douyin.mp4"], "claim")

@@ -17,7 +17,7 @@
 | GET | `/jobs/<id>` | 单个任务状态机 |
 | GET | `/jobs/<id>/log?tail=200` | 日志尾巴 |
 | POST | `/jobs/<id>/cancel` | 取消（SIGTERM 整个进程组） |
-| GET | `/deliverables?limit=50` | `$STUDIO_HOME/deliver` 下的成片清单 |
+| GET | `/deliverables?limit=50` | 成片清单（默认外置盘的 `deliver/` 与 `out/`） |
 | GET | `/assets` | 资产总览：`deploy/specs/` 的规格（含可提交的 kind）、`$STUDIO_HOME/materials/shots` 的镜头素材、成片清单；纯扫目录 |
 | GET | `/guard?limit=20` | 草稿守护现状：每份草稿最近一次结论 + 最近 `limit` 条事件（读 `~/CreatorStudio/logs/draft-guard.jsonl`，不做扫盘） |
 
@@ -96,9 +96,36 @@ state/jobs/<id>/job.json     状态机（原子写：先 .tmp 再 replace）
 state/jobs/<id>/log.txt      引擎输出 + 失败堆栈
 state/jobs/<id>/result.json  成功时的结构化结果
 state/jobs/<id>/spec.json    提交时的规格快照（换稿后仍能复现这一条）
-state/jobs/<id>/work/        中间帧 / 草稿 / 渲染工作目录
-deliver/                     成片（DELIVER_DIR 可覆盖）
+state/jobs/<id>/work/        中间帧 / 草稿 / 渲染工作目录（本机少量状态）
+deliver/                     成片（默认在外置盘，见下）
 ```
+
+### 成片与渲染中间件默认落外置盘
+
+内置盘只放代码、任务状态和日志；成片和渲染中间件（timeline / motion / slides /
+captures）默认写外置 SSD，长时间出片不会把系统盘写满：
+
+```
+/Volumes/US202/CreatorStudio/
+  deliver/   成片（GET /deliverables、bin/studio films 列这里；剪映认领的成片在 out/）
+  out/       剪映认领的成片（按 jobId/rN 归位）
+  work/      渲染中间件，按 <kind>/<jobId> 分目录
+```
+
+改位置不用动代码，三种方式按优先级：
+
+| 方式 | 写法 |
+| --- | --- |
+| 环境变量 | `DELIVER_DIR` / `STUDIO_OUT` / `STUDIO_WORK` / `STUDIO_STORAGE_ROOT` |
+| `config/studio.json` | `"storage": {"root": "/Volumes/US202/CreatorStudio", "deliver": "…"}` |
+| 默认值 | `/Volumes/US202/CreatorStudio`（卷名可用 `STUDIO_STORAGE_VOLUME` 换） |
+
+盘没挂上不会让任务失败：路径在**每次用时**解析，外置盘不可写就退回
+`~/CreatorStudio/{deliver,out,work}`，任务结果里的 `storage.fallbackReason` 和
+`GET /healthz` 的 `storage` 段会写清楚降到了哪里。剪映草稿目录仍留在内置盘
+（`~/CreatorStudio/jianying`），因为剪映与草稿守护都按那里找。
+
+`python3 storage.py`（worker 目录）打印当前落点，`--json` 给机读版本。
 
 `JOBS_DIR`、`DELIVER_DIR`、`JOBS_MAX_RUNNING`（默认 2）、`STUDIO_PY`、`NODE_BIN` 都可
 用环境变量覆盖；其余一律走 `Path.home()` 与仓库相对路径，没有写死的主机路径 ——
@@ -120,16 +147,16 @@ deliver/                     成片（DELIVER_DIR 可覆盖）
 | 场景 | 容器化 / 多机 | 本机单人 |
 | 传输 | S3 + docker API | 本机 HTTP + 子进程 |
 | 必填 | `runId` + S3 凭据 | 只有 `kind` + `payload` |
-| 产物 | 上传后给 URL | 直接落 `$STUDIO_HOME/deliver` |
+| 产物 | 上传后给 URL | 直接落外置盘 `deliver/` |
 
 两边共用同一批 `render_*` 引擎函数，行为一致；不要在本机再写一套 `ffmpeg` 拼装脚本
 绕过它们 —— 那样口型/版式/响度三处校准会各自漂。
 
 ## 成片落在哪
 
-`paper` 直接由引擎写到 `$STUDIO_HOME/deliver/`；`slides`/`motion`/`jianying` 的引擎
+`paper` 直接由引擎写到 `deliver/`；`slides`/`motion`/`jianying` 的引擎
 把产物写在自己的工作目录里，任务成功后由队列**复制**一份到
-`$STUDIO_HOME/deliver/<slug>-<jobId><扩展名>`（`slug` 不写就用 `kind`），
+`deliver/<slug>-<jobId><扩展名>`（`slug` 不写就用 `kind`），
 `GET /deliverables` 和 `bin/studio films` 列的就是这里。工作目录保留原始产物供复查，
 但只有 deliver 里那份算交付物——清工作目录不会丢成片。
 

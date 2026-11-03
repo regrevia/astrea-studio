@@ -42,7 +42,15 @@ MOVIES = Path(os.path.expanduser("~/Movies"))
 DRAFT_ROOT = Path(os.path.expanduser(
     "~/Movies/JianyingPro/User Data/Projects/com.lveditor.draft"))
 REPO = Path(__file__).resolve().parents[3]
-DEFAULT_OUTDIR = Path(os.path.expanduser("~/CreatorStudio/out"))
+_WORKER = Path(__file__).resolve().parents[1]
+if str(_WORKER) not in sys.path:
+    sys.path.insert(0, str(_WORKER))
+try:                                   # 与 worker 同一套落点：默认外置盘，拔盘降级内置盘
+    import storage as _storage
+    DEFAULT_OUTDIR = _storage.resolve().out
+except Exception:                      # 单独拷出去跑时没有 storage.py，退回旧路径
+    DEFAULT_OUTDIR = Path(os.environ.get("STUDIO_OUT")
+                          or os.path.expanduser("~/CreatorStudio/out"))
 EVIDENCE = REPO / "docs/probe/export-panel/runs"
 TIERS = {"480P": (854, 480), "720P": (1280, 720), "1080P": (1920, 1080),
          "2K": (2560, 1440), "4K": (3840, 2160), "8K": (7680, 4320)}

@@ -51,7 +51,19 @@ make up          # start again
   projects/       per-run working dirs
   logs/
   backups/
+  jianying/       Jianying drafts (kept on the internal disk on purpose)
+
+/Volumes/US202/CreatorStudio/     external SSD, where renders go by default
+  deliver/        finished films (GET /deliverables, bin/studio films)
+  out/            films claimed back from Jianying
+  work/           timeline / motion / slides / capture scratch, per job
 ```
+
+Renders default to the external volume so exploration cannot fill the internal disk.
+Paths are resolved on every use: if the volume is not mounted the worker falls back to
+`~/CreatorStudio/{deliver,out,work}` and says so in the job result (`storage.fallbackReason`)
+and in `GET /healthz`. Edit `config/studio.json` → `storage.root` to move it elsewhere;
+`python3 integrations/mac-worker/storage.py` prints the current targets.
 
 Secrets are generated once and reused. Deleting `config/compose.env` regenerates
 everything — which also invalidates the local login, so don't do it casually.
@@ -295,6 +307,7 @@ should be rotated, not restored.
 | app container `Restarting (139)`, empty log; `--entrypoint node -v` works but `pm2 --version` segfaults | image payload was written while the image store was rotten — re-importing the rootfs does not heal it | rebuild: `NX_DAEMON=false bash deploy/build_images.sh aitoearn-ai aitoearn-server`, then `bash deploy/build_web.sh` |
 | rebuild dies at `failed to fetch oauth token ... lookup host.docker.internal: no such host` | buildx cannot resolve the host alias after the store switch | give it the gateway IP, which needs no DNS: `STUDIO_BUILD_PROXY=http://172.29.0.1:7897` (`docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}'`) |
 | rebuild ends with `DeadlineExceeded: context deadline exceeded` | the upstream helper caps a single build at a few minutes; a cold `pnpm install` through the proxy exceeds it | re-run once (cached layers get it under the cap) or raise the cap in `project/aitoearn-backend/scripts/build-docker.mjs` |
+| job result says `storage.fallbackReason` / `GET /healthz` storage root is `~/CreatorStudio` | the external volume is not mounted or not writable | plug in the SSD and remount `/Volumes/US202`; new jobs route there by themselves, nothing to restart |
 | everything 502 | backend still booting | `make logs S=aitoearn-server`, wait for `app started at port` |
 | publish fails `No module named 'conf'` | upstream ships only `conf.example.py` | `cp integrations/vendor/social-auto-upload/conf.example.py .../conf.py` (or rerun `deploy/bootstrap_sau.sh`) |
 | publish says cookie expired | no logged-in Douyin session for that account | `cd integrations/vendor/social-auto-upload && .venv/bin/python sau_cli.py douyin login --account <name>` |

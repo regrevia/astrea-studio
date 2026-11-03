@@ -25,6 +25,7 @@ from typing import Any
 
 from api import ApiError, StudioClient
 from capture_web import CaptureError, capture_to_materials
+import storage
 from config import CONFIG_DIR, STUDIO_HOME, WorkerConfig, job_log_path
 import pylocator
 import capabilities
@@ -473,7 +474,7 @@ class Worker:
                 log.info("job %s readback: %s applied=%s", job_id, result.get("state"), result.get("applied"))
             elif kind == "capture_web":
                 result = capture_to_materials(
-                    payload, STUDIO_HOME / "captures" / job_id
+                    payload, storage.work_dir("captures", job_id)
                 )
                 self.client.complete(job_id, lease, result)
                 log.info("job %s captured %s page(s)", job_id, result.get("count"))
@@ -572,7 +573,7 @@ class Worker:
         if not run_id:
             raise MotionError("motion job has no runId; cannot attach a draft")
         revision = int(payload.get("revision") or 1)
-        result = render_motion(payload, STUDIO_HOME / "motion" / job_id, progress)
+        result = render_motion(payload, storage.work_dir("motion", job_id), progress)
 
         s3 = load_s3_creds()
         if not (s3["access"] and s3["secret"]):
@@ -607,7 +608,7 @@ class Worker:
         spec_payload = dict(payload)
         spec_payload["runId"] = run_id
         spec_payload["revision"] = revision
-        result = render_jianying(spec_payload, STUDIO_HOME / "jianying" / job_id, progress)
+        result = render_jianying(spec_payload, storage.resolve().drafts / job_id, progress)
         result["runId"] = run_id or result.get("runId")
         result["revision"] = revision
         result["jobId"] = job_id
@@ -748,7 +749,7 @@ class Worker:
         platform_hint = str(payload.get("platform") or "").strip()
         # 历史调用方不带 platform 时，自动导出仍退回 douyin；认领不走这条退路（见下）。
         platform = platform_hint or "douyin"
-        outdir = str(payload.get("outdir") or (STUDIO_HOME / "out"))
+        outdir = str(payload.get("outdir") or storage.resolve().out)
         base = {
             "jobId": job_id, "runId": run_id, "revision": revision,
             "platform": platform, "draftPath": draft_path or None,
@@ -894,7 +895,7 @@ class Worker:
         if not run_id:
             raise SlidesError("slides job has no runId; cannot attach a draft")
         revision = int(payload.get("revision") or 1)
-        result = render_slides(payload, STUDIO_HOME / "slides" / job_id, progress)
+        result = render_slides(payload, storage.work_dir("slides", job_id), progress)
 
         s3 = load_s3_creds()
         if not (s3["access"] and s3["secret"]):
@@ -959,8 +960,7 @@ class Worker:
         # 外层 spec（可能带引擎外壳）与内层 timeline 本体都可能是 assetBase 的来源
         src_spec: dict[str, Any] = spec_obj if isinstance(spec_obj, dict) else {}
         spec_path_hint = payload.get("specPath")
-        workdir = STUDIO_HOME / "timeline" / job_id
-        workdir.mkdir(parents=True, exist_ok=True)
+        workdir = storage.work_dir("timeline", job_id)
 
         # 平台侧的 run.spec 是「引擎 + 参数」的外壳，timeline 本体可能在 timeline 键下
         if isinstance(spec_obj, dict) and not spec_obj.get("canvas") \

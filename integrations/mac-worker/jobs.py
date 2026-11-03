@@ -17,7 +17,8 @@
 设计边界：
   * 一次只跑 N 条（默认 2），队列里排着的不抢 CPU；
   * 失败必须留下可读原因（traceback 尾 2000 字 + 引擎自己的报错行），不吞；
-  * 产物写 ``$STUDIO_HOME/deliver``（可用 DELIVER_DIR 覆盖），文件名带 job id 便于溯源；
+  * 产物默认写外置盘 ``/Volumes/US202/CreatorStudio/deliver``（见 storage.py，可用
+   ``config/studio.json`` 的 storage 段或 DELIVER_DIR 覆盖），文件名带 job id 便于溯源；
   * 本文件只用标准库，引擎模块按需延迟导入 —— 没装 numpy/ffmpeg 的环境也能起来。
 """
 
@@ -34,12 +35,23 @@ import traceback
 import uuid
 from pathlib import Path
 
+import storage
 from config import REPO_ROOT, STUDIO_HOME
 
 JOBS_DIR = Path(os.environ.get("JOBS_DIR", STUDIO_HOME / "state" / "jobs")).expanduser()
-DELIVER_DIR = Path(os.environ.get("DELIVER_DIR", STUDIO_HOME / "deliver")).expanduser()
+# 成片与中间件默认落外置盘（见 storage.py）；这里每次取一次，盘插拔、改配置都不用重启。
+def deliver_dir() -> Path:
+    return storage.resolve().deliver
+
+
 # 剪映认领的成片按 (jobId, rN) 归位在 out/ 下，和引擎产物不同目录，但都是「能交出去的成片」
-CLAIM_DIR = Path(os.environ.get("STUDIO_OUT", STUDIO_HOME / "out")).expanduser()
+def claim_dir() -> Path:
+    return storage.resolve().out
+
+
+def storage_info() -> dict:
+    """任务结果里写清「文件实际落在哪个盘」，盘没挂上时带降级原因。"""
+    return storage.resolve().describe()
 SCRIPTS = {
     "paper": REPO_ROOT / "deploy" / "schematic_preview.py",
 }
@@ -197,7 +209,7 @@ def _run_cli(job: dict, cmd: list[str]) -> dict:
 
 def _paper(job: dict, payload: dict) -> dict:
     out = Path(payload.get("out") or
-               DELIVER_DIR / f"{payload.get('slug') or 'paper'}-{job['id']}.mp4").expanduser()
+               deliver_dir() / f"{payload.get('slug') or 'paper'}-{job['id']}.mp4").expanduser()
     out.parent.mkdir(parents=True, exist_ok=True)
     cmd = [PYBIN, str(SCRIPTS["paper"]), str(Path(payload["specPath"]).expanduser())]
     if payload.get("shots"):
@@ -240,18 +252,19 @@ def _engine(job: dict, payload: dict) -> dict:
 
 
 def _deliver(job: dict, files: list[str]) -> list[str]:
-    """把引擎产出的成片收进 DELIVER_DIR：工作目录是临时的，成片要能被 films 列到。"""
+    """把引擎产出的成片收进 deliver：工作目录是临时的，成片要能被 films 列到。"""
     out: list[str] = []
     slug = str((job.get("payload") or {}).get("slug") or job.get("kind") or "film")
-    DELIVER_DIR.mkdir(parents=True, exist_ok=True)
+    deliver = deliver_dir()
+    deliver.mkdir(parents=True, exist_ok=True)
     for f in files:
         src = Path(str(f))
         if not src.is_file():
             continue
-        if DELIVER_DIR in src.parents:
+        if deliver in src.parents:
             out.append(str(src))
             continue
-        dst = DELIVER_DIR / f"{slug}-{job['id']}{src.suffix}"
+        dst = deliver / f"{slug}-{job['id']}{src.suffix}"
         shutil.copy2(src, dst)
         out.append(str(dst))
     return out
@@ -268,7 +281,7 @@ def _timeline(job: dict, payload: dict) -> dict:
     spec_path.write_text(json.dumps(spec, ensure_ascii=False, indent=2) + "\n",
                          encoding="utf-8")
     slug = payload.get("slug") or job["kind"]
-    out = Path(payload.get("out") or DELIVER_DIR / f"{slug}-{job['id']}.mp4").expanduser()
+    out = Path(payload.get("out") or deliver_dir() / f"{slug}-{job['id']}.mp4").expanduser()
     out.parent.mkdir(parents=True, exist_ok=True)
     cmd = [PYBIN, str(REPO_ROOT / "integrations" / "mac-worker" / "export" / "timeline_render.py"),
            "--spec", str(spec_path), "--out", str(out), "--json"]
@@ -361,6 +374,9 @@ def run_job(job_id: str) -> int:
             info = _media_info((res.get("files") or [None])[0])
             if info:
                 res = {**res, **info}
+        if isinstance(res, dict) and job["kind"] not in ("materials", "probe"):
+            # 落点写进结果：外置盘没挂上时 here 就是降级后的内置路径 + 原因
+            res = {**res, "storage": storage_info()}
         job.update(status="succeeded", progress=100, stage=f"{job['kind']}:done",
                    result=res, endedAt=time.strftime("%Y-%m-%dT%H:%M:%S"))
         _write(job)
@@ -382,7 +398,7 @@ def run_job(job_id: str) -> int:
 
 def deliverables(limit: int = 50) -> list[dict]:
     rows = []
-    for root, source in ((DELIVER_DIR, "render"), (CLAIM_DIR, "claim")):
+    for root, source in ((deliver_dir(), "render"), (claim_dir(), "claim")):
         if not root.is_dir():
             continue
         for p in root.rglob("*"):

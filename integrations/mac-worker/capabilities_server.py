@@ -195,8 +195,9 @@ def media_file(abs_path: str) -> tuple[bytes, str]:
 
     from library import DEFAULT_ROOT as LIBRARY_ROOT
 
-    roots = [LIBRARY_ROOT.resolve(), (jobs.STUDIO_HOME / "out").resolve(),
-             jobs.DELIVER_DIR.resolve()]
+    # 成片可能在外置盘（storage.py 解析），三处都算合法根，越界仍然 404
+    roots = [LIBRARY_ROOT.resolve(), jobs.claim_dir().resolve(),
+             jobs.deliver_dir().resolve()]
     raw = (abs_path or "").strip()
     if not raw:
         raise KeyError(abs_path)
@@ -310,7 +311,10 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 self._send(200, body)
             elif path == "/healthz":
-                self._send(200, b'{"ok":true}')
+                # storage 一眼看出东西写哪个盘、有没有降到内置盘
+                body = json.dumps({"ok": True, "storage": jobs.storage_info()},
+                                  ensure_ascii=False).encode()
+                self._send(200, body)
             elif path == "/guard":
                 q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
                 limit = int((q.get("limit") or ["20"])[0])

@@ -153,8 +153,10 @@ def ensure_credentials(env_path: Path) -> tuple[dict[str, str], bool]:
         "STUDIO_INTERNAL_TOKEN": existing.get("STUDIO_INTERNAL_TOKEN") or gen_password(40),
         "STUDIO_BUILD_TAG": existing.get("STUDIO_BUILD_TAG", "local"),
     }
+    # compose.env 里的 ${...} 不会被 docker compose 二次展开，所以标签在这里就地替换
+    tag = creds["STUDIO_BUILD_TAG"]
     for k, v in DEFAULT_IMAGES.items():
-        creds[k] = existing.get(k, v)
+        creds[k] = existing.get(k, v.replace("${STUDIO_BUILD_TAG}", tag))
     creds["STUDIO_HOME"] = str(STUDIO_HOME)
     return creds, created
 
@@ -479,8 +481,12 @@ def main() -> int:
     write_private(cfg_dir / "aitoearn-ai.yaml", dump_yaml(render_ai_config(creds)))
     write_private(cfg_dir / "nginx.conf", render_nginx_config(render_compose(creds)))
 
+    volume = Path(os.environ.get("STUDIO_STORAGE_VOLUME", "/Volumes/US202")).expanduser()
+    storage_root = Path(os.environ.get("STUDIO_STORAGE_ROOT") or volume / "CreatorStudio")
     local = {
         "studioHome": str(STUDIO_HOME),
+        # 成片与渲染中间件默认落外置盘，盘不在时 worker 自动退回 studioHome（见 mac-worker/storage.py）
+        "storage": {"root": str(storage_root)},
         "repo": str(REPO),
         "workbenchUrl": "http://127.0.0.1:8080",
         "ports": {"web": 8080, "s3": 9001, "redis": 6379, "s3Proxy": 9000},
@@ -493,6 +499,7 @@ def main() -> int:
 
     mpt = render_mpt_config(creds)
     print(f"studio home     : {STUDIO_HOME}")
+    print(f"render output   : {storage_root}（未挂载时退回 {STUDIO_HOME}）")
     print(f"credentials     : {'newly generated' if created else 'reused'}")
     print(f"compose         : {cfg_dir / 'compose.yml'}")
     print(f"server config   : {cfg_dir / 'aitoearn-server.yaml'}")
