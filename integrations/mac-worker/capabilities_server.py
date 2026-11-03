@@ -148,6 +148,43 @@ def _utf8_query_value(value: str) -> str:
         return value
 
 
+def guard_summary(limit: int = 20) -> dict:
+    """草稿守护的现状：每份草稿最近一次结论 + 最近若干条事件。
+
+    面板只读这里，不再自己翻流水账；扫盘和判定都留在守护进程里，
+    这个接口只做「最后一行是什么」的汇总，成本与草稿数量无关。
+    """
+    try:
+        from export import draft_guard as DG
+        path = DG.JOURNAL
+    except Exception as exc:  # noqa: BLE001 —— 守护没装也要让面板能起来
+        return {"ok": False, "reason": str(exc)}
+    events: list[dict] = []
+    try:
+        with path.expanduser().open(encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    events.append(json.loads(line))
+                except ValueError:
+                    continue
+    except OSError:
+        return {"ok": True, "journal": str(path), "drafts": [], "events": []}
+    latest: dict[str, dict] = {}
+    for event in events:
+        draft = event.get("draft") or ""
+        if draft:
+            latest[draft] = event
+    return {
+        "ok": True,
+        "journal": str(path),
+        "drafts": list(latest.values()),
+        "events": events[-max(1, min(limit, 200)):],
+    }
+
+
 def media_file(abs_path: str) -> tuple[bytes, str]:
     """只读地吐一份成片文件（素材库 / 成片目录 / 交付目录）。
 
@@ -274,6 +311,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, body)
             elif path == "/healthz":
                 self._send(200, b'{"ok":true}')
+            elif path == "/guard":
+                q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
+                limit = int((q.get("limit") or ["20"])[0])
+                body = json.dumps(guard_summary(limit), ensure_ascii=False).encode()
+                self._send(200, body)
             elif path == "/jobs":
                 q = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
                 limit = int((q.get("limit") or ["30"])[0])

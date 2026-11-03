@@ -69,6 +69,14 @@ cd ~/CreatorStudio/runtime/integrations/mac-worker
 ./.python3 -m export.plain_guard list
 ```
 
+面板侧不用读流水账文件，直接问本机服务：
+
+```bash
+curl -s 'http://127.0.0.1:8899/guard?limit=20'
+```
+
+返回 `drafts`（每份草稿最近一次结论）和 `events`（最近若干条状态变化），字段与流水账一致。
+
 守护进程用 `KeepAlive: true`（不是 worker 的 `SuccessfulExit: false`）：它退出的意思就是「草稿
 没人看了」，必须被拉起来。`ThrottleInterval 30` 防崩溃循环反复冲撞草稿目录。
 
