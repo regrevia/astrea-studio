@@ -59,10 +59,14 @@ node scripts/verify/e2e-promo.mjs --project <项目 ID>
 
 ```bash
 cd integrations/mac-worker
-<venv-python> tools/check_all.py              # 全量：离线契约 + 剪映段 + 发布泳道真机探针 + 版本依据
-<venv-python> tools/check_all.py --offline    # 只跑离线（不排真机作业，约 5 s）
-<venv-python> tools/check_all.py --with-web   # 再加上后端单测、Web 类型检查与三套 lint（多约 5 s）
+python3 tools/check_all.py              # 全量：离线契约 + 剪映段 + 发布泳道真机探针 + 版本依据
+python3 tools/check_all.py --offline    # 只跑离线（不排真机作业，约 5 s）
+python3 tools/check_all.py --with-web   # 再加上后端单测、Web 类型检查与三套 lint（多约 5 s）
 ```
+
+用哪个 python 都行：子进程一律按 `pylocator` 切到 worker 的固定解释器（`.python3` shim），
+所以 PATH 上只有裸 `python3`（没有 numpy）时也不会出现「代码缺陷」式的单测失败——汇总表第二行
+会写明这次实际用的是哪个解释器。
 
 输出一表，任一失败退出码非 0；`--json /tmp/report.json` 落一份机器可读结果。最近一次结果（真机探针 + `--with-web`）：
 
@@ -78,6 +82,10 @@ cd integrations/mac-worker
 | Web 文案 lint（`--with-web`） | 0.0 s | PASS（0 条错误 / 121 条提醒，基线 0） |
 | Web 中文排印（`--with-web`） | 0.0 s | PASS（0 条错误 / 17 条提醒，基线 0） |
 | Web 样式 lint（`--with-web`） | 0.0 s | PASS（0 条问题，基线 1） |
+
+本轮复核（2026-11-03，`python3 tools/check_all.py --offline --with-web`）：**10/10 通过**——
+worker 单测 114 条、后端 spec 79 条、`tsc --noEmit` 0 错误、文案 0 错误 / 122 提醒、排印 0 错误 / 17 提醒、
+样式 0 问题；本机剪映版本行已是 `11.6.0 build 490 · 行为实证 2 条 · 参考草稿 3 份`（上表为更早一轮的数字）。
 
 三套 lint 的判据是「不高于基线」：范围固定在 `src/app/[lng]/studio`，基线值写在
 `tools/check_all.py` 的 `baseline` 字段里（文案 0 / 排印 0 / 样式 1），超过一条就 FAIL 并报出

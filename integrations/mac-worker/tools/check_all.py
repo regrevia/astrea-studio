@@ -14,11 +14,11 @@
   6. Web 类型检查            界面与后端类型的接线（tsc，--with-web 才跑）
   7. Web 三套 lint           文案/中文排印/样式，按**不高于基线**判定（--with-web 才跑）
 
-跑法：
-    <venv-python> tools/check_all.py             全部（含真机探针，约 1 分钟）
-    <venv-python> tools/check_all.py --offline   只跑离线（不排真机作业，约 5 s）
-    <venv-python> tools/check_all.py --with-web  加上后端单测与 Web 类型检查（多约 1 分钟）
-    <venv-python> tools/check_all.py --json /tmp/x.json
+跑法（用哪个解释器都行，子进程一律走 worker 的固定解释器，见 pylocator）：
+    python3 tools/check_all.py             全部（含真机探针，约 1 分钟）
+    python3 tools/check_all.py --offline   只跑离线（不排真机作业，约 5 s）
+    python3 tools/check_all.py --with-web  加上后端单测与 Web 类型检查（多约 1 分钟）
+    python3 tools/check_all.py --json /tmp/x.json
 """
 from __future__ import annotations
 
@@ -32,6 +32,27 @@ from pathlib import Path
 MW = Path(__file__).resolve().parents[1]
 TOOLS = MW / "tools"
 REPO = MW.parents[1]
+
+sys.path.insert(0, str(MW))
+try:
+    import pylocator
+except Exception:  # noqa: BLE001 - 定位器自身坏了不该拖垮自检
+    pylocator = None  # type: ignore[assignment]
+
+
+def runtime_python() -> str:
+    """子进程一律用 worker 的固定解释器，不用调用者的。
+
+    以前直接拿 sys.executable：PATH 上的 python3 常是裸 3.11（没有 numpy），
+    worker 单测 import video_qa 就挂，报错看着像代码缺陷。这里走 pylocator，
+    和 launchd 里跑的是同一个解释器，谁调用这条命令结果都一样。
+    """
+    if pylocator is None:
+        return sys.executable
+    return pylocator.resolve_python()[0]
+
+
+PY = runtime_python()
 BACKEND = REPO / "project/aitoearn-backend"
 WEB = REPO / "project/aitoearn-web"
 
@@ -136,8 +157,8 @@ def run_lint(entry: dict) -> tuple[bool, str, str]:
 
 
 def run_one(script: str, argv: list[str], timeout: float) -> tuple[bool, str, str]:
-    cmd = [sys.executable, str(TOOLS / script), *argv] if script != "jianying_versions.py" \
-        else [sys.executable, str(MW / script), *argv]
+    cmd = [PY, str(TOOLS / script), *argv] if script != "jianying_versions.py" \
+        else [PY, str(MW / script), *argv]
     started = time.time()
     try:
         proc = subprocess.run(
@@ -158,7 +179,7 @@ def run_one(script: str, argv: list[str], timeout: float) -> tuple[bool, str, st
 
 def run_unittest(modules: list[str], timeout: float) -> tuple[bool, str, str]:
     """在 mac-worker 根目录跑指定单元测试模块（标准库，不需要 worker 那套重依赖）。"""
-    cmd = [sys.executable, "-m", "unittest", *modules]
+    cmd = [PY, "-m", "unittest", *modules]
     started = time.time()
     try:
         proc = subprocess.run(cmd, cwd=str(MW), capture_output=True, text=True,
@@ -175,7 +196,7 @@ def run_unittest(modules: list[str], timeout: float) -> tuple[bool, str, str]:
 def run_lane(argv: list[str], timeout: float) -> tuple[bool, str, str]:
     """真机探针输出是 JSON 列表；这里把它压成一行结论，别把整段 JSON 当详情。"""
     import re
-    cmd = [sys.executable, str(TOOLS / "check_publish_lane.py"), *argv]
+    cmd = [PY, str(TOOLS / "check_publish_lane.py"), *argv]
     started = time.time()
     try:
         proc = subprocess.run(cmd, cwd=str(MW), capture_output=True, text=True,
@@ -210,7 +231,7 @@ def version_note() -> str:
     """版本依据的摘要：主版本、schema 来源、是否拿到同主版本实证。"""
     try:
         proc = subprocess.run(
-            [sys.executable, str(MW / "jianying_versions.py"), "--json"],
+            [PY, str(MW / "jianying_versions.py"), "--json"],
             cwd=str(MW), capture_output=True, text=True, timeout=60, check=False,
         )
         info = json.loads(proc.stdout)
@@ -255,7 +276,7 @@ def main() -> int:
         if kind == "version":
             # 版本依据本身不是「过/不过」，缺剪映才判失败；细节看 version_note()。
             proc = subprocess.run(
-                [sys.executable, str(MW / "jianying_versions.py"), "--json"],
+                [PY, str(MW / "jianying_versions.py"), "--json"],
                 cwd=str(MW), capture_output=True, text=True,
                 timeout=float(entry["timeout"]), check=False,
             )
@@ -278,6 +299,8 @@ def main() -> int:
 
     width = max(len(str(row["name"])) for row in rows)
     print("一体化宣发工作台 · 自检汇总")
+    if pylocator is not None:
+        print(f'  解释器  {PY}（{pylocator.resolve_python()[1]}）')
     for row in rows:
         mark = "跳过" if row["skipped"] else ("PASS" if row["ok"] else "FAIL")
         print(f'  {mark:4}  {str(row["name"]).ljust(width)}  {row["elapsed"]:>6}  {row["detail"]}')
