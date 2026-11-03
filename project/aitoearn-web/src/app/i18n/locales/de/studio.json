@@ -152,6 +152,22 @@
       "done": "Fertig",
       "failed": "Abgebrochen",
       "cancelled": "Storniert"
+    },
+    "material": {
+      "open": "Medien suchen",
+      "placeholder": "Stichwort, z. B. „Stadt bei Nacht“",
+      "search": "Suchen",
+      "searching": "Suche läuft",
+      "video": "Video",
+      "image": "Bild",
+      "collapse": "Einklappen",
+      "empty": "Nichts gefunden – anderes Wort versuchen",
+      "licenseUnknown": "Lizenz unbekannt",
+      "add": "Hinzufügen",
+      "adding": "Wird hinzugefügt",
+      "source": "Von Wikimedia Commons – Hinzufügen lädt es in die lokale Bibliothek.",
+      "picked": "{{n}} ausgewählt",
+      "failed": "Medium konnte nicht geladen werden"
     }
   },
   "pub": {

@@ -9,6 +9,7 @@
 import type { MaterialCandidate } from '@/api/production/production.api'
 import { useMemo, useState } from 'react'
 import { landMaterials, searchMaterials } from '@/api/production/production.api'
+import { useTransClient } from '@/app/i18n/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -30,6 +31,7 @@ function sizeText(bytes: number) {
 }
 
 export default function MaterialSearch({ picked, onPick }: MaterialSearchProps) {
+  const { t } = useTransClient('studio')
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [kind, setKind] = useState<'video' | 'image'>('video')
@@ -58,13 +60,13 @@ export default function MaterialSearch({ picked, onPick }: MaterialSearchProps) 
       const landed = await landMaterials([item])
       const path = landed[0]?.path
       if (!path) {
-        setError('素材没下下来')
+        setError(t('run.material.failed'))
         return
       }
       onPick(path)
     }
-    catch (err) {
-      setError(err instanceof Error ? err.message : '素材没下下来')
+    catch {
+      setError(t('run.material.failed'))
     }
     finally {
       setLanding('')
@@ -74,7 +76,7 @@ export default function MaterialSearch({ picked, onPick }: MaterialSearchProps) 
   if (!open) {
     return (
       <Button type="button" size="sm" variant="ghost" className="self-start" onClick={() => setOpen(true)}>
-        搜素材
+        {t('run.material.open')}
       </Button>
     )
   }
@@ -84,7 +86,7 @@ export default function MaterialSearch({ picked, onPick }: MaterialSearchProps) 
       <div className="flex flex-wrap items-center gap-2">
         <Input
           value={query}
-          placeholder="关键词，例如「城市夜景」"
+          placeholder={t('run.material.placeholder')}
           className="h-8 max-w-56"
           onChange={event => setQuery(event.target.value)}
           onKeyDown={(event) => {
@@ -101,7 +103,7 @@ export default function MaterialSearch({ picked, onPick }: MaterialSearchProps) 
           disabled={!query.trim() || searching}
           onClick={() => void search()}
         >
-          {searching ? '搜索中' : '搜索'}
+          {searching ? t('run.material.searching') : t('run.material.search')}
         </Button>
         <Button
           type="button"
@@ -109,22 +111,22 @@ export default function MaterialSearch({ picked, onPick }: MaterialSearchProps) 
           variant={kind === 'image' ? 'default' : 'outline'}
           onClick={() => setKind(current => (current === 'video' ? 'image' : 'video'))}
         >
-          {kind === 'video' ? '视频' : '图片'}
+          {kind === 'video' ? t('run.material.video') : t('run.material.image')}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
-          收起
+          {t('run.material.collapse')}
         </Button>
       </div>
       {error && <span className="text-[11px] text-destructive">{error}</span>}
       {rows !== null && rows.length === 0 && !searching && (
-        <span className={hintClass}>没搜到，换个词</span>
+        <span className={hintClass}>{t('run.material.empty')}</span>
       )}
       {rows !== null && rows.map(item => (
         <div key={`${item.provider}-${item.id}`} className="flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-xs" title={item.title}>
             {item.title}
           </span>
-          <span className={`${hintClass} shrink-0`}>{item.license || '许可未知'}</span>
+          <span className={`${hintClass} shrink-0`}>{item.license || t('run.material.licenseUnknown')}</span>
           <span className={`${hintClass} shrink-0`}>{sizeText(item.bytes)}</span>
           <Button
             type="button"
@@ -134,21 +136,15 @@ export default function MaterialSearch({ picked, onPick }: MaterialSearchProps) 
             disabled={landing === item.id}
             onClick={() => void add(item)}
           >
-            {landing === item.id ? '加入中' : '加入'}
+            {landing === item.id ? t('run.material.adding') : t('run.material.add')}
           </Button>
         </div>
       ))}
       {rows !== null && rows.some(item => item.page) && (
-        <span className={hintClass}>来源 Wikimedia Commons，点「加入」下载到本机素材库。</span>
+        <span className={hintClass}>{t('run.material.source')}</span>
       )}
       {pickedSet.size > 0 && (
-        <span className={hintClass}>
-          已选
-          {' '}
-          {pickedSet.size}
-          {' '}
-          条
-        </span>
+        <span className={hintClass}>{t('run.material.picked', { n: pickedSet.size })}</span>
       )}
     </div>
   )

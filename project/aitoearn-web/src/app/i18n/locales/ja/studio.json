@@ -152,6 +152,22 @@
       "done": "完了",
       "failed": "中断されました",
       "cancelled": "キャンセル済み"
+    },
+    "material": {
+      "open": "素材を探す",
+      "placeholder": "キーワード（例:「夜の街」）",
+      "search": "検索",
+      "searching": "検索中",
+      "video": "動画",
+      "image": "画像",
+      "collapse": "閉じる",
+      "empty": "見つかりません。別の言葉でお試しください",
+      "licenseUnknown": "ライセンス不明",
+      "add": "追加",
+      "adding": "追加中",
+      "source": "Wikimedia Commons 提供 —「追加」でローカル素材庫に保存します。",
+      "picked": "{{n}} 件選択済み",
+      "failed": "素材を取得できませんでした"
     }
   },
   "pub": {

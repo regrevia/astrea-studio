@@ -152,6 +152,22 @@
       "done": "완료",
       "failed": "중단됨",
       "cancelled": "취소됨"
+    },
+    "material": {
+      "open": "소재 검색",
+      "placeholder": "키워드, 예: “밤거리”",
+      "search": "검색",
+      "searching": "검색 중",
+      "video": "영상",
+      "image": "이미지",
+      "collapse": "접기",
+      "empty": "찾지 못했습니다. 다른 단어로 시도하세요",
+      "licenseUnknown": "라이선스 미상",
+      "add": "추가",
+      "adding": "추가 중",
+      "source": "Wikimedia Commons 제공 — “추가”를 누르면 로컬 소재함에 저장됩니다.",
+      "picked": "{{n}}개 선택됨",
+      "failed": "소재를 받지 못했습니다"
     }
   },
   "pub": {

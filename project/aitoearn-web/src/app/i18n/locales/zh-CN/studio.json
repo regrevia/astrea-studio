@@ -273,6 +273,22 @@
       "submit": "开始排队",
       "done": "已排 {{count}} 版",
       "cancel": "取消"
+    },
+    "material": {
+      "open": "搜素材",
+      "placeholder": "关键词，例如「城市夜景」",
+      "search": "搜索",
+      "searching": "搜索中",
+      "video": "视频",
+      "image": "图片",
+      "collapse": "收起",
+      "empty": "没搜到，换个词",
+      "licenseUnknown": "许可未知",
+      "add": "加入",
+      "adding": "加入中",
+      "source": "来源 Wikimedia Commons，点「加入」下载到本机素材库。",
+      "picked": "已选 {{n}} 条",
+      "failed": "素材没下下来"
     }
   },
   "pub": {

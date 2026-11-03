@@ -152,6 +152,22 @@
       "done": "Terminé",
       "failed": "Interrompu",
       "cancelled": "Annulé"
+    },
+    "material": {
+      "open": "Chercher un média",
+      "placeholder": "Mot-clé, par ex. « ville de nuit »",
+      "search": "Rechercher",
+      "searching": "Recherche",
+      "video": "Vidéo",
+      "image": "Image",
+      "collapse": "Replier",
+      "empty": "Rien trouvé — essayez un autre mot",
+      "licenseUnknown": "Licence inconnue",
+      "add": "Ajouter",
+      "adding": "Ajout",
+      "source": "Depuis Wikimedia Commons — Ajouter le télécharge dans la bibliothèque locale.",
+      "picked": "{{n}} sélectionné(s)",
+      "failed": "Impossible de télécharger ce média"
     }
   },
   "pub": {

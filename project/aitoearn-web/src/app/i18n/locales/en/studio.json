@@ -273,6 +273,22 @@
       "submit": "Queue them",
       "done": "{{count}} queued",
       "cancel": "Cancel"
+    },
+    "material": {
+      "open": "Search media",
+      "placeholder": "Keyword, e.g. “city at night”",
+      "search": "Search",
+      "searching": "Searching",
+      "video": "Video",
+      "image": "Image",
+      "collapse": "Hide",
+      "empty": "Nothing found — try another word",
+      "licenseUnknown": "License unknown",
+      "add": "Add",
+      "adding": "Adding",
+      "source": "From Wikimedia Commons — Add downloads it to your local library.",
+      "picked": "{{n}} selected",
+      "failed": "Couldn’t download that media"
     }
   },
   "pub": {
