@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import math
 import os
 import subprocess
@@ -174,6 +175,12 @@ def card(scene: dict, idx: int, total: int, path: Path):
         d.rounded_rectangle((MARGIN, y, MARGIN + (W - MARGIN * 2) * p, y + 3), radius=2,
                             fill=(*accent, 235))
 
+    # 眉标：这一屏讲的是哪一层（格式 / 可核对 / 诚实 / 安装）
+    kick = scene.get("kicker")
+    if kick:
+        _tracked(d, (MARGIN, scene.get("head_y", 402) - 76), kick,
+                 font(26, False), (*accent, 200), tracking=7.0)
+
     # 主标题
     head = scene["head"]
     if "\n" in head:
@@ -226,6 +233,23 @@ def card(scene: dict, idx: int, total: int, path: Path):
                    fill=(*DIM, 235))
         bottom = sy + len(sl) * int(scene.get("sub_size", 34) * 1.5)
 
+    # 实测读数：宣传片最容易空的地方就是「只有一句口号」，这三屏各挂两条具体数字
+    facts = scene.get("facts") or []
+    if facts:
+        fs_ = scene.get("fact_size", 33)
+        ff = font(fs_, False)
+        step = int(fs_ * 1.46)
+        rows: list[str] = []
+        for line in facts:
+            rows.extend(_wrap(d, line, ff, scene.get("fact_w", TEXT_W - 8)))
+        rows = rows[:4]
+        fy0 = bottom + 44
+        d.rounded_rectangle((MARGIN, fy0 + 6, MARGIN + 3, fy0 + len(rows) * step - 12),
+                            radius=2, fill=(*accent, 120))
+        for n, row in enumerate(rows):
+            d.text((MARGIN + 26, fy0 + n * step), row, font=ff, fill=(*DIM, 226))
+        bottom = fy0 + len(rows) * step
+
     # 品牌标：开场和收尾才露脸，中间挂满就成了水印
     if scene.get("logo"):
         chip = _brand_chip(LOGO)
@@ -234,6 +258,11 @@ def card(scene: dict, idx: int, total: int, path: Path):
             (W - MARGIN - 112, 96, W - MARGIN, 96 + 112), radius=30, fill=(0, 0, 0, 130))
         layer.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(18)))
         layer.alpha_composite(chip, (W - MARGIN - 112, 96))
+
+    # 数据出处：屏幕上出现的每个数字都要能追到评测原文
+    note = scene.get("note")
+    if note:
+        d.text((MARGIN, 1720), note, font=font(23, False), fill=(112, 128, 160, 190))
 
     # 底栏：署名 + 出品，整片同一位置
     fy = font(30, False)
@@ -255,38 +284,75 @@ def _dur(p: Path) -> float:
 
 # ---------------------------------------------------------------- 分镜
 SCENES = [
-    dict(kind="cover", audio="a00.mp3", pose="wave",
+    dict(kind="cover", audio="a00.mp3", poses=["wave", "wave", "point"],
          head="给 AI 一个链接，\n它只读到标题",
          sub="剩下的，全靠它自己脑补。", logo=True, num="",
          accent=CYAN, sizes=[92, 86, 80], head_y=396, sub_size=40, sub_w=820,
          say="给 AI 一个链接，它只读到标题，剩下的全靠脑补。"),
-    dict(kind="point", audio="a01.mp3", pose="point",
-         head="一个链接，什么都能读",
+
+    dict(kind="point", audio="a01.mp3", poses=["point", "point", "approve", "point"],
+         head="一个链接，什么都能读", kicker="格式",
          pill="网页 · 公众号 · PDF · 小红书 · B 站 · 视频",
+         facts=["自测 123 条链接：80.5% 能拿到可用材料",
+                "能连上的链接里 92.5% 读得到正文"],
+         note="数据：123 条真实链接兼容性实测",
          num="01 / 04", accent=CYAN, head_size=88, head_y=470, pill_size=36,
          say="网页、公众号、PDF、小红书图文、B 站视频、本地视频，一个链接就够。"),
-    dict(kind="point", audio="a02.mp3", pose="think",
-         head="每条结论，都带时间戳",
+
+    dict(kind="point", audio="a02.mp3", poses=["think", "point"], pose_every=1,
+         exprs={1: "sparkle"},
+         head="每条结论，都带时间戳", kicker="可核对",
          pill="[04:18] 点开就核对", num="02 / 04", accent=AMBER,
          head_size=88, head_y=470,
+         facts=["参考事实覆盖率 9.1% → 38.2%", "第一次拿到证据 88 秒 → 48 秒"],
+         note="数据：60 轮 A/B 自测评测，每臂 60 轮",
          say="切片段的时候顺手标好时间点；结论后面挂一个方括号，点开就能核对。"),
-    dict(kind="point", audio="a03.mp3", pose="approve",
-         head="没读到，就说没读到",
+
+    dict(kind="point", audio="a03.mp3", poses=["shrug", "shrug", "point", "approve"],
+         head="没读到，就说没读到", kicker="诚实",
          pill="缺口单列「待补」，不猜", num="03 / 04", accent=CYAN,
          head_size=88, head_y=470,
+         facts=["空回答 31 处 → 0 处", "跑到超时没结论 68% → 0%"],
+         note="数据：60 轮 A/B 自测评测，每臂 60 轮",
          say="要登录、被人机校验拦住，它会直说，让 Agent 换条路，不编内容。"),
-    dict(kind="point", audio="a04.mp3", pose="point",
-         head="三个宿主，一行命令",
+
+    dict(kind="point", audio="a04.mp3", poses=["point", "point", "approve"],
+         head="三个宿主，一行命令", kicker="安装",
          pill="Claude Code · Codex · DSH", num="04 / 04", accent=CYAN,
          head_size=88, head_y=470,
+         facts=["默认完整档：runtime 178 MB · 浏览器 683 MB",
+                "转写权重 140 MB · 装完 envoy doctor --json"],
          say="Claude Code、Codex、DeepSeek Harness，三个宿主各一行命令，装完自检两条。"),
-    dict(kind="cta", audio="a05.mp3", pose="wave",
+
+    dict(kind="cta", audio="a05.mp3", poses=["wave", "wave", "happy", "happy"],
+         exprs={2: "sparkle"},
          head="装上 Envoy，\n链接就是材料",
          pill="github.com/regrevia/Envoy", logo=True, num="",
          sub="本期视频全程由大肥鱼制作完成，没有一个 token 受伤。",
          accent=CYAN, sizes=[96, 90, 84], head_y=396, pill_size=38, sub_size=31,
          say="装上 Envoy，链接就是材料。本期视频全程由大肥鱼制作完成，没有一个 token 受伤。"),
 ]
+
+
+def _beats(mp3: Path, min_gap: float = 0.10) -> list[tuple[float, float]]:
+    """按配音里的换气口把一句话切成一拍一拍。
+
+    整屏只给一个人物分段时，动作五秒不动，观感就是贴纸；切成句子级的小段，
+    每一拍可以换手势/表情，人物才是「在讲」而不是「被摆着」。
+    """
+    dur = _dur(mp3)
+    out = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-i", str(mp3), "-af",
+         "silencedetect=noise=-32dB:d=0.14", "-f", "null", "-"],
+        capture_output=True, text=True).stderr
+    marks = [float(m) for m in re.findall(r"silence_end: ([0-9.]+)", out)]
+    cuts = [0.0]
+    for m in marks:
+        if m - cuts[-1] > min_gap:
+            cuts.append(m)
+    cuts.append(dur)
+    beats = [(round(a, 3), round(b, 3)) for a, b in zip(cuts, cuts[1:]) if b - a > 0.05]
+    return beats or [(0.0, round(dur, 3))]
 
 
 def main(argv=None):
@@ -328,21 +394,33 @@ def main(argv=None):
                       "xfade_in": XF if i else 0.0})
         audio_track.append({"src": str(c["audio"]), "start": round(start + 0.12, 3), "volume": 1.0})
         sc = c["scene"]
-        pose = sc["pose"]
         end = out
-        char_segs.append({
-            "start": start, "end": end, "width": CHAR["width"], "x": CHAR["x"], "y": CHAR["y"],
-            "pose": pose, "mouth": "closed", "eyes": "open",
-            "expression": VS._pose_expression(pose) if hasattr(VS, "_pose_expression") else None,
-            "outfit": None,
-            "anim": VS._char_anim_name(pose, True) if hasattr(VS, "_char_anim_name") else None,
-            "anim_mode": "once" if pose == "wave" else "loop",
-            "anim_t0": round(start - (0.30 if pose == "wave" else 0.0), 3),
-            "fade_in": 0.0, "fade_out": 0.0, "speaking": True,
-            "lip_audio": str(c["audio"]), "lip_text": sc["say"], "lip_t0": round(start + 0.12, 3),
-            "enter": {"from": "bottom", "duration": 0.55, "ease": "out-cubic"} if i == 0 else None,
-            "_outfit_root": str(CH.outfit_root(None)),
-        })
+        beats = _beats(c["audio"])
+        a0 = round(start + 0.12, 3)
+        poses = sc["poses"]
+        every = int(sc.get("pose_every", 2))
+        exprs = sc.get("exprs") or {}
+        for bi, (bs, be) in enumerate(beats):
+            pose = poses[min(len(poses) - 1, bi // every)]
+            expr = exprs.get(bi)
+            if expr is None and hasattr(VS, "_pose_expression"):
+                expr = VS._pose_expression(pose)
+            b_start = round(start + bs + 0.12 if bi else start, 3)
+            b_end = round(end if bi == len(beats) - 1 else start + be + 0.12, 3)
+            char_segs.append({
+                "start": b_start, "end": b_end,
+                "width": CHAR["width"], "x": CHAR["x"], "y": CHAR["y"],
+                "pose": pose, "mouth": "closed", "eyes": "open",
+                "expression": expr, "outfit": None,
+                "anim": VS._char_anim_name(pose, True) if hasattr(VS, "_char_anim_name") else None,
+                "anim_mode": "once" if pose == "wave" else "loop",
+                "anim_t0": round(b_start - (0.30 if pose == "wave" else 0.0), 3),
+                "fade_in": 0.0, "fade_out": 0.0, "speaking": True,
+                # 口型吃整屏那条配音 + 整屏起点：逐拍切段只换动作，声音对齐不跟着抖
+                "lip_audio": str(c["audio"]), "lip_text": sc["say"], "lip_t0": a0,
+                "enter": {"from": "bottom", "duration": 0.55, "ease": "out-cubic"} if (i == 0 and bi == 0) else None,
+                "_outfit_root": str(CH.outfit_root(None)),
+            })
         t = out
 
     duration = round(t, 3)
