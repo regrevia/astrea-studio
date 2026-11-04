@@ -204,7 +204,7 @@ def cmd_ready(args: argparse.Namespace) -> int:
                         finally:
                             os.close(fd)
                         return h.hexdigest()
-                    same = cold_sha(64 << 10) == cold_sha(1 << 20)
+                    same = cold_sha(16 << 10) == cold_sha(1 << 20)
                     cold = "" if same else f"；冷文件 {cands[0].name} 大块读与小块读不一致"
                     if not same:
                         big_ok = False
@@ -215,11 +215,11 @@ def cmd_ready(args: argparse.Namespace) -> int:
                 add("交付盘", True, f"{deliver} 读回一致")
             elif small_ok and not big_ok:
                 add("交付盘", False,
-                    f"{deliver} 大块读返回错数据，64 KB 才正确{cold}",
+                    f"{deliver} 大块读返回错数据，16 KB 才稳定{cold}",
                     "文件是好的，但 cp/sha256/ffmpeg 会读到串味的数据："
-                    "校验用 `dd bs=64k` 或 tools/verify_delivery.py，并考虑换线/换盒")
+                    "校验用 tools/verify_delivery.py（16 KB 块）或 `dd bs=16k`，并考虑换线/换盒")
             else:
-                add("交付盘", False, f"{deliver} 连 64 KB 读回都不一致",
+                add("交付盘", False, f"{deliver} 连 16 KB 读回都不一致",
                     "换线/换盘；写到别处再用小块读回校验")
         except OSError as exc:
             add("交付盘", False, f"{deliver} 写不进去：{exc}", "检查挂载与权限")

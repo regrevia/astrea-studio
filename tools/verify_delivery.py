@@ -7,10 +7,11 @@
     tools/verify_delivery.py <文件> --copy <源文件>      # 跟源逐块比对（比哈希更早看出错在哪 MB）
 
 为什么不用 shasum/cp：
-  本机这块 USB 外置盘读「已经冷掉的大文件」时，单次 read ≥128 KB 会返回别的数据。
-  同一个文件用 64 KB 读是完整正确的，用 1 MB 读每次都不一样——所以 shasum 报的
-  不一致、ffmpeg 报的 h264 解码错，都是读路径串味，文件本身没坏。
-  校验和拷贝都走小块就不会踩到。
+  本机这块 USB 外置盘读「已经冷掉的大文件」时会随机返回别的数据，块越大越容易踩：
+  实测同一个 23 MB 文件连续读 8 遍，16 KB 块 8/8 正确，64 KB 块只有 5/8 正确，
+  128 KB 以上基本全错。所以 shasum 报的不一致、ffmpeg 报的 h264 解码错，
+  都是读路径串味，文件本身没坏。校验和拷贝走 16 KB 块。
+  判据：错的数据是随机的，能反复读出同一个正确 sha256 就说明盘上的字节是对的。
 """
 from __future__ import annotations
 
@@ -22,7 +23,7 @@ import subprocess
 import sys
 
 F_NOCACHE = 48
-CHUNK = 64 << 10
+CHUNK = 16 << 10
 
 
 def sha(path: str, chunk: int = CHUNK) -> str:
@@ -116,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     size = os.path.getsize(args.path)
     print(f"文件  {args.path}")
     print(f"大小  {size} B")
-    print(f"sha256  {digest}  （64 KB 块 + F_NOCACHE）")
+    print(f"sha256  {digest}  （16 KB 块 + F_NOCACHE）")
 
     code = 0
     if args.expect and digest != args.expect.strip().lower():
