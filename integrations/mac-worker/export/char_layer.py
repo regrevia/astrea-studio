@@ -24,11 +24,14 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 _ANIM_CACHE: dict[tuple, list] = {}
@@ -1287,9 +1290,206 @@ def _clamp_lip_to_audio(lip_log: dict[int, str], segs: list[dict],
     return fixed
 
 
+# —— 并行画帧 ————————————————————————————————————————————————
+# 立绘这一层一条 56 秒的片要画近 1700 帧，每帧都是「取 sprite → 仿射 → 合成 →
+# 存 PNG」，帧与帧之间没有任何共享状态，单进程跑就是在用 1 个核等 11 个核闲着。
+# 关键点在**派生子进程的时机**：上面的取景循环已经把所有要用的 sprite 解码进
+# _SPRITE_CACHE，fork 出来的 worker 直接继承这份页缓存（COW，只读共享，不额外
+# 占内存），所以并行不用付出重复解码 2048² PNG 的代价。
+_CTX: dict = {}
+
+
+def _draw_jobs(frames: int) -> int:
+    """开几个进程画帧。CHAR_LAYER_JOBS=1 可强制单进程（排查问题时用）。"""
+    cpu = os.cpu_count() or 4
+    env = os.environ.get("CHAR_LAYER_JOBS")
+    if env not in (None, ""):
+        try:
+            return max(1, min(int(env), cpu))
+        except ValueError:
+            pass
+    if frames < 120:
+        return 1
+    # 8 性能核 + 4 能效核：留 4 个给 ffmpeg 编码和系统，其余画帧
+    return max(1, min(8, cpu - 4)) if cpu >= 8 else 1
+
+
+def _draw_frame_i(i: int):
+    """画第 i 帧并存成 PNG。只读模块级缓存 + _CTX，可安全并行。"""
+    from PIL import Image
+
+    C = _CTX
+    segs, fps = C["segs"], C["fps"]
+    bw, bh = C["bw"], C["bh"]
+    bx0, by0 = C["bx0"], C["by0"]
+    enter_px, rot = C["enter_px"], C["rot"]
+    bob, sway, _ph = C["bob"], C["sway"], C["ph"]
+    width, height = C["width"], C["height"]
+    render, key_green = C["render"], C["key_green"]
+    _lip_fix, _pre_closed = C["lip_fix"], C["pre_closed"]
+    _prev_pose = C["prev_pose"]
+    _stage_cache = C["stage"]
+    mouth_state, ndraws, hgt = "", 0, 0
+
+    def _stage_of(seg: dict):
+        return _stage_cache[id(seg)]
+
+    t = i / fps
+    canvas = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
+    active = _active(segs, t)
+    entering = False
+    for idx, (seg, weight, _wpose) in enumerate(active):
+        _mt = _lip_mouth(seg, t)
+        if _mt:
+            if i in _pre_closed:
+                # 兜底判过：这一帧配音在静音里，四档口型统统闭口
+                _mt = "closed"
+            _mt = _lip_fix.get(i, _mt)
+            # 记一张「第几帧张的什么口型」：误差不靠肉眼猜，出片后拿它对帧
+            mouth_state = _mt
+        key, sprite = _sprite(seg, t, render, key_green, _mt)
+        piece, px, py = _piece(seg, (key, sprite), _stage_of(seg), (width, height))
+        if piece is None:
+            continue
+        # 叠化时旧段画满、新段按时间盖上去：两边都乘权重会把人物画透，
+        # 换手势/换屏那半秒就成了半透明的鬼影。单段时才用段自己的淡入淡出
+        a = _alpha_at(seg, t) if len(active) == 1 else (1.0 if idx == 0 else weight)
+        # 入场：out-cubic 上升 + 同步淡入。硬出现（一开片就杵在那儿）是最典型的
+        # 「贴图感」—— 人物得从画面外进来，观众才相信她在场景里
+        e_dy, e_a = 0.0, 1.0
+        ent = seg.get("enter")
+        if isinstance(ent, dict) and enter_px:
+            _ed = max(1e-3, float(ent.get("duration") or 0.55))
+            _p = min(1.0, max(0.0, (t - float(seg["start"])) / _ed))
+            # 位移走 smoothstep：out-cubic 初速是 3，人一开片是「弹」上来的，
+            # 两头都慢的曲线才读成「站起来」。透明度仍按 out-cubic 快速拉起——
+            # 跟着位移曲线走的话，前几帧只有半透明轮廓，量身高会偏小。
+            _s = _p * _p * (3.0 - 2.0 * _p)
+            e_dy = enter_px * (1.0 - _s)
+            e_a = 1.0 - (1.0 - _p) ** 3
+            entering = _p < 1.0
+        a *= e_a
+        if a < 0.999:
+            piece = piece.copy()
+            piece.putalpha(piece.getchannel("A").point(lambda v, k=a: int(v * k)))
+        # 缓慢呼吸 + 轻晃：让「没在说话」的段落也在动
+        # 三个不成整数倍的周期叠着走：单条正弦到顶点会停一会儿，
+        # 叠起来才没有「正好都不动」的时刻
+        dy = (bob * math.sin(2.0 * math.pi * t / BOB_PERIOD + _ph)
+              + bob * 0.34 * math.sin(2.0 * math.pi * t / 2.9 + 0.7 + _ph)
+              + bob * 0.17 * math.sin(2.0 * math.pi * t / 1.7 + 2.3 + _ph))
+        dx = (sway * math.sin(2.0 * math.pi * t / SWAY_PERIOD + 1.1 + _ph)
+              + sway * 0.5 * math.sin(2.0 * math.pi * t / 3.7 + _ph))
+        dy += e_dy
+        # 换姿势时给一下小跳：立绘本身没换动作，只靠倾斜和呼吸太"稳"，
+        # 0.26 秒的低幅起落读起来像答话时点了一下头。
+        if _prev_pose.get(id(seg), "") != _pose_family(seg.get("pose")):
+            _bh = (t - float(seg["start"])) / 0.42
+            if float(seg["start"]) > 1e-6 and 0.0 <= _bh < 1.0:
+                # 正弦在起点速度最大，接上前一段的静止就是「猛地一顿」；
+                # 换成两端速度都为零的 smoothstep，只当重心沉了一下
+                _bs = _bh * _bh * (3.0 - 2.0 * _bh)
+                dy -= 4.6 * _bs
+        # 亚像素位移：按整像素取整会出现几帧完全一样，观感上就是卡住
+        fx, fy = px - bx0 + dx, py - by0 + dy
+        ox, oy = int(round(fx)), int(round(fy))
+        # 只有嘴在动、肩膀和重心一动不动，读起来还是贴纸：
+        # 呼吸让身高微微起伏（±0.6%），倾斜让重心在两只脚之间换，
+        # 支点压在脚底中线，脚不会跟着漂。合成一次仿射，不额外花钱。
+        breath = 1.0 + 0.006 * math.sin(2.0 * math.pi * t / 3.30 + _ph)
+        bias = mult = 0.0
+        for seg_a, _wa, wgt in active:
+            # 按族取体态：素材里 `stand`/`idle`、`hi`/`wave` 是同一张图，
+            # 按名字查表会让同姿势叠化时重心凭空跳一下
+            b_le, m_le = _POSE_ATTITUDE.get(_pose_family(seg_a.get("pose")),
+                                            (0.0, 1.0))
+            bias += b_le * wgt
+            mult += m_le * wgt
+        lean = math.radians(
+            mult * (0.9 * math.sin(2.0 * math.pi * t / 6.10 + 0.4 + _ph)
+                    + 0.45 * math.sin(2.0 * math.pi * t / 2.30 + 1.9 + _ph)) + bias)
+        pw, ph = piece.size
+        nw, nh = pw + 2 * rot, ph + 2 * rot
+        cos_l, sin_l = math.cos(lean), math.sin(lean)
+        m00, m01 = cos_l, sin_l
+        # 注意这是「输出坐标 → 素材坐标」的逆变换：想让人矮一点，逆矩阵的
+        # y 系数要变大（乘），不是变小。量过：绕脚底转 2.6° 身高只多 3px（0.5%，
+        # 在 3% 容差内），不必再补偿，补偿写反了反而会让人凭空长 4%。
+        m10, m11 = -sin_l / breath, cos_l / breath
+        cx, cy = pw / 2.0 + rot, float(ph + rot)
+        a = (m00, m01, pw / 2.0 - m00 * cx - m01 * cy)
+        b = (m10, m11, float(ph) - m10 * cx - m11 * cy)
+        piece = piece.transform((nw, nh), Image.AFFINE, a + b,
+                                resample=Image.BICUBIC)
+        ox, oy = ox - rot, oy - rot
+        canvas.alpha_composite(piece, (ox, oy))
+        ndraws += 1
+    if i % 3 == 0 and not entering:
+        _bb = canvas.getchannel("A").getbbox()
+        if _bb:
+            hgt = _bb[3] - _bb[1]
+    canvas.save(C["tmp"] / f"f{i:05d}.png")
+    return i, mouth_state, hgt, ndraws
+
+
+# —— 整层复用 ————————————————————————————————————————————————
+# 这一层重画一次要几分钟，而它只取决于「分段表 + 素材 + 代码」三样东西。
+# 三者一模一样时直接复用上次的 webm：改一句文案、换个转场时长、重渲成片，
+# 都不该再等一遍立绘。键里带 shasum 而不是 mtime 的时间戳，是为了让
+# 「同一份素材换台机器/重新 checkout」也能命中。
+def _sig(path: Path) -> str:
+    try:
+        st = path.stat()
+    except OSError:
+        return "-"
+    return f"{st.st_size}:{st.st_mtime_ns}"
+
+
+def _dir_sig(root: Path) -> str:
+    """素材目录指纹：outfit 下任何一张 PNG 换了（尺寸/mtime）都要重画。"""
+    h = hashlib.sha256()
+    try:
+        items = sorted(p for p in root.rglob("*") if p.is_file())
+    except OSError:
+        return "-"
+    for f in items:
+        h.update(str(f.relative_to(root)).encode() + b"\0" + _sig(f).encode() + b"\n")
+    return h.hexdigest()[:20]
+
+
+def _code_sig() -> str:
+    """合成代码本身也是输入：改了仿射/口型/表情就得重画。"""
+    h = hashlib.sha256()
+    for mod in ("char_layer", "mouth_art", "character", "character_assets", "lipsync"):
+        m = sys.modules.get(mod)
+        f = getattr(m, "__file__", None)
+        h.update(f"{mod}:{_sig(Path(f)) if f else '-'}".encode())
+    return h.hexdigest()[:20]
+
+
+def _build_key(segs: list[dict], *, width: int, height: int, fps: int,
+               duration: float, name: str, seed: int) -> str:
+    payload: dict = {"w": width, "h": height, "fps": fps, "name": name, "seed": int(seed),
+                     "dur": round(float(duration), 4), "code": _code_sig()}
+    rows, roots, audio = [], set(), set()
+    for s in segs:
+        rows.append({k: v for k, v in s.items() if not k.startswith("_")})
+        r = s.get("_outfit_root")
+        if r:
+            roots.add(str(r))
+        a = s.get("lip_audio")
+        if isinstance(a, str) and a:
+            audio.add(a)
+    payload["segs"] = rows
+    payload["outfits"] = sorted((r, _dir_sig(Path(r))) for r in roots)
+    payload["audio"] = sorted((a, _sig(Path(a))) for a in audio)
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str,
+                                     ensure_ascii=False).encode()).hexdigest()[:32]
+
+
 def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: Path,
           duration: float, render, key_green, name: str = "char_layer",
-          seed: int = 0,
+          seed: int = 0, rebuild: bool = False,
           log=print) -> tuple[Path, int, int] | None:
     """把分段表渲染成一条带 alpha 的视频，裁到人物实际占的框。
 
@@ -1311,6 +1511,24 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
     segs = plan_transitions(segs, _pose_box)
     total = max(float(duration), max(float(s["end"]) for s in segs))
     frames = max(1, int(round(total * fps)))
+
+    # 同样的分段表 + 同样的素材 + 同样的代码 => 同一层，直接拿上次的产物。
+    # 复用只认 webm 内容和元数据都对得上；任一不符就当没缓存，重画。
+    _ckey = _build_key(segs, width=width, height=height, fps=fps,
+                     duration=total, name=name, seed=seed)
+    mov = Path(workdir) / f"{name}.webm"
+    meta_path = Path(workdir) / f"{name}.char.json"
+    if not rebuild and mov.exists() and meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text())
+        except Exception:
+            meta = {}
+        if (meta.get("key") == _ckey and meta.get("mov_bytes") == mov.stat().st_size
+                and isinstance(meta.get("box"), list) and len(meta["box"]) == 4):
+            log(json.dumps({"layer": name, "reused": True, "frames": frames,
+                            "box": meta["box"], "mov_mb": round(mov.stat().st_size / 1e6, 1),
+                            "segments": len(segs)}, ensure_ascii=False))
+            return mov, int(meta["box"][0]), int(meta["box"][1])
 
     def _stage_of(seg: dict):
         return (_norm_width(seg, float(seg.get("width") or 620)),
@@ -1360,7 +1578,6 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
     if tmp.exists():
         shutil.rmtree(tmp)
     tmp.mkdir(parents=True, exist_ok=True)
-    draws = 0
     # 换手势才点头：口型分段也走同一段入口，按段起点触发就变成每个字跳一下
     _prev_pose: dict[int, str] = {}
     _last_pose = ""
@@ -1397,105 +1614,44 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
         sys.stderr.flush()
     _lip_fix = {i: st for i, st in enumerate(_film_states)
                 if st != _pre_lip.get(i, "closed")}
-    for i in range(frames):
-        t = i / fps
-        canvas = Image.new("RGBA", (bw, bh), (0, 0, 0, 0))
-        active = _active(segs, t)
-        entering = False
-        for idx, (seg, weight, _wpose) in enumerate(active):
-            _mt = _lip_mouth(seg, t)
-            if _mt:
-                if i in _pre_closed:
-                    # 兜底判过：这一帧配音在静音里，四档口型统统闭口
-                    _mt = "closed"
-                _mt = _lip_fix.get(i, _mt)
-                # 记一张「第几帧张的什么口型」：误差不靠肉眼猜，出片后拿它对帧
-                lip_log[i] = _mt
-            key, sprite = _sprite(seg, t, render, key_green, _mt)
-            piece, px, py = _piece(seg, (key, sprite), _stage_of(seg), (width, height))
-            if piece is None:
-                continue
-            # 叠化时旧段画满、新段按时间盖上去：两边都乘权重会把人物画透，
-            # 换手势/换屏那半秒就成了半透明的鬼影。单段时才用段自己的淡入淡出
-            a = _alpha_at(seg, t) if len(active) == 1 else (1.0 if idx == 0 else weight)
-            # 入场：out-cubic 上升 + 同步淡入。硬出现（一开片就杵在那儿）是最典型的
-            # 「贴图感」—— 人物得从画面外进来，观众才相信她在场景里
-            e_dy, e_a = 0.0, 1.0
-            ent = seg.get("enter")
-            if isinstance(ent, dict) and enter_px:
-                _ed = max(1e-3, float(ent.get("duration") or 0.55))
-                _p = min(1.0, max(0.0, (t - float(seg["start"])) / _ed))
-                # 位移走 smoothstep：out-cubic 初速是 3，人一开片是「弹」上来的，
-                # 两头都慢的曲线才读成「站起来」。透明度仍按 out-cubic 快速拉起——
-                # 跟着位移曲线走的话，前几帧只有半透明轮廓，量身高会偏小。
-                _s = _p * _p * (3.0 - 2.0 * _p)
-                e_dy = enter_px * (1.0 - _s)
-                e_a = 1.0 - (1.0 - _p) ** 3
-                entering = _p < 1.0
-            a *= e_a
-            if a < 0.999:
-                piece = piece.copy()
-                piece.putalpha(piece.getchannel("A").point(lambda v, k=a: int(v * k)))
-            # 缓慢呼吸 + 轻晃：让「没在说话」的段落也在动
-            # 三个不成整数倍的周期叠着走：单条正弦到顶点会停一会儿，
-            # 叠起来才没有「正好都不动」的时刻
-            dy = (bob * math.sin(2.0 * math.pi * t / BOB_PERIOD + _ph)
-                  + bob * 0.34 * math.sin(2.0 * math.pi * t / 2.9 + 0.7 + _ph)
-                  + bob * 0.17 * math.sin(2.0 * math.pi * t / 1.7 + 2.3 + _ph))
-            dx = (sway * math.sin(2.0 * math.pi * t / SWAY_PERIOD + 1.1 + _ph)
-                  + sway * 0.5 * math.sin(2.0 * math.pi * t / 3.7 + _ph))
-            dy += e_dy
-            # 换姿势时给一下小跳：立绘本身没换动作，只靠倾斜和呼吸太"稳"，
-            # 0.26 秒的低幅起落读起来像答话时点了一下头。
-            if _prev_pose.get(id(seg), "") != _pose_family(seg.get("pose")):
-                _bh = (t - float(seg["start"])) / 0.42
-                if float(seg["start"]) > 1e-6 and 0.0 <= _bh < 1.0:
-                    # 正弦在起点速度最大，接上前一段的静止就是「猛地一顿」；
-                    # 换成两端速度都为零的 smoothstep，只当重心沉了一下
-                    _bs = _bh * _bh * (3.0 - 2.0 * _bh)
-                    dy -= 4.6 * _bs
-            # 亚像素位移：按整像素取整会出现几帧完全一样，观感上就是卡住
-            fx, fy = px - bx0 + dx, py - by0 + dy
-            ox, oy = int(round(fx)), int(round(fy))
-            # 只有嘴在动、肩膀和重心一动不动，读起来还是贴纸：
-            # 呼吸让身高微微起伏（±0.6%），倾斜让重心在两只脚之间换，
-            # 支点压在脚底中线，脚不会跟着漂。合成一次仿射，不额外花钱。
-            breath = 1.0 + 0.006 * math.sin(2.0 * math.pi * t / 3.30 + _ph)
-            bias = mult = 0.0
-            for seg_a, _wa, wgt in active:
-                # 按族取体态：素材里 `stand`/`idle`、`hi`/`wave` 是同一张图，
-                # 按名字查表会让同姿势叠化时重心凭空跳一下
-                b_le, m_le = _POSE_ATTITUDE.get(_pose_family(seg_a.get("pose")),
-                                                (0.0, 1.0))
-                bias += b_le * wgt
-                mult += m_le * wgt
-            lean = math.radians(
-                mult * (0.9 * math.sin(2.0 * math.pi * t / 6.10 + 0.4 + _ph)
-                        + 0.45 * math.sin(2.0 * math.pi * t / 2.30 + 1.9 + _ph)) + bias)
-            pw, ph = piece.size
-            nw, nh = pw + 2 * rot, ph + 2 * rot
-            cos_l, sin_l = math.cos(lean), math.sin(lean)
-            m00, m01 = cos_l, sin_l
-            # 注意这是「输出坐标 → 素材坐标」的逆变换：想让人矮一点，逆矩阵的
-            # y 系数要变大（乘），不是变小。量过：绕脚底转 2.6° 身高只多 3px（0.5%，
-            # 在 3% 容差内），不必再补偿，补偿写反了反而会让人凭空长 4%。
-            m10, m11 = -sin_l / breath, cos_l / breath
-            cx, cy = pw / 2.0 + rot, float(ph + rot)
-            a = (m00, m01, pw / 2.0 - m00 * cx - m01 * cy)
-            b = (m10, m11, float(ph) - m10 * cx - m11 * cy)
-            piece = piece.transform((nw, nh), Image.AFFINE, a + b,
-                                    resample=Image.BICUBIC)
-            ox, oy = ox - rot, oy - rot
-            canvas.alpha_composite(piece, (ox, oy))
-            draws += 1
-        if i % 3 == 0 and not entering:
-            _bb = canvas.getchannel("A").getbbox()
-            if _bb:
-                heights.append(_bb[3] - _bb[1])
-        canvas.save(tmp / f"f{i:05d}.png")
+    _t_draw = time.time()
+    _stage_cache = {id(s): _stage_of(s) for s in segs}
+    _CTX.clear()
+    _CTX.update({
+        "segs": segs, "fps": fps, "bw": bw, "bh": bh, "bx0": bx0, "by0": by0,
+        "enter_px": enter_px, "rot": rot, "bob": bob, "sway": sway, "ph": _ph,
+        "lip_fix": _lip_fix, "pre_closed": _pre_closed, "tmp": tmp,
+        "render": render, "key_green": key_green, "width": width, "height": height,
+        "prev_pose": _prev_pose, "stage": _stage_cache,
+    })
+    jobs = _draw_jobs(frames)
+    results = []
+    if jobs > 1:
+        try:
+            import multiprocessing as _mp
+
+            _mctx = _mp.get_context("fork")   # fork 才继承上面解码好的 sprite 缓存
+            with _mctx.Pool(jobs) as _pool:
+                results = list(_pool.imap_unordered(_draw_frame_i, range(frames), chunksize=4))
+        except Exception as _exc:  # noqa: BLE001 - 并行挂了不能没有人物层
+            sys.stderr.write(f"[char_layer] 并行画帧不可用，退回单进程: {_exc!r}\n")
+            sys.stderr.flush()
+            results = []
+            jobs = 1
+    if jobs <= 1:
+        results = [_draw_frame_i(i) for i in range(frames)]
+    draws = 0
+    for _i, _st, _h, _nd in results:
+        if _st:
+            lip_log[_i] = _st
+        if _h:
+            heights.append(_h)
+        draws += _nd
+    _CTX.clear()
+    _t_draw = time.time() - _t_draw
     # qtrle 只做行程编码：一条 30 秒的无损 argb 要 450MB，临时盘先撑爆。
     # vp9 带 alpha 把同样的画面压到二十分之一，解码端 ffmpeg 也认。
-    mov = Path(workdir) / f"{name}.webm"
+    _t_enc = time.time()
     cmd = ["ffmpeg", "-v", "error", "-y", "-framerate", str(fps),
            "-i", str(tmp / "f%05d.png"),
            "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-b:v", "0", "-crf", "28",
@@ -1505,6 +1661,14 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
         subprocess.run(cmd, check=True)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+    _t_enc = time.time() - _t_enc
+    try:
+        meta_path.write_text(json.dumps({"key": _ckey, "box": [bx0, by0, bw, bh],
+                                        "mov_bytes": mov.stat().st_size,
+                                        "frames": frames, "sec": round(_t_draw + _t_enc, 1)},
+                                       ensure_ascii=False))
+    except OSError:
+        pass
 
     _mix: dict[str, int] = {}
     for _st in lip_log.values():
@@ -1516,6 +1680,8 @@ def build(segments: list[dict], *, width: int, height: int, fps: int, workdir: P
                    ensure_ascii=False))
     log(json.dumps({"layer": name, "frames": frames, "segments": len(segs),
                     "draws": draws, "box": [bx0, by0, bw, bh],
+                    "sec_draw": round(_t_draw, 1), "sec_encode": round(_t_enc, 1),
+                    "jobs": jobs,
                     # 每段实际拿到几帧：全是 1 就说明动画素材没接进来，
                     # 人物只剩呼吸，出片时会被当成贴图
                     "anims": anim_stats,

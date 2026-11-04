@@ -21,8 +21,12 @@ ENGINE = Path(os.environ.get(
     str(Path.home() / "CreatorStudio/runtime/integrations/mac-worker"),
 ))
 sys.path.insert(0, str(ENGINE / "export"))
-import lip_align  # noqa: E402
 import lipsync  # noqa: E402
+
+try:                       # lip_align 是可选的对齐器（本机不一定装）
+    import lip_align  # noqa: E402
+except ModuleNotFoundError:  # 没有就只用 say，够用：say 就是配音念的字
+    lip_align = None
 
 AUD = Path(os.environ.get("LIP_AUDIO_DIR", "/tmp/envoy-promo-work"))
 SRC = ROOT / "deploy/presenter/promo_envoy.py"
@@ -119,7 +123,7 @@ def split_groups(say: str, n: int, parts: list[float]) -> list[str]:
 
 def choose(say: str, alt: str | None, audio: Path) -> tuple[str, str]:
     """say 与卡片文案各对齐一次，取覆盖率高的那条；返回 (文本, 来源标签)。"""
-    if not alt or alt == say:
+    if lip_align is None or not alt or alt == say:
         return say, "say"
     a = lip_align.align(say, audio)
     b = lip_align.align(alt, audio)
@@ -139,6 +143,8 @@ def describe(p: Path, blob: dict) -> str:
 
 
 def do(text: str, audio: Path) -> dict | None:
+    if lip_align is None:
+        return None
     side = lip_align.ensure(text, audio)
     if side is None:
         print("%-16s FAILED" % audio.name, flush=True)
@@ -180,6 +186,10 @@ def main(argv: list[str]) -> int:
             text = groups[1] if len(groups) > 1 else sc["say"]
             print("  %-14s ← %s (slow)" % (slow.name, text), flush=True)
             rows.append(("part", slow.name, do(text, slow)))
+    if lip_align is None:
+        print("缺 lip_align：本机没装这个对齐器。配音 sidecar 由 tools/promo/tts_envoy.py "
+              "直接写（edge-tts WordBoundary 更准），这个工具只在需要重对齐旧音频时用。")
+        return 2
     ok = [r for r in rows if r[2]]
     print("\n== %d/%d sidecars" % (len(ok), len(rows)))
     return 0

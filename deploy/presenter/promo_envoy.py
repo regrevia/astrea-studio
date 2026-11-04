@@ -49,7 +49,9 @@ AMBER = (255, 206, 122)
 CHAR = dict(width=786, x=470, y=962)
 
 LOGO = Path.home() / "CreatorStudio/materials/brand/envoy-bird.png"
-AUD = Path("/tmp/envoy-promo-work3/audio")
+# 目录一处可配：build.sh 会传 PROMO_WORK/PROMO_AUDIO，单独跑时用默认值
+WORK0 = Path(os.environ.get("PROMO_WORK", str(Path.home() / "CreatorStudio/work/envoy-promo")))
+AUD = Path(os.environ.get("PROMO_AUDIO", str(WORK0 / "audio")))
 
 
 def font(size: int, bold: bool = False):
@@ -388,8 +390,8 @@ def _scene_beats(mp3: Path, dur: float) -> list[tuple[float, float]]:
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--workdir", default="/tmp/envoy-promo-work3")
-    ap.add_argument("--spec", default="/tmp/envoy-promo-timeline3.json")
+    ap.add_argument("--workdir", default=str(WORK0))
+    ap.add_argument("--spec", default=str(WORK0 / "timeline.json"))
     ap.add_argument("--cards-only", action="store_true")
     args = ap.parse_args(argv)
 
