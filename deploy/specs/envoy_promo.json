@@ -1,0 +1,35 @@
+{
+  "projectId": "{{PROJECT_ID}}",
+  "title": "Envoy 宣传片 · 大肥鱼解说",
+  "brief": "四十秒讲清 Envoy 是什么：把链接变成 AI 能直接引用的材料。",
+  "engine": "timeline",
+  "template": "factcard",
+  "spec": {
+    "topic": "Envoy：把链接分享给你的 AI",
+    "hook": "给 AI 一个链接，它只读到标题",
+    "kicker": "regrevia/Envoy",
+    "logo": "~/CreatorStudio/materials/brand/envoy-bird.png",
+    "points": [
+      "一个链接，什么都能读::网页 · 公众号 · PDF · B 站 · 本地视频::网页、公众号、PDF、小红书图文、B 站视频、本地视频，一个链接就够。",
+      "每条结论都带时间戳::[04:18]，点开就核对::切片段的时候顺手标好时间点，AI 写出来的每条结论都能点回去核对。",
+      "没读到就说没读到::缺口单列「待补」，不猜::要登录、被人机校验拦住，它会直说，让 Agent 换条路，不编内容。",
+      "三个宿主，一行命令::Claude Code · Codex · DeepSeek Harness::一行 curl，runtime、浏览器、转写权重一次装齐，装完自检两条。"
+    ],
+    "cta": "装上 Envoy，链接就是材料",
+    "voice": "sami:BV405_streaming",
+    "narration": {
+      "intro": "给 AI 一个链接，它只读到标题，剩下的全靠脑补。",
+      "points": [
+        "网页、公众号、PDF、小红书图文、B 站视频、本地视频，一个链接就够。",
+        "切片段的时候顺手标好时间点；结论后面挂一个方括号，点开就能核对。",
+        "要登录、被人机校验拦住，它会直说，让 Agent 换条路，不编内容。",
+        "Claude Code、Codex、DeepSeek Harness，三个宿主各一行命令，装完自检两条。"
+      ],
+      "outro": "装上 Envoy，链接就是材料。本期视频全程由大肥鱼制作完成，没有一个 token 受伤。"
+    },
+    "engine": "timeline",
+    "template": "factcard",
+    "mode": "vertical_short",
+    "character": true
+  }
+}
