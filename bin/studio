@@ -11,6 +11,12 @@
     studio jobs wait <id>            # 轮询到终态，失败时打印 error 并退出码 1
     studio jobs cancel <id>
     studio films                     # 成片清单（默认在外置盘 /Volumes/US202/CreatorStudio/deliver）
+    studio ready                     # 出片前自检：服务/worker/解释器/ffmpeg/字体/交付盘
+
+kind 选哪个：
+    short      竖屏脚本一条命令出片（topic/hook/points 这层文本，展开+配音+立绘+渲染）
+    timeline   已经算好时间轴的 spec，只渲一遍（deploy/specs/*.json 里 pre-expanded 的那些）
+    paper      横屏纸片动画；slides / motion / jianying 同签名引擎；materials 只找素材不出片
 
 环境变量：STUDIO_API（默认 http://127.0.0.1:8899）。
 """
@@ -94,13 +100,168 @@ def _wait(job_id: str) -> int:
         time.sleep(float(os.environ.get("STUDIO_POLL", "3")))
 
 
+def cmd_ready(args: argparse.Namespace) -> int:
+    """一条命令回答「现在能不能出片」，每行一个检查，失败给出下一步动作。
+
+    以前这些散在 4 个地方：服务端口、worker 的 job 表、venv 里的解释器、
+    交付盘挂没挂。agent 挨个试一遍要十几分钟，还容易把「服务没起」
+    当成「规格写错」。
+    """
+    import shutil
+
+    rows: list[tuple[str, bool, str]] = []
+
+    def add(name: str, ok: bool, detail: str = "", fix: str = "") -> None:
+        rows.append((name, ok, f"{detail}{('  → ' + fix) if (fix and not ok) else ''}"))
+
+    # 1) 能力服务（/healthz；/health 不是路由，探它会把「活着」看成「挂了」）
+    try:
+        hz = _call("GET", "/healthz", timeout=3.0)
+        add("能力服务", True, f"{API} ok={hz.get('ok', '?')}")
+    except SystemExit as exc:
+        add("能力服务", False, str(exc), "make up 或 python3 integrations/mac-worker/capabilities_server.py")
+        for r in rows:
+            print(("✓" if r[1] else "✗"), r[0], r[2])
+        return 1
+
+    # 2) worker：/jobs 能读，并且队列没被堵死
+    try:
+        js = _call("GET", "/jobs?limit=50", timeout=5.0).get("jobs") or []
+        running = [j for j in js if j.get("status") == "running"]
+        last = js[0] if js else {}
+        detail = f"历史 {len(js)} 条 · 在跑 {len(running)}"
+        if last:
+            detail += f" · 最近 {last.get('kind')}/{last.get('status')}"
+        add("任务队列", True, detail)
+    except SystemExit as exc:
+        add("任务队列", False, str(exc), "看 make worker-status")
+
+    # 3) 出片解释器（缺 PIL / faster_whisper 时这一步先炸，不用等 5 分钟后）
+    py = Path(os.path.expanduser(os.environ.get(
+        "STUDIO_PY", "~/CreatorStudio/runtime/integrations/vendor/MoneyPrinterTurbo/.venv/bin/python")))
+    add("出片解释器", py.is_file(), str(py),
+        "装依赖见 deploy/py3.sh 或 RUNBOOK")
+
+    # 4) 外部命令
+    for exe in ("ffmpeg", "ffprobe"):
+        path = shutil.which(exe) or ""
+        add(exe, bool(path), path or "不在 PATH", "brew install ffmpeg")
+
+    # 5) 字体：卡片中文全靠它，缺了 Pillow 只会画方块
+    font = Path("/System/Library/Fonts/STHeiti Medium.ttc")
+    add("中文字体", font.is_file(), str(font), "macOS 自带，缺了说明系统被改过")
+
+    # 6) 交付盘：写一个 64 KB 探针再逐字节读回，挂没挂、能不能写一目了然
+    deliver = Path(os.path.expanduser(
+        os.environ.get("STUDIO_DELIVER", "/Volumes/US202/CreatorStudio/deliver")))
+    if not deliver.is_dir():
+        add("交付盘", False, str(deliver), "插盘；没插时任务会降级到内置盘（结果里有 storage）")
+    else:
+        # 写 4 MB 再分别用「小工具读法」和「成片工具的读法」读回：外置盘如果
+        # 大块读会串数据，sha256/cp/ffmpeg 全都对不上，但文件本身其实是好的。
+        probe = deliver / ".studio_ready_probe"
+        try:
+            blob = os.urandom(4 << 20)
+            with open(probe, "wb") as fh:
+                fh.write(blob)
+                fh.flush()
+                os.fsync(fh.fileno())
+
+            def read_back(chunk: int) -> bytes:
+                buf = bytearray()
+                with open(probe, "rb") as fh:
+                    while True:
+                        b = fh.read(chunk)
+                        if not b:
+                            break
+                        buf += b
+                return bytes(buf)
+
+            small_ok = read_back(64 << 10) == blob
+            big_ok = read_back(1 << 20) == blob
+            probe.unlink(missing_ok=True)
+
+            # 刚写进去的文件还在盘/系统缓存里，大块读也「正确」，所以再拿一份
+            # 已经冷掉的大文件对比大块读和小块读：两者不一致 = 这块盘大块读不可信。
+            cold = ""
+            try:
+                import fcntl
+                cands = sorted((f for f in deliver.iterdir()
+                                if f.is_file() and f.stat().st_size >= 8 << 20),
+                               key=lambda f: -f.stat().st_size)[:1]
+                if cands:
+                    def cold_sha(chunk: int) -> str:
+                        import hashlib
+                        fd = os.open(cands[0], os.O_RDONLY)
+                        fcntl.fcntl(fd, 48, 1)  # F_NOCACHE：绕开系统缓存
+                        h = hashlib.sha256()
+                        try:
+                            while True:
+                                b = os.read(fd, chunk)
+                                if not b:
+                                    break
+                                h.update(b)
+                        finally:
+                            os.close(fd)
+                        return h.hexdigest()
+                    same = cold_sha(64 << 10) == cold_sha(1 << 20)
+                    cold = "" if same else f"；冷文件 {cands[0].name} 大块读与小块读不一致"
+                    if not same:
+                        big_ok = False
+            except (OSError, ImportError):
+                pass
+
+            if small_ok and big_ok:
+                add("交付盘", True, f"{deliver} 读回一致")
+            elif small_ok and not big_ok:
+                add("交付盘", False,
+                    f"{deliver} 大块读返回错数据，64 KB 才正确{cold}",
+                    "文件是好的，但 cp/sha256/ffmpeg 会读到串味的数据："
+                    "校验用 `dd bs=64k` 或 tools/verify_delivery.py，并考虑换线/换盒")
+            else:
+                add("交付盘", False, f"{deliver} 连 64 KB 读回都不一致",
+                    "换线/换盘；写到别处再用小块读回校验")
+        except OSError as exc:
+            add("交付盘", False, f"{deliver} 写不进去：{exc}", "检查挂载与权限")
+
+    # 7) 规格能不能被服务接受（只验壳，不真渲）
+    if args.spec:
+        sp = Path(os.path.expanduser(args.spec))
+        try:
+            obj = json.loads(sp.read_text(encoding="utf-8"))
+            if isinstance(obj, list):
+                obj = obj[0] if obj else {}
+            body = obj.get("spec") if isinstance(obj.get("spec"), dict) else obj
+            has_script = bool(body.get("points") or body.get("hook") or body.get("topic"))
+            has_timeline = bool(body.get("video"))
+            mode = str(body.get("mode") or "")
+            if mode == "vertical_short" or (has_script and not has_timeline):
+                kind = "short"
+            elif has_timeline:
+                kind = "timeline"
+            else:
+                kind = "?"
+            add("规格路由", kind != "?", f"{sp.name} → {kind or '?'}",
+                "既没有 video 也没有 points/hook：加 mode=vertical_short 或补时间轴")
+        except (OSError, json.JSONDecodeError) as exc:
+            add("规格路由", False, f"{sp} 读不了：{exc}", "确认路径")
+
+    up = sum(1 for r in rows if r[1])
+    for name, ok, detail in rows:
+        print(("✓" if ok else "✗"), f"{name:<6}", detail)
+    print(f"\n{up}/{len(rows)} 项就绪" + ("" if up == len(rows) else " —— 先修 ✗ 再提交任务"))
+    return 0 if up == len(rows) else 1
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="studio", description="creator-studio 本机平台入口")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     jobs = sub.add_parser("jobs", help="任务相关").add_subparsers(dest="jobs_cmd", required=True)
     s = jobs.add_parser("submit", help="提交一条出片任务")
-    s.add_argument("kind", choices=["paper", "slides", "jianying", "motion"])
+    s.add_argument("kind",
+                   choices=["short", "timeline", "paper", "slides", "jianying",
+                            "motion", "materials"])
     s.add_argument("spec")
     s.add_argument("--shots", nargs="*")
     s.add_argument("--caps", nargs="*")
@@ -141,6 +302,10 @@ def main(argv: list[str]) -> int:
     films.set_defaults(func=lambda a: (print("\n".join(
         f"{f['name']}  {f['bytes'] / 1e6:.1f} MB  {f['mtime']}"
         for f in _call("GET", f"/deliverables?limit={a.n}")["files"])), 0)[1])
+
+    ready = sub.add_parser("ready", help="出片前自检：哪一层没起来、哪个规格发不出去")
+    ready.add_argument("--spec", default="", help="顺带验一份规格能不能被服务接受")
+    ready.set_defaults(func=cmd_ready)
 
     assets = sub.add_parser("assets", help="资产总览：规格 / 素材 / 成片")
     assets.add_argument("-n", type=int, default=12)

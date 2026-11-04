@@ -54,6 +54,7 @@ def storage_info() -> dict:
     return storage.resolve().describe()
 SCRIPTS = {
     "paper": REPO_ROOT / "deploy" / "schematic_preview.py",
+    "short": REPO_ROOT / "integrations" / "mac-worker" / "export" / "vertical_short.py",
 }
 MAX_RUNNING = int(os.environ.get("JOBS_MAX_RUNNING", "2"))
 PYBIN = next((c for c in [
@@ -66,7 +67,7 @@ RUN_ENV = {
     "PYTHONPATH": os.environ.get("PYTHONPATH") or str(STUDIO_HOME / "runtime/lib"),
     "STUDIO_SKIP_PREFLIGHT": os.environ.get("STUDIO_SKIP_PREFLIGHT", "1"),
 }
-KINDS = ("paper", "slides", "jianying", "motion", "timeline", "materials")
+KINDS = ("paper", "slides", "jianying", "motion", "timeline", "short", "materials")
 
 # 成片元数据：agent 报「多长、多大」时不该靠猜，成功后就地量一次。
 FFPROBE = next((c for c in [
@@ -131,7 +132,8 @@ def submit(kind: str, payload: dict | None = None) -> dict:
     payload = payload or {}
     if kind == "paper" and not (payload.get("specPath") or payload.get("spec")):
         raise ValueError("paper 任务需要 specPath 或 spec")
-    if kind in ("slides", "jianying", "motion") and not (payload.get("spec") or payload.get("specPath")):
+    if kind in ("slides", "jianying", "motion", "short") \
+            and not (payload.get("spec") or payload.get("specPath")):
         raise ValueError(f"{kind} 任务需要 spec（或 specPath）")
     if kind == "materials" and not (payload.get("query") or payload.get("items")):
         raise ValueError("materials 任务需要 query（搜索并下载）或 items（给已选素材）")
@@ -203,8 +205,27 @@ def _run_cli(job: dict, cmd: list[str]) -> dict:
         proc = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT,
                               stdin=subprocess.DEVNULL, env=RUN_ENV)
     if proc.returncode != 0:
-        raise RuntimeError(f"命令退出码 {proc.returncode}：{' '.join(cmd[:3])} …（详见 log）")
+        tail = _tail_log(log_path)
+        raise RuntimeError(
+            f"命令退出码 {proc.returncode}：{' '.join(cmd[:3])} …"
+            + (f"\n最后输出：{tail}" if tail else "（log 里没有可读输出）"))
     return {"command": cmd[:3] + ["…"], "returncode": 0}
+
+
+def _tail_log(path: Path, limit: int = 400) -> str:
+    """日志末尾的实义行。
+
+    引擎挂掉时真正的原因通常就一句（"spec 错误: video 至少要有 1 段"），
+    以前一律换成「（详见 log）」，agent 得自己翻文件才知道哪里错——翻不到
+    就会去改规格、改代码，把一件读一行日志就能定位的事拖成几轮返工。
+    """
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    keep = [ln.strip() for ln in lines[-40:]
+            if ln.strip() and not ln.startswith("$ ")]
+    return "\n".join(keep)[-limit:]
 
 
 def _paper(job: dict, payload: dict) -> dict:
@@ -288,6 +309,39 @@ def _timeline(job: dict, payload: dict) -> dict:
     return {"files": [str(out)], "duration": spec.get("duration"), **_run_cli(job, cmd)}
 
 
+def _short(job: dict, payload: dict) -> dict:
+    """竖屏脚本一条命令出片：脚本展开 + 配音 + 静帧卡 + 立绘 + 渲染。
+
+    跟 timeline 的分工：timeline 收已经算好时间轴的 spec，只渲一遍；short 收
+    topic/hook/points 这一层脚本文本，展开交给 vertical_short 自己做。仓库里
+    发布的规格外面套着 {projectId, spec:{...}} 的壳，这里先剥壳，壳上写了
+    voice/logo 就补进脚本，免得规格照抄一份到脚本里。
+    """
+    work = _job_dir(job["id"]) / "work"
+    work.mkdir(parents=True, exist_ok=True)
+    raw = json.loads(Path(payload["specPath"]).expanduser().read_text(encoding="utf-8"))
+    if isinstance(raw, list):
+        raw = raw[0] if raw else {}
+    script = dict(raw.get("spec") if isinstance(raw.get("spec"), dict) else raw)
+    for k in ("voice", "logo", "rate", "narration"):
+        if k not in script and k in raw:
+            script[k] = raw[k]
+    script_path = work / "script.json"
+    script_path.write_text(json.dumps(script, ensure_ascii=False, indent=2) + "\n",
+                           encoding="utf-8")
+    slug = payload.get("slug") or job["kind"]
+    out = Path(payload.get("out") or deliver_dir() / f"{slug}-{job['id']}.mp4").expanduser()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [PYBIN, str(SCRIPTS["short"]), str(script_path),
+           "--mp4", str(out), "--outdir", str(work)]
+    voice = str(payload.get("voice") or script.get("voice") or "")
+    if voice:
+        cmd += ["--voice", voice]
+    if payload.get("logo") or script.get("logo"):
+        cmd += ["--logo", str(payload.get("logo") or script.get("logo"))]
+    return {"files": [str(out)], **_run_cli(job, cmd)}
+
+
 def materials_search(query: str, kind: str = "video", n: int = 5,
                      max_mb: int = 60) -> list[dict]:
     """只搜不下载：面板里挑素材要先看到标题、许可和大小，落盘是第二步。"""
@@ -363,6 +417,8 @@ def run_job(job_id: str) -> int:
             res = _paper(job, payload)
         elif job["kind"] == "timeline":
             res = _timeline(job, payload)
+        elif job["kind"] == "short":
+            res = _short(job, payload)
         elif job["kind"] == "materials":
             res = _materials(job, payload)
         else:
