@@ -49,7 +49,7 @@ AMBER = (255, 206, 122)
 CHAR = dict(width=786, x=470, y=962)
 
 LOGO = Path.home() / "CreatorStudio/materials/brand/envoy-bird.png"
-AUD = Path("/tmp/envoy-promo-work")
+AUD = Path("/tmp/envoy-promo-work3/audio")
 
 
 def font(size: int, bold: bool = False):
@@ -284,54 +284,61 @@ def _dur(p: Path) -> float:
 
 # ---------------------------------------------------------------- 分镜
 SCENES = [
-    dict(kind="cover", audio="a00.mp3", poses=["wave", "wave", "point"],
-         head="给 AI 一个链接，\n它只读到标题",
-         sub="剩下的，全靠它自己脑补。", logo=True, num="",
+    # 钩子：不是文笔问题，是它根本没看过。一句话点破，再翻底牌。
+    dict(kind="cover", audio="a00.mp3", poses=["wave", "point"],
+         head="AI 不是不会写",
+         sub="是那条链接，它没打开。", logo=True, num="",
          accent=CYAN, sizes=[92, 86, 80], head_y=396, sub_size=40, sub_w=820,
-         say="给 AI 一个链接，它只读到标题，剩下的全靠脑补。"),
+         say="AI 写的报告，为什么一看就假？ 因为它压根没打开那条链接。"),
 
-    dict(kind="point", audio="a01.mp3", poses=["point", "point", "approve", "point"],
-         head="一个链接，什么都能读", kicker="格式",
+    # 是什么 + 能读什么：一句话说清，范围用 pill 一次铺完
+    dict(kind="point", audio="a01.mp3", poses=["point", "approve"],
+         head="给 AI 一双眼睛", kicker="能读什么",
          pill="网页 · 公众号 · PDF · 小红书 · B 站 · 视频",
-         facts=["自测 123 条链接：80.5% 能拿到可用材料",
+         facts=["自测 123 条链接：80.5% 拿到可用材料",
                 "能连上的链接里 92.5% 读得到正文"],
          note="数据：123 条真实链接兼容性实测",
          num="01 / 04", accent=CYAN, head_size=88, head_y=470, pill_size=36,
-         say="网页、公众号、PDF、小红书图文、B 站视频、本地视频，一个链接就够。"),
+         say="Envoy 就是给 AI 的一双眼睛。 一个链接，网页、公众号、PDF、小红书、B 站视频，它自己读完。"),
 
-    dict(kind="point", audio="a02.mp3", poses=["think", "point"], pose_every=1,
+    # 硬数字：最能打的钩子放最大字号
+    dict(kind="point", audio="a02.mp3", poses=["think", "point"], exprs={1: "sparkle"},
+         head="68% → 0%", kicker="评测",
+         pill="跑到超时也没结论", num="02 / 04", accent=AMBER,
+         head_size=104, head_y=470,
+         facts=["第一次拿到证据 88 秒 → 48 秒", "命中参考事实关键词 23% → 82%"],
+         note="A/B 自测 60 轮 · 两臂时限 900s 与 2400s",
+         say="同一个模型，装不装它，跑到超时也没结论，从 68% 变成 0。 第一次拿到证据，88 秒变 48 秒。"),
+
+    # 实现亮点 + 噱头：后台浏览器、扫码交接
+    dict(kind="point", audio="a03.mp3", poses=["point", "approve"],
+         head="后台浏览器", kicker="怎么做到",
+         pill="要登录，扫个码就行", num="03 / 04", accent=CYAN,
+         head_size=88, head_y=470,
+         facts=["抽关键帧 · 本地 Whisper 转写", "读不完按需续读，不重拉整页"],
+         note="浏览器在后台跑，遇到登录才请你接管",
+         say="它在后台自己开浏览器、抽关键帧、跑本地转写； 卡在登录墙，就把二维码递给你扫一下，后台接着读。"),
+
+    # 边界：读不到就说读不到，这是差异化，也顺手把纪律说清
+    dict(kind="point", audio="a04.mp3", poses=["shrug", "point"],
+         head="读不到就说读不到", kicker="边界",
+         pill="不猜，也不编", num="04 / 04", accent=AMBER,
+         head_size=88, head_y=470,
+         facts=["跑到超时没结论 68% → 0%", "空回答 31 处 → 0 处"],
+         note="A/B 自测 60 轮 · 未做人工判分",
+         say="读不到就直说：要登录、被拦，还是网络不通，不拿猜测填。 一百条真实链接，八十条拿到可用的材料。"),
+
+    # 行动 + 固定收尾句
+    dict(kind="cta", audio="a05.mp3", poses=["wave", "happy", "happy"],
          exprs={1: "sparkle"},
-         head="每条结论，都带时间戳", kicker="可核对",
-         pill="[04:18] 点开就核对", num="02 / 04", accent=AMBER,
-         head_size=88, head_y=470,
-         facts=["参考事实覆盖率 9.1% → 38.2%", "第一次拿到证据 88 秒 → 48 秒"],
-         note="数据：60 轮 A/B 自测评测，每臂 60 轮",
-         say="切片段的时候顺手标好时间点；结论后面挂一个方括号，点开就能核对。"),
-
-    dict(kind="point", audio="a03.mp3", poses=["shrug", "shrug", "point", "approve"],
-         head="没读到，就说没读到", kicker="诚实",
-         pill="缺口单列「待补」，不猜", num="03 / 04", accent=CYAN,
-         head_size=88, head_y=470,
-         facts=["空回答 31 处 → 0 处", "跑到超时没结论 68% → 0%"],
-         note="数据：60 轮 A/B 自测评测，每臂 60 轮",
-         say="要登录、被人机校验拦住，它会直说，让 Agent 换条路，不编内容。"),
-
-    dict(kind="point", audio="a04.mp3", poses=["point", "point", "approve"],
-         head="三个宿主，一行命令", kicker="安装",
-         pill="Claude Code · Codex · DSH", num="04 / 04", accent=CYAN,
-         head_size=88, head_y=470,
-         facts=["默认完整档：runtime 178 MB · 浏览器 683 MB",
-                "转写权重 140 MB · 装完 envoy doctor --json"],
-         say="Claude Code、Codex、DeepSeek Harness，三个宿主各一行命令，装完自检两条。"),
-
-    dict(kind="cta", audio="a05.mp3", poses=["wave", "wave", "happy", "happy"],
-         exprs={2: "sparkle"},
-         head="装上 Envoy，\n链接就是材料",
+         head="一行装好",
          pill="github.com/regrevia/Envoy", logo=True, num="",
          sub="本期视频全程由大肥鱼制作完成，没有一个 token 受伤。",
          accent=CYAN, sizes=[96, 90, 84], head_y=396, pill_size=38, sub_size=31,
-         say="装上 Envoy，链接就是材料。本期视频全程由大肥鱼制作完成，没有一个 token 受伤。"),
+         say="一行装好，三个宿主都能用。 把链接丢过去，它不再猜，它真的看过。 本期视频全程由大肥鱼制作完成，没有一个 token 受伤。"),
 ]
+
+OUTFIT = "06_researcher"
 
 
 def _beats(mp3: Path, min_gap: float = 0.10) -> list[tuple[float, float]]:
@@ -355,10 +362,34 @@ def _beats(mp3: Path, min_gap: float = 0.10) -> list[tuple[float, float]]:
     return beats or [(0.0, round(dur, 3))]
 
 
+def _scene_beats(mp3: Path, dur: float) -> list[tuple[float, float]]:
+    """优先用合成时记下的逐句边界（edge-tts 逐句合成 + 定长停顿，误差 0）。
+
+    fallback 才用 silencedetect 反推：换气口和句子边界不是一回事，反推出来的
+    边界经常切在句子中间，动作跟着抖。
+    """
+    side = mp3.with_suffix(".beats.json")
+    if side.exists():
+        try:
+            rows = json.loads(side.read_text(encoding="utf-8"))
+            out, prev = [], 0.0
+            for a, b in rows:
+                a, b = max(prev, float(a)), min(dur, float(b))
+                if b - a > 0.05:
+                    out.append((round(a, 3), round(b, 3)))
+                    prev = b
+            if out:
+                out[-1] = (out[-1][0], round(dur, 3))
+                return out
+        except (OSError, ValueError, TypeError):
+            pass
+    return _beats(mp3)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--workdir", default="/tmp/envoy-promo-work2")
-    ap.add_argument("--spec", default="/tmp/envoy-promo-timeline2.json")
+    ap.add_argument("--workdir", default="/tmp/envoy-promo-work3")
+    ap.add_argument("--spec", default="/tmp/envoy-promo-timeline3.json")
     ap.add_argument("--cards-only", action="store_true")
     args = ap.parse_args(argv)
 
@@ -379,7 +410,7 @@ def main(argv=None):
         print("card%02d %s %.2fs" % (i, flat, dur), flush=True)
 
     # 时间线：一屏 = 一段配音 + 收尾留白，屏与屏之间 0.4s 交叠
-    XF = 0.42
+    XF = 0.0   # 卡面是整屏文字：交叉淡化会让两屏标题叠影，硬切在同一个底色上读起来就是换字
     GAP = 0.34
     t = 0.0
     video, audio_track, char_segs = [], [], []
@@ -395,7 +426,7 @@ def main(argv=None):
         audio_track.append({"src": str(c["audio"]), "start": round(start + 0.12, 3), "volume": 1.0})
         sc = c["scene"]
         end = out
-        beats = _beats(c["audio"])
+        beats = _scene_beats(c["audio"], c["dur"])
         a0 = round(start + 0.12, 3)
         poses = sc["poses"]
         every = int(sc.get("pose_every", 2))
@@ -411,7 +442,7 @@ def main(argv=None):
                 "start": b_start, "end": b_end,
                 "width": CHAR["width"], "x": CHAR["x"], "y": CHAR["y"],
                 "pose": pose, "mouth": "closed", "eyes": "open",
-                "expression": expr, "outfit": None,
+                "expression": expr, "outfit": OUTFIT,
                 "anim": VS._char_anim_name(pose, True) if hasattr(VS, "_char_anim_name") else None,
                 "anim_mode": "once" if pose == "wave" else "loop",
                 "anim_t0": round(b_start - (0.30 if pose == "wave" else 0.0), 3),
@@ -419,7 +450,7 @@ def main(argv=None):
                 # 口型吃整屏那条配音 + 整屏起点：逐拍切段只换动作，声音对齐不跟着抖
                 "lip_audio": str(c["audio"]), "lip_text": sc["say"], "lip_t0": a0,
                 "enter": {"from": "bottom", "duration": 0.55, "ease": "out-cubic"} if (i == 0 and bi == 0) else None,
-                "_outfit_root": str(CH.outfit_root(None)),
+                "_outfit_root": str(CH.outfit_root(OUTFIT)),
             })
         t = out
 
