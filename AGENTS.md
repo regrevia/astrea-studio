@@ -80,7 +80,8 @@ PROMO_ANGLE=proof PROMO_SEED=2 PROMO_WORK=~/CreatorStudio/work/envoy-promo-gen \
     python3 tools/promo/copy_lint.py /tmp/s.json        # 手写/LLM 稿也用它验收
 
 **挑稿（2026-11 加）**：`tools/promo/copy_score.py` 给每份稿子打分（事实密度 / 具体性 /
-推进力 / 冗余 / 节奏 / 钩子收尾 / 事实去重，各维度都能数出来，同一份稿永远同一分），
+推进力 / 冗余 / 节奏 / 钩子收尾 / 事实去重，各维度都能数出来，同一份稿永远同一分；
+「冗余」不只比镜头之间，也扣**旁白把卡面标题/标签再念一遍**——卡面抢不了耳朵的活），
 `PROMO_ANGLE=best` 就会扫 3 角度 × 9 seed、丢掉 lint 不过的、取总分最高那版再往下做，
 候选表和落选稿留在 `<WORK>/cand/`：
 

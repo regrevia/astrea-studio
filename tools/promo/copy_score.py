@@ -96,7 +96,15 @@ def score(doc: dict) -> dict:
             if gs[i] and gs[j]:
                 dup = max(dup, len(gs[i] & gs[j]) / min(len(gs[i]), len(gs[j])))
     neg_stack = sum(1 for t in says if sum(t.count(w) for w in NEG) >= 3)
-    redun = max(0.0, 1.0 - 0.75 * dup - 0.25 * (neg_stack / max(1, len(says))))
+    # 旁白把卡面已经写着的字再念一遍，也是原地踏步（卡面抢不了耳朵的活）
+    card_dup = 0.0
+    for s in allsc:
+        g = _grams(_say(s))
+        c = _grams(str(s.get("head") or "") + str(s.get("pill") or ""))
+        if g and c:
+            card_dup = max(card_dup, len(g & c) / min(len(g), len(c)))
+    redun = max(0.0, 1.0 - 0.55 * dup - 0.20 * (neg_stack / max(1, len(says)))
+                - 0.25 * card_dup)
 
     # pace：句长离散度，0.18~0.42 最好，太齐/太乱都扣
     lens = [len(t) for t in says if t]
