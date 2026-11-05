@@ -14,6 +14,8 @@
 #
 # 用法：
 #   tools/promo/build.sh                    # 从头到尾，能跳的全跳
+#   PROMO_ANGLE=proof PROMO_SEED=2 tools/promo/build.sh   # 让生成器出新稿（过 copy_lint）
+#   PROMO_ANGLE=best tools/promo/build.sh                # 3×9 候选打分选最高分那版
 #   tools/promo/build.sh --from spec        # 从卡面/时间线开始
 #   tools/promo/build.sh --from render      # 只重渲 + 混音（改了 timeline_render 时）
 #   tools/promo/build.sh --force            # 全部重做（人物层也会重建，约 40 秒）
@@ -31,9 +33,10 @@ RAW="$WORK/promo_raw.mp4"
 OUT="$WORK/promo.mp4"
 DELIVER="${PROMO_DELIVER:-/Volumes/US202/CreatorStudio/deliver/envoy-promo.mp4}"
 # 成片响度：线性增益 + 限幅。不要换动态 loudnorm，会抽气。
-AF="${PROMO_AF:-volume=2.6dB,alimiter=limit=0.84:level=false:attack=3:release=60}"
+# 限幅留 0.80（≈−1.9 dBTP）：0.84 时真峰 −1.4，已经越过 −1.5 dBTP 那条线。
+AF="${PROMO_AF:-volume=2.6dB,alimiter=limit=0.80:level=false:attack=3:release=60}"
 
-FROM="tts"
+FROM="copy"
 FORCE=0
 DELIVER_ON=1
 while [ $# -gt 0 ]; do
@@ -46,9 +49,9 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-steps=(tts spec render mux deliver)
+steps=(copy tts spec render mux deliver)
 case "$FROM" in
-  tts|spec|render|mux|deliver) ;;
+  copy|tts|spec|render|mux|deliver) ;;
   *) echo "--from 只认: ${steps[*]}" >&2; exit 2 ;;
 esac
 START=0
@@ -66,10 +69,43 @@ mark() { dirty="1"; }
 mkdir -p "$WORK"
 log() { printf '\n== %s ==\n' "$*"; }
 
+# 0) 文案（可选）-----------------------------------------------------
+# 给了 PROMO_ANGLE / PROMO_SEED 就让生成器出稿并过 lint；不给就用 promo_envoy.py 里的手写稿。
+SCRIPT=""
+if want copy && { [ -n "${PROMO_ANGLE:-}" ] || [ -n "${PROMO_SEED:-}" ]; }; then
+  SCRIPT="$WORK/script.json"
+  ANGLE="${PROMO_ANGLE:-pain}"
+  if [ "$ANGLE" = "best" ]; then
+    # 让打分器扫 3 角度 × 9 seed，只收过 lint 的，取总分最高那版（同分看节奏）
+    log "copy → ${SCRIPT}（angle=best，扫 3×9 候选）"
+    "$PY" "$REPO/tools/promo/copy_score.py" --rank --top 8 \
+      --angles "${PROMO_CAND_ANGLES:-pain,proof,candor}" \
+      --seeds "${PROMO_CAND_SEEDS:-0,1,2,3,4,5,6,7,8}" \
+      --workdir "$WORK/cand" --out "$SCRIPT"
+  else
+    log "copy → ${SCRIPT}（angle=$ANGLE seed=${PROMO_SEED:-0}）"
+    "$PY" "$REPO/tools/promo/script_gen.py" --angle "$ANGLE" \
+      --seed "${PROMO_SEED:-0}" --out "$SCRIPT"
+  fi
+  "$PY" "$REPO/tools/promo/copy_lint.py" "$SCRIPT"   # 不过闸门就不许配音
+  export PROMO_SCRIPT="$SCRIPT"
+  mark
+fi
+TTS_SRC="$REPO/deploy/presenter/promo_envoy.py"
+[ -n "$SCRIPT" ] && TTS_SRC="$SCRIPT"
+
 # 1) 配音 -------------------------------------------------------------
-if want tts && ! fresh "$AUD/a05.mp3" "$REPO/deploy/presenter/promo_envoy.py"; then
-  log "tts → $AUD"
+# 稿子换了必须重配：用稿子的哈希当戳，不能只看 mtime（默认稿和新生成稿
+# 的 mtime 关系说明不了音频是谁配的，混用会让时间轴和旁白对不上）。
+mkdir -p "$AUD"
+SCRIPT_ID="default"
+[ -n "$SCRIPT" ] && SCRIPT_ID="$("$PY" -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest()[:16])' "$SCRIPT")"
+STAMP="$AUD/.script_id"
+if want tts && { [ "$(cat "$STAMP" 2>/dev/null || true)" != "$SCRIPT_ID" ] \
+                 || ! fresh "$AUD/a05.mp3" "$TTS_SRC"; }; then
+  log "tts → ${AUD}（稿 ${SCRIPT_ID}）"
   PROMO_WORK="$WORK" PROMO_AUDIO="$AUD" "$PY" "$REPO/tools/promo/tts_envoy.py"
+  printf '%s\n' "$SCRIPT_ID" > "$STAMP"
   mark
 fi
 

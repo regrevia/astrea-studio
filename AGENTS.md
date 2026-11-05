@@ -44,22 +44,62 @@
 所以那条链路在 `tools/promo/`，入口是 `tools/promo/build.sh`：
 
 ```bash
-tools/promo/build.sh                  # 幂等：配音/人物层/spec/成片哪一步的产物够新就跳过
-tools/promo/build.sh --from tts        # 改了文案（promo_envoy.py 里的 SCENES）从头做
+tools/promo/build.sh                  # 幂等：文案/配音/人物层/spec/成片哪一步的产物够新就跳过
+tools/promo/build.sh --from tts        # 改了配音逻辑、稿子没换
 tools/promo/build.sh --from spec       # 只改了卡面排版
 tools/promo/build.sh --force           # 全量重做（含立绘层，约 40 秒）
+
+# 让流水线自己出稿（不过手写 SCENES），稿子先过 copy_lint 才允许配音：
+PROMO_ANGLE=pain PROMO_SEED=0 tools/promo/build.sh
+PROMO_ANGLE=proof PROMO_SEED=2 PROMO_WORK=~/CreatorStudio/work/envoy-promo-gen \
+  ./tools/promo/build.sh --no-deliver    # 试另一版，不碰默认交付
 ```
 
-它依次做：配音（`tools/promo/tts_envoy.py`，文案直接 import `promo_envoy.SCENES`，
-念 `say` 字段，句末标点=换气位；同一步里就产出 `a0X.words.json` 逐字轴与
-`a0X.beats.json` 拍边界，所以不需要另跑对齐工具）→
+它依次做：**文案（可选，见下）** → 配音（`tools/promo/tts_envoy.py`，文案 import
+`promo_envoy.SCENES`，念 `say` 字段，句末标点=换气位；同一步里就产出 `a0X.words.json`
+逐字轴与 `a0X.beats.json` 拍边界，所以不需要另跑对齐工具）→
 卡面 + 立绘层 + 时间线（`deploy/presenter/promo_envoy.py`）→ 渲染（`timeline_render.py`）
 → 响度（线性增益 + `alimiter`）→ 交付（`tools/verify_delivery.py` 16 KB 冷读拷贝 + 回读校验）。
 
 目录默认 `~/CreatorStudio/work/envoy-promo`（`PROMO_WORK` 可改），交付默认
 `/Volumes/US202/CreatorStudio/deliver/envoy-promo.mp4`（`PROMO_DELIVER` 可改，
-`--no-deliver` 只出到工作目录）。文案只有一个源：`deploy/presenter/promo_envoy.py` 的
-`SCENES[*]["say"]`，TTS 和卡面都读它，不要再抄第二份。
+`--no-deliver` 只出到工作目录）。默认仍是 `deploy/presenter/promo_envoy.py` 的
+`SCENES[*]["say"]` **手写稿**：不设 `PROMO_SCRIPT`/`PROMO_ANGLE`/`PROMO_SEED` 时输出与
+改流水线之前完全一致，TTS 和卡面都读同一份，不要再抄第二份。
+
+**文案自动生成（可选，2026-11 加）**：`tools/promo/script_gen.py` 从事实库
+`tools/promo/facts/envoy.json` 拼稿，只贴 `claim`/`say` 原文、自己不算任何数字；
+三个叙事角度 `pain`/`proof`/`candor`，`--seed` 换说法但同一 seed 完全可复现。
+产物写到 `<WORK>/script.json`，并通过 `PROMO_SCRIPT` 让 `promo_envoy.py` 用它替换
+`SCENES`。稿子先过 `tools/promo/copy_lint.py` 这一关（卡面事实必须逐字等于事实库原文、
+镜头里每个阿拉伯数字都能在事实库找到、收尾句逐字在位、版式长度上限），**不过关整条流水线
+直接失败**，不会带着编的数字去配音。
+
+    python3 tools/promo/script_gen.py --list
+    python3 tools/promo/script_gen.py --angle candor --seed 1 --out /tmp/s.json
+    python3 tools/promo/copy_lint.py /tmp/s.json        # 手写/LLM 稿也用它验收
+
+**挑稿（2026-11 加）**：`tools/promo/copy_score.py` 给每份稿子打分（事实密度 / 具体性 /
+推进力 / 冗余 / 节奏 / 钩子收尾 / 事实去重，各维度都能数出来，同一份稿永远同一分），
+`PROMO_ANGLE=best` 就会扫 3 角度 × 9 seed、丢掉 lint 不过的、取总分最高那版再往下做，
+候选表和落选稿留在 `<WORK>/cand/`：
+
+    python3 tools/promo/copy_score.py --rank --top 8     # 打印候选表
+    PROMO_ANGLE=best tools/promo/build.sh                # 自动挑最高分那版出片
+
+`copy_lint.py` 另外拦两类「说了等于没说」：同一行事实在两屏重复念、中段三屏标题同字开头
+（生成器会先自己换一版说法，换不掉才判失败）。
+
+配音缓存用 `<WORK>/audio/.script_id`（稿子 sha 或 `default`）判，不看 mtime：
+手写稿和生成稿混用而音频没重配，时间轴会和旁白对不上。
+
+**写文案的硬规则**（`script_gen.COPY_RULES`，`copy_lint.py` 里有对应的 `PAD` 词表会直接判失败）：
+
+- 每句话都要推进论证——给信息、给因果、给结论、给动作。只为「万一被质疑」而存在的句子删掉。
+- 不写免责声明式语气：「仅供参考 / 如有出入以实际为准 / 我们没做人工判分 / 你自己验一下就知道」
+  都是这条的反例。可信度交给标签（自测 / 未验证）、出处、原始数字，不交给形容词和自证。
+- 同一个事实只标一次「自测」，不再追加一句解释它为什么可信；读者追问时再答。
+- 法规/平台强制披露的（广告标识、数据来源）保留，但压到最短一句、放在该在的位置。
 
 ## 3. 服务契约（agent 别猜路由）
 

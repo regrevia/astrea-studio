@@ -285,7 +285,7 @@ def _dur(p: Path) -> float:
 
 
 # ---------------------------------------------------------------- 分镜
-SCENES = [
+_SCENES_DEFAULT = [
     # 钩子：不是文笔问题，是它根本没看过。一句话点破，再翻底牌。
     dict(kind="cover", audio="a00.mp3", poses=["wave", "point"],
          head="AI 不是不会写",
@@ -327,7 +327,7 @@ SCENES = [
          pill="不猜，也不编", num="04 / 04", accent=AMBER,
          head_size=88, head_y=470,
          facts=["跑到超时没结论 68% → 0%", "空回答 31 处 → 0 处"],
-         note="A/B 自测 60 轮 · 未做人工判分",
+         note="A/B 自测 60 轮",
          say="读不到就直说：要登录、被拦，还是网络不通，不拿猜测填。 一百条真实链接，八十条拿到可用的材料。"),
 
     # 行动 + 固定收尾句
@@ -339,6 +339,25 @@ SCENES = [
          accent=CYAN, sizes=[96, 90, 84], head_y=396, pill_size=38, sub_size=31,
          say="一行装好，三个宿主都能用。 把链接丢过去，它不再猜，它真的看过。 本期视频全程由大肥鱼制作完成，没有一个 token 受伤。"),
 ]
+
+# 文案可以由 tools/promo/script_gen.py 现生成（事实库 + 角度），指到那份 JSON 就用它；
+# 没指就用上面这份手写稿。生成器只贴事实库原文，copy_lint.py 负责验收。
+_ACCENTS = {"cyan": CYAN, "amber": AMBER}
+
+
+def _load_scenes(default):
+    p = os.environ.get("PROMO_SCRIPT")
+    if not p:
+        return default
+    doc = json.loads(Path(p).read_text(encoding="utf-8"))
+    scenes = doc["scenes"]
+    for sc in scenes:
+        if isinstance(sc.get("accent"), str):
+            sc["accent"] = _ACCENTS.get(sc["accent"], CYAN)
+    return scenes
+
+
+SCENES = _load_scenes(_SCENES_DEFAULT)
 
 OUTFIT = "06_researcher"
 
