@@ -1,0 +1,15 @@
+{
+  "name": "creator-studio",
+  "owner": {
+    "name": "regrevia",
+    "url": "https://github.com/regrevia"
+  },
+  "plugins": [
+    {
+      "name": "creator-studio",
+      "source": "./creator-studio",
+      "description": "把选题、文案或分镜表变成能交付的竖屏成片，并交付一份可编辑的时间轴草稿。",
+      "version": "0.1.0"
+    }
+  ]
+}

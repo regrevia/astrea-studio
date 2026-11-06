@@ -123,6 +123,27 @@ PY=~/CreatorStudio/runtime/integrations/vendor/MoneyPrinterTurbo/.venv/bin/pytho
 只做「写作台 → 我们」单向：反向会变成两边各存一份状态的双向同步，冲突处理没有收益。
 口播规则只有 `script_gen.COPY_RULES` 一处，别在别处再抄一份。
 
+### 2.3 给 Codex 的插件（`plugins/codex/`）
+
+模型在别的客户端里也能出片。形状照本机已装的官方插件（`envoy@envoy`）抄，不自创：
+`creator-studio/.codex-plugin/plugin.json`（清单，`skills` + `mcpServers: "./.mcp.json"`）→
+`.mcp.json` 起本插件自带的零依赖 stdio 服务器 `mcp/studio_mcp.py` → `skills/creator-studio/SKILL.md`
+是 runbook（装 → 自检 → 出片分三段报状态，没到 `complete` 不许说能用）。
+
+```bash
+codex plugin marketplace add "$PWD/plugins/codex"      # 会写 ~/.codex/config.toml，先问人
+codex plugin add creator-studio@creator-studio
+python3 plugins/codex/creator-studio/mcp/smoke.py      # 协议 + 8 个工具 + 真跑一次桥接（不渲染）
+```
+
+工具面是 `studio_ready / films / jobs / job / wait / submit / shots / verify` 八个，
+**故意没有发布和上传**：上平台必须人工。交付给用户的是 `studio_shots` 产出的可编辑
+`spec.json`（改完 `studio_submit kind=timeline` 重渲），成片只是这次渲染的快照——
+这就是「自动化停在草稿，创意收尾留给人」。
+
+这与「不做 DSH 插件」不冲突：那个说的是 `dsh-media-desk` 的桥接不要长成插件；
+这里是给 **Codex 客户端**的入口，和 CLI、HTTP 服务并列，不是第四套引擎。
+
 ## 3. 服务契约（agent 别猜路由）
 
 - 存活探测是 `GET /healthz`（`{"ok": true}`）。`/health` 不存在，探它会得到 `{"error":"not found"}`，

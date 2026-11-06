@@ -61,6 +61,7 @@ SHOT_SLACK = float(os.environ.get("BRIDGE_SHOT_SLACK", "0.35"))  # 配音后至�
 XFADE = float(os.environ.get("BRIDGE_XFADE", "0.18"))
 SUB_SIZE = 0.033        # 字幕字号（× 画布高）；0.042 时一行放不下 17 字
 SUB_WRAP = 13           # 每行字数（timeline_render 的 text 只认 \n，不自动折行）
+CARD_HEAD_MAX = 14      # 卡面大字最多几个字：一句话的主张，不重抄字幕
 COVER_SECONDS = float(os.environ.get("BRIDGE_COVER_SECONDS", "2.6"))
 
 
@@ -176,10 +177,36 @@ def _wrap_sub(text: str) -> str:
     return "\n".join(lines[:3])  # 三行以上字幕就不是字幕了，说明该拆镜
 
 
+_LABEL = re.compile(r"^\s*(标题卡|卡面|画面|镜头|口播|字幕|正文|旁白)\s*[:：]\s*")
+
+
+def card_head(shot: dict) -> str:
+    """卡面大字 = 这镜的主张，不拿分镜描述凑。
+
+    `visual` 是写给人看的分镜说明（「近景，人物半身，背景虚化」），上屏就露馅；
+    所以优先 `title`，否则取口播的前几个分句——主张上屏、整句留给字幕和耳朵。
+    """
+    labelled = _LABEL
+    title = labelled.sub("", str(shot.get("title") or "")).strip()
+    if title:
+        return title[:24]
+    voice = labelled.sub("", str(shot.get("voice") or "")).strip()
+    if not voice:
+        return f"第 {shot['no']} 镜"
+    parts = [p.strip() for p in re.split(r"[，,。？！；!?;]", voice) if p.strip()]
+    head = parts[0][:CARD_HEAD_MAX]
+    # 第一分句太短（「然后」「接着」）才并下一句，否则卡面和字幕会念同一句
+    for part in parts[1:]:
+        if len(head) >= 6 or len(head) + 1 + len(part) > CARD_HEAD_MAX:
+            break
+        head += "，" + part
+    return head
+
+
 def card_for(shot: dict, idx: int, total: int, path: Path) -> Path:
     """没有分镜图时的兜底卡面：复用宣传片那套版式，不另立视觉。"""
     from promo_envoy import CYAN, card
-    head = shot["visual"] or shot["voice"] or f"第 {shot['no']} 镜"
+    head = card_head(shot)
     scene = {
         "head": head[:40],
         "kicker": f"镜 {shot['no']:02d}" + (f" · {shot['shot']}" if shot["shot"] else ""),

@@ -1,0 +1,39 @@
+{
+  "name": "creator-studio",
+  "version": "0.1.0",
+  "description": "把选题、文案或分镜表变成能交付的竖屏成片，并交付一份可编辑的时间轴草稿。",
+  "skills": "./skills/",
+  "author": {
+    "name": "regrevia",
+    "url": "https://github.com/regrevia"
+  },
+  "homepage": "https://github.com/regrevia/astrea-studio",
+  "repository": "https://github.com/regrevia/astrea-studio",
+  "license": "Apache-2.0",
+  "keywords": [
+    "video",
+    "vertical-video",
+    "render",
+    "timeline",
+    "subtitle",
+    "mcp"
+  ],
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Creator Studio",
+    "shortDescription": "选题/分镜 → 竖屏成片 + 可编辑时间轴",
+    "longDescription": "调用本机的 creator-studio 能力服务：提交出片任务、等待结果、把分镜表转成可编辑的时间轴草稿、校验交付盘成片。成片只是预览，时间轴 spec 才是可改的稿子。",
+    "developerName": "regrevia",
+    "category": "Productivity",
+    "capabilities": [
+      "MCP"
+    ],
+    "websiteURL": "https://github.com/regrevia/astrea-studio",
+    "defaultPrompt": [
+      "用 Creator Studio 把这份分镜表出一版竖屏草稿。",
+      "查一下刚才那条出片任务到哪了。",
+      "校验交付盘上的成片有没有坏块。"
+    ],
+    "brandColor": "#00E0FF"
+  }
+}

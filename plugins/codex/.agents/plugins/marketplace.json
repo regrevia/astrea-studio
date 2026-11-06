@@ -1,0 +1,19 @@
+{
+  "name": "creator-studio",
+  "interface": {
+    "displayName": "Creator Studio"
+  },
+  "plugins": [
+    {
+      "name": "creator-studio",
+      "source": {
+        "source": "local",
+        "path": "./creator-studio"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

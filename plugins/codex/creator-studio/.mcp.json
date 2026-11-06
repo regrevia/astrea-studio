@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "creator-studio": {
+      "command": "python3",
+      "args": [
+        "./mcp/studio_mcp.py"
+      ],
+      "env": {
+        "STUDIO_URL": "http://127.0.0.1:8899"
+      },
+      "startup_timeout_sec": 20
+    }
+  }
+}
