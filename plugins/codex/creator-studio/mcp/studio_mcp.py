@@ -67,7 +67,8 @@ def _fail(msg: str) -> dict:
 
 
 def tool_ready(_: dict) -> dict:
-    out: dict = {"service": BASE}
+    out: dict = {"service": BASE,
+                  "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION}}
     try:
         out["healthz"] = _call("GET", "/healthz", timeout=5)
         out["可提交"] = True

@@ -37,11 +37,19 @@ metadata:
 1. 注册本地 marketplace：
    `codex plugin marketplace add "<repo>/plugins/codex"`
 2. 装插件：`codex plugin add creator-studio@creator-studio`
-3. 新开一个 codex 会话（工具面在会话启动时挂载），能看到
+3. 新开一个 codex 会话（工具面在会话启动时挂载），命名空间是 `mcp__studio`，里面有
    `studio_ready / studio_films / studio_jobs / studio_job / studio_wait / studio_submit / studio_shots / studio_verify`。
 4. 装完只报告「已安装 0.1.0」。这一步不算可用。
 
+确认工具面真的挂上了，用两条不看模型脸色的命令：`codex mcp get studio` 应显示
+`cwd: <插件目录>/.`（`.mcp.json` 里的 `cwd` 解析到插件根；少了它，相对路径 `./mcp/studio_mcp.py`
+会按会话 cwd 解析，服务器起不来又不报错，表现就是「skill 在、工具全无」），
+`codex mcp list` 里应有一条 `studio`、`Status enabled`。
+
 工具面里**故意没有发布/上传**：上传平台、选封面、点发布必须人工做，不要绕过去找别的工具。
+
+非交互跑（`codex exec`）时 MCP 调用受审批策略管：策略是 `never` 会回
+`MCP tool call requires approval`，这不是插件坏了；交互式 TUI 里点允许，或显式放宽审批再跑。
 
 ## 自检（相当于 CapCut 的「授权」那一步）
 
@@ -84,6 +92,9 @@ metadata:
 
 ## 已知边界
 
+- 服务器名固定为 `studio`（`mcp/studio_mcp.py` 的 `SERVER_NAME` 仍是 `creator-studio`，那是自报身份）。
+  不要改回 `creator-studio`：它和配置里已存在的 `[mcp_servers.creator_studio]` 归一化后撞名，
+  插件这条会被静默丢掉，同样表现成「工具全无」。
 - `short` 的 `timeline` 是原始透传，不会替你把文案展开成时间轴；把文案按 `timeline` 提交会得到
   `spec 错误: video 至少要有 1 段`，这不是 bug。
 - 字幕折行由产出方预先切好（时间轴 `text` 只认 `\n`），一行 13 字、最多 3 行；超了要把镜头拆开。

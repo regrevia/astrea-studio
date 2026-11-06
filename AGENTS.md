@@ -134,7 +134,17 @@ PY=~/CreatorStudio/runtime/integrations/vendor/MoneyPrinterTurbo/.venv/bin/pytho
 codex plugin marketplace add "$PWD/plugins/codex"      # 会写 ~/.codex/config.toml，先问人
 codex plugin add creator-studio@creator-studio
 python3 plugins/codex/creator-studio/mcp/smoke.py      # 协议 + 8 个工具 + 真跑一次桥接（不渲染）
+codex mcp get studio                                    # 要看到 cwd: <插件目录>/. 和 enabled
 ```
+
+三条 2026-11 实测的硬约束，改这个插件前先看：
+
+- `.mcp.json` 的 `cwd: "./"` 不能删。服务器进程默认继承**会话** cwd，不是插件根；相对的
+  `args` 会因此找不到 `mcp/studio_mcp.py`，进程秒退且不报错，只表现成「skill 在、工具没有」。
+- 服务器名是 `studio`，别再叫 `creator-studio`：配置里已有 `[mcp_servers.creator_studio]`，
+  归一化后同名会把插件这条静默丢掉。模型侧命名空间是 `mcp__studio`。
+- 非交互 `codex exec` 里 MCP 调用要过审批；`approval_policy = never` 会回
+  `MCP tool call requires approval`，那是审批不是故障。
 
 工具面是 `studio_ready / films / jobs / job / wait / submit / shots / verify` 八个，
 **故意没有发布和上传**：上平台必须人工。交付给用户的是 `studio_shots` 产出的可编辑
