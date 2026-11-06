@@ -102,6 +102,27 @@ PROMO_ANGLE=proof PROMO_SEED=2 PROMO_WORK=~/CreatorStudio/work/envoy-promo-gen \
 - 同一个事实只标一次「自测」，不再追加一句解释它为什么可信；读者追问时再答。
 - 法规/平台强制披露的（广告标识、数据来源）保留，但压到最短一句、放在该在的位置。
 
+### 2.2 写作台的成稿也能出片（`tools/bridge/`）
+
+外部写作台（[dsh-media-desk](https://github.com/woniuniuniu/dsh-media-desk)）出选题、标题、
+封面文案、分镜表，但**不配音、不渲染**；我们的强项正好是那后半段。接缝只有一份数据，
+所以这里是一层转换脚本，不是插件、不 import 对方代码：
+
+```bash
+PY=~/CreatorStudio/runtime/integrations/vendor/MoneyPrinterTurbo/.venv/bin/python
+"$PY" tools/bridge/from_media_desk.py <production.json|state.json> --out /tmp/desk            # 只算时间轴
+"$PY" tools/bridge/from_media_desk.py tools/bridge/tests/production.json --out /tmp/desk --render
+"$PY" tools/bridge/from_media_desk.py ~/.dsh/media-desk/state.json --id 3f2a --submit        # 排队出片
+```
+
+它读的字段、兜底规则、环境变量和已知边界写在 `tools/bridge/README.md`，改之前先看那一份。
+三条要点：`shots[].voice` 缺了直接拒绝（没旁白的镜头不出片）；每镜时长取
+`max(它的 seconds, 配音 + 0.35s)`，不为了凑它的数把句子切掉；没有分镜图时用
+`promo_envoy.card` 的卡面兜底，不留黑屏。
+
+只做「写作台 → 我们」单向：反向会变成两边各存一份状态的双向同步，冲突处理没有收益。
+口播规则只有 `script_gen.COPY_RULES` 一处，别在别处再抄一份。
+
 ## 3. 服务契约（agent 别猜路由）
 
 - 存活探测是 `GET /healthz`（`{"ok": true}`）。`/health` 不存在，探它会得到 `{"error":"not found"}`，
