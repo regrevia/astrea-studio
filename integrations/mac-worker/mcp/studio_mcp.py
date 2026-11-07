@@ -28,7 +28,7 @@ SERVER_NAME = "creator-studio"
 SERVER_VERSION = "0.1.0"
 PROTOCOL_VERSION = "2024-11-05"
 
-REPO = Path(__file__).resolve().parents[4]
+REPO = Path(__file__).resolve().parents[3]
 BASE = os.environ.get("STUDIO_URL", "http://127.0.0.1:8899").rstrip("/")
 HOME = Path(os.environ.get("STUDIO_HOME", str(Path.home() / "CreatorStudio")))
 WORK = Path(os.environ.get("STUDIO_MCP_WORK", str(HOME / "work" / "mcp")))

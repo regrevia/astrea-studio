@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """冒烟：按 MCP 客户端的真实时序跑一遍这个服务（不渲染）。
 
-    python3 plugins/codex/mcp/smoke.py
+    python3 integrations/mac-worker/mcp/smoke.py
 
 初始化和列工具必须过；能力服务没起来的机器上，studio_ready 也算「有回话」，
 只是 isError=true —— 那也通过，因为桥的责任是回话，不是替服务背锅。
@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[3]
+REPO = HERE.parents[2]
 FIXTURE = REPO / "tools/bridge/tests/production.json"
 
 

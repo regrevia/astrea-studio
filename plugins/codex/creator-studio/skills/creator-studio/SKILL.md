@@ -34,17 +34,27 @@ metadata:
 
 ## 安装
 
-1. 注册本地 marketplace：
-   `codex plugin marketplace add "<repo>/plugins/codex"`
-2. 装插件：`codex plugin add creator-studio@creator-studio`
-3. 新开一个 codex 会话（工具面在会话启动时挂载），命名空间是 `mcp__studio`，里面有
-   `studio_ready / studio_films / studio_jobs / studio_job / studio_wait / studio_submit / studio_shots / studio_verify`。
-4. 装完只报告「已安装 0.1.0」。这一步不算可用。
+四个宿主共用同一个服务器：`/Users/apple/CreatorStudio/runtime/integrations/mac-worker/mcp/studio_mcp.py`
+（`scripts/sync_runtime.sh` 同步出来的运行态拷贝，路径不随 git 分支变）。每个宿主只写自己那张清单：
 
-确认工具面真的挂上了，用两条不看模型脸色的命令：`codex mcp get studio` 应显示
-`cwd: <插件目录>/.`（`.mcp.json` 里的 `cwd` 解析到插件根；少了它，相对路径 `./mcp/studio_mcp.py`
-会按会话 cwd 解析，服务器起不来又不报错，表现就是「skill 在、工具全无」），
-`codex mcp list` 里应有一条 `studio`、`Status enabled`。
+| 宿主 | 清单在哪 | 怎么装 |
+|---|---|---|
+| Codex | `plugins/codex/creator-studio/`（`.codex-plugin/plugin.json` + `.mcp.json`） | `codex plugin marketplace add <repo>/plugins/codex` → `codex plugin add creator-studio@creator-studio` |
+| Claude Code | `plugins/codex/.claude-plugin/marketplace.json` + `creator-studio/.mcp.json` | `claude plugin marketplace add <repo>/plugins/codex` → `claude plugin install creator-studio@creator-studio` |
+| WorkBuddy | `~/.workbuddy/mcp.json` 里的一条 `mcpServers` 记录 | 手写 JSON（宿主没有 install 命令），改前先备份 |
+| DeepSeek Harness | `plugins/dsh/`（纯配置 bundle，`cordis.patch.yml` 插 `@deepseek-ai/dsh-mcp-client`） | `plugin_manager action=install_bundle target=<repo>/plugins/dsh` |
+
+- 服务器名：Codex / Claude / WorkBuddy 用 `studio`，DSH 用 `creator_studio`（`serverName`）。
+  别叫 `creator-studio`：配置里已有 `[mcp_servers.creator_studio]`，归一化后撞名，插件那条会被静默丢掉。
+- `.mcp.json` 写**绝对路径、不写 `cwd`**：宿主进程的 cwd 是会话目录不是插件根，相对路径会
+  `can't open file` 秒退且不报错。代价是这些清单跟着这台机器走，换机要改路径。
+- 模型侧的命名空间：Codex `mcp__studio`，Claude `plugin:creator-studio:studio`，WorkBuddy 由它拼前缀，
+  DSH `mcp__creator_studio__studio_*`。
+- 装完只报告「已安装 0.1.0」。这一步不算可用。
+
+确认挂上了，用不看模型脸色的命令：`codex mcp get studio`（`enabled: true`；`cwd: -` 是正常的，因为参数是绝对路径）、
+`claude mcp list`（`plugin:creator-studio:studio ... ✔ Connected`）、`~/.workbuddy/mcp.json` 过一遍
+`python3 -m json.tool`、DSH 里 `Tool.listTools` 能看到八个 `mcp__creator_studio__*`。
 
 工具面里**故意没有发布/上传**：上传平台、选封面、点发布必须人工做，不要绕过去找别的工具。
 

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Creator Studio">
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#0B0F14"/>
+  <rect x="10" y="14" width="44" height="30" rx="6" fill="#00E0FF"/>
+  <path d="M24 22l14 7-14 7z" fill="#0B0F14"/>
+  <rect x="26" y="50" width="12" height="4" rx="2" fill="#00E0FF"/>
+</svg>

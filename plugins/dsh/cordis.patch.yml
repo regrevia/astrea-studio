@@ -1,0 +1,10 @@
+- insert:
+    - id: creator-studio-mcp
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: creator_studio
+        transport: stdio
+        command: python3
+        args:
+          - /Users/apple/CreatorStudio/runtime/integrations/mac-worker/mcp/studio_mcp.py
+        failOnStartupError: true

@@ -123,28 +123,38 @@ PY=~/CreatorStudio/runtime/integrations/vendor/MoneyPrinterTurbo/.venv/bin/pytho
 只做「写作台 → 我们」单向：反向会变成两边各存一份状态的双向同步，冲突处理没有收益。
 口播规则只有 `script_gen.COPY_RULES` 一处，别在别处再抄一份。
 
-### 2.3 给 Codex 的插件（`plugins/codex/`）
+### 2.3 给客户端的插件（四个宿主，`plugins/`）
 
-模型在别的客户端里也能出片。形状照本机已装的官方插件（`envoy@envoy`）抄，不自创：
-`creator-studio/.codex-plugin/plugin.json`（清单，`skills` + `mcpServers: "./.mcp.json"`）→
-`.mcp.json` 起本插件自带的零依赖 stdio 服务器 `mcp/studio_mcp.py` → `skills/creator-studio/SKILL.md`
-是 runbook（装 → 自检 → 出片分三段报状态，没到 `complete` 不许说能用）。
+模型在别的客户端里也能出片。**服务器只有一份**：
+`integrations/mac-worker/mcp/studio_mcp.py`（零依赖 stdio JSON-RPC ↔ 能力服务），
+运行态路径 `~/CreatorStudio/runtime/integrations/mac-worker/mcp/studio_mcp.py` 由
+`scripts/sync_runtime.sh` 同步、不随 git 分支变，四张清单都指向它。
 
-```bash
-codex plugin marketplace add "$PWD/plugins/codex"      # 会写 ~/.codex/config.toml，先问人
-codex plugin add creator-studio@creator-studio
-python3 plugins/codex/creator-studio/mcp/smoke.py      # 协议 + 8 个工具 + 真跑一次桥接（不渲染）
-codex mcp get studio                                    # 要看到 cwd: <插件目录>/. 和 enabled
-```
+| 宿主 | 清单 | 装法 | 模型侧名字 |
+|---|---|---|---|
+| Codex | `plugins/codex/creator-studio/.codex-plugin/plugin.json` + `.mcp.json` | `codex plugin marketplace add "$PWD/plugins/codex"` → `codex plugin add creator-studio@creator-studio` | `mcp__studio` |
+| Claude Code | `plugins/codex/.claude-plugin/marketplace.json` + `creator-studio/.mcp.json` | `claude plugin marketplace add "$PWD/plugins/codex"` → `claude plugin install creator-studio@creator-studio` | `plugin:creator-studio:studio` |
+| WorkBuddy | `~/.workbuddy/mcp.json` 里一条 `mcpServers` | 手写 JSON，改前备份（没有 install 命令） | 宿主自己拼前缀 |
+| DeepSeek Harness | `plugins/dsh/`（纯配置 bundle） | `plugin_manager action=install_bundle target="$PWD/plugins/dsh"` | `mcp__creator_studio__studio_*` |
 
-三条 2026-11 实测的硬约束，改这个插件前先看：
+三条 2026-11 实测的硬约束，改这些清单前先看：
 
-- `.mcp.json` 的 `cwd: "./"` 不能删。服务器进程默认继承**会话** cwd，不是插件根；相对的
-  `args` 会因此找不到 `mcp/studio_mcp.py`，进程秒退且不报错，只表现成「skill 在、工具没有」。
-- 服务器名是 `studio`，别再叫 `creator-studio`：配置里已有 `[mcp_servers.creator_studio]`，
-  归一化后同名会把插件这条静默丢掉。模型侧命名空间是 `mcp__studio`。
-- 非交互 `codex exec` 里 MCP 调用要过审批；`approval_policy = never` 会回
+- `.mcp.json` 用**绝对路径、不写 `cwd`**。宿主给 MCP 子进程的 cwd 是**会话目录**不是插件根，
+  相对 `args` 会 `can't open file` 秒退且不报错，只表现成「skill 在、工具一个都没有」。
+  绝对路径的代价：这些清单跟着这台机器走，换机要改路径——不要假装它是可移植插件。
+- 服务器名 Codex/Claude/WorkBuddy 用 `studio`，DSH 用 `creator_studio`（`serverName`）。
+  别叫 `creator-studio`：配置里已有 `[mcp_servers.creator_studio]`，归一化后同名，
+  插件这条会被静默丢掉。
+- `codex exec` 里 MCP 调用要过审批；`approval_policy = never` 会回
   `MCP tool call requires approval`，那是审批不是故障。
+- DSH 那个 bundle 是**纯配置**（无 Host/Client 入口），`cordis.patch.yml` 插
+  `@deepseek-ai/dsh-mcp-client`；profile 文件一律由 `plugin_manager` 写，不要手改
+  `~/.dsh/profiles/*/package.json` 或 `cordis.patch.yml`。
+
+验，都用不看模型脸色的命令：`codex mcp get studio`（`enabled: true`，`cwd: -` 正常）、
+`claude mcp list`（`plugin:creator-studio:studio ... ✔ Connected`）、
+`python3 -m json.tool ~/.workbuddy/mcp.json`、DSH 里 `Tool.listTools` 有八个
+`mcp__creator_studio__*`。
 
 工具面是 `studio_ready / films / jobs / job / wait / submit / shots / verify` 八个，
 **故意没有发布和上传**：上平台必须人工。交付给用户的是 `studio_shots` 产出的可编辑
@@ -152,7 +162,7 @@ codex mcp get studio                                    # 要看到 cwd: <插件
 这就是「自动化停在草稿，创意收尾留给人」。
 
 这与「不做 DSH 插件」不冲突：那个说的是 `dsh-media-desk` 的桥接不要长成插件；
-这里是给 **Codex 客户端**的入口，和 CLI、HTTP 服务并列，不是第四套引擎。
+这里是给客户端的入口，和 CLI、HTTP 服务并列，不是第五套引擎。
 
 ## 3. 服务契约（agent 别猜路由）
 

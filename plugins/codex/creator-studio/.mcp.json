@@ -3,9 +3,8 @@
     "studio": {
       "command": "python3",
       "args": [
-        "./mcp/studio_mcp.py"
+        "/Users/apple/CreatorStudio/runtime/integrations/mac-worker/mcp/studio_mcp.py"
       ],
-      "cwd": "./",
       "env": {
         "STUDIO_URL": "http://127.0.0.1:8899"
       },
